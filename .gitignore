@@ -1,0 +1,32 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+
+# Android / Gradle
+.gradle/
+local.properties
+*.apk
+*.aab
+captures/
+
+# Secrets and local config
+.env
+*.keystore
+*.jks
+
+# Large local assets (models, tiles) are downloaded, not committed
+models/
+*.gguf
+*.task
+*.litertlm

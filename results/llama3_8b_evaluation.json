@@ -1,0 +1,22 @@
+{
+  "model": "llama3:8b",
+  "synthetic_cases": 42,
+  "supported_count": 31,
+  "supported_classification_accuracy": 1.0,
+  "supported_exact_match": 1.0,
+  "supported_field_accuracy": 1.0,
+  "unsupported_count": 11,
+  "unsupported_detection_accuracy": 1.0,
+  "unsupported_false_accepts": 0,
+  "critical_field_hallucination_rate": 0.0,
+  "latency_ms": {
+    "mean": 3343.894336309426,
+    "median": 4452.527292000923,
+    "p95": 4885.101500000019
+  },
+  "notes": [
+    "Synthetic fictional reports only.",
+    "Ollama was called locally; any conservative fallback caused by timeout/validation error is labeled per row.",
+    "Field accuracy is only computed for examples marked representable by schema 6."
+  ]
+}

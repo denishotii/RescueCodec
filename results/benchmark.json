@@ -1,0 +1,20 @@
+{
+  "dataset_count": 42,
+  "synthetic_only": true,
+  "extraction_mode": "conservative deterministic fallback (Ollama unavailable/unconfigured)",
+  "supported_classification_accuracy": 1.0,
+  "supported_examples_exact_field_match": 0.9032258064516129,
+  "field_accuracy": 0.9806451612903225,
+  "median_fallback_latency_ms": 0.023229000362334773,
+  "compression": {
+    "mean_utf8_bytes_supported": 82.12903225806451,
+    "mean_binary_bytes_supported": 11.32258064516129,
+    "mean_reduction_vs_utf8_percent": 86.21366849960724
+  },
+  "notes": [
+    "Binary sizes encode ground-truth annotations, not model extraction output.",
+    "Semantic accuracy applies only to the simple offline rule-based fallback.",
+    "LoRa airtime values are estimates, not measured RF airtime.",
+    "No physical radio or Meshtasticator packets were transmitted."
+  ]
+}

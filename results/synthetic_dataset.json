@@ -1,0 +1,685 @@
+[
+  {
+    "id": "SYN-01",
+    "text": "I found a missing person, unconscious but breathing; urgent oxygen mask and medical assistance needed.",
+    "ground_truth": {
+      "schema_id": 6,
+      "event": "PERSON_FOUND",
+      "consciousness": 2,
+      "breathing": 1,
+      "equipment_needed": [
+        0
+      ],
+      "request": 2,
+      "urgency": 2,
+      "location": null,
+      "location_quality": 0,
+      "person_count": null,
+      "responders_needed_min": null
+    },
+    "supported": true
+  },
+  {
+    "id": "SYN-02",
+    "text": "We located someone conscious and breathing. Please send medical help urgently.",
+    "ground_truth": {
+      "schema_id": 6,
+      "event": "PERSON_FOUND",
+      "consciousness": 1,
+      "breathing": 1,
+      "equipment_needed": [],
+      "request": 2,
+      "urgency": 2,
+      "location": null,
+      "location_quality": 0,
+      "person_count": null,
+      "responders_needed_min": null
+    },
+    "supported": true
+  },
+  {
+    "id": "SYN-03",
+    "text": "Person found, unresponsive and not breathing. Critical medical assistance required now.",
+    "ground_truth": {
+      "schema_id": 6,
+      "event": "PERSON_FOUND",
+      "consciousness": 2,
+      "breathing": 2,
+      "equipment_needed": [],
+      "request": 2,
+      "urgency": 3,
+      "location": null,
+      "location_quality": 0,
+      "person_count": null,
+      "responders_needed_min": null
+    },
+    "supported": true
+  },
+  {
+    "id": "SYN-04",
+    "text": "A person was found, but we cannot determine whether they are breathing.",
+    "ground_truth": {
+      "schema_id": 6,
+      "event": "PERSON_FOUND",
+      "consciousness": 0,
+      "breathing": 0,
+      "equipment_needed": [],
+      "request": 0,
+      "urgency": 0,
+      "location": null,
+      "location_quality": 0,
+      "person_count": null,
+      "responders_needed_min": null
+    },
+    "supported": true
+  },
+  {
+    "id": "SYN-05",
+    "text": "I found the person. They are awake, breathing, and do not need oxygen.",
+    "ground_truth": {
+      "schema_id": 6,
+      "event": "PERSON_FOUND",
+      "consciousness": 1,
+      "breathing": 1,
+      "equipment_needed": [],
+      "request": 0,
+      "urgency": 0,
+      "location": null,
+      "location_quality": 0,
+      "person_count": null,
+      "responders_needed_min": null
+    },
+    "supported": true
+  },
+  {
+    "id": "SYN-06",
+    "text": "Missing person located unconscious but breathing. Bring an oxygen mask and first aid kit, urgently.",
+    "ground_truth": {
+      "schema_id": 6,
+      "event": "PERSON_FOUND",
+      "consciousness": 2,
+      "breathing": 1,
+      "equipment_needed": [
+        0,
+        1
+      ],
+      "request": 0,
+      "urgency": 2,
+      "location": null,
+      "location_quality": 0,
+      "person_count": null,
+      "responders_needed_min": null
+    },
+    "supported": true
+  },
+  {
+    "id": "SYN-07",
+    "text": "Found one person, conscious. Need an AED and medical help.",
+    "ground_truth": {
+      "schema_id": 6,
+      "event": "PERSON_FOUND",
+      "consciousness": 1,
+      "breathing": 0,
+      "equipment_needed": [
+        2
+      ],
+      "request": 2,
+      "urgency": 0,
+      "location": null,
+      "location_quality": 0,
+      "person_count": null,
+      "responders_needed_min": null
+    },
+    "supported": true
+  },
+  {
+    "id": "SYN-08",
+    "text": "We found someone unconscious. Breathing status unknown; stretcher requested.",
+    "ground_truth": {
+      "schema_id": 6,
+      "event": "PERSON_FOUND",
+      "consciousness": 2,
+      "breathing": 0,
+      "equipment_needed": [
+        3
+      ],
+      "request": 0,
+      "urgency": 0,
+      "location": null,
+      "location_quality": 0,
+      "person_count": null,
+      "responders_needed_min": null
+    },
+    "supported": true
+  },
+  {
+    "id": "SYN-09",
+    "text": "The missing person is found and breathing. Send oxygen cylinder, critical.",
+    "ground_truth": {
+      "schema_id": 6,
+      "event": "PERSON_FOUND",
+      "consciousness": 0,
+      "breathing": 1,
+      "equipment_needed": [
+        4
+      ],
+      "request": 0,
+      "urgency": 3,
+      "location": null,
+      "location_quality": 0,
+      "person_count": null,
+      "responders_needed_min": null
+    },
+    "supported": true
+  },
+  {
+    "id": "SYN-10",
+    "text": "Person located, awake. No medical help needed.",
+    "ground_truth": {
+      "schema_id": 6,
+      "event": "PERSON_FOUND",
+      "consciousness": 1,
+      "breathing": 0,
+      "equipment_needed": [],
+      "request": 1,
+      "urgency": 0,
+      "location": null,
+      "location_quality": 0,
+      "person_count": null,
+      "responders_needed_min": null
+    },
+    "supported": true
+  },
+  {
+    "id": "SYN-11",
+    "text": "Two people have been found. One is unconscious and breathing; medical help is urgent.",
+    "ground_truth": {
+      "unsupported": true
+    },
+    "supported": false
+  },
+  {
+    "id": "SYN-12",
+    "text": "I found a person who is not unconscious and does not need oxygen.",
+    "ground_truth": {
+      "schema_id": 6,
+      "event": "PERSON_FOUND",
+      "consciousness": 1,
+      "breathing": 0,
+      "equipment_needed": [],
+      "request": 0,
+      "urgency": 0,
+      "location": null,
+      "location_quality": 0,
+      "person_count": null,
+      "responders_needed_min": null
+    },
+    "supported": true
+  },
+  {
+    "id": "SYN-13",
+    "text": "We found a person, breathing status cannot be determined. Medical assistance requested.",
+    "ground_truth": {
+      "schema_id": 6,
+      "event": "PERSON_FOUND",
+      "consciousness": 0,
+      "breathing": 0,
+      "equipment_needed": [],
+      "request": 2,
+      "urgency": 0,
+      "location": null,
+      "location_quality": 0,
+      "person_count": null,
+      "responders_needed_min": null
+    },
+    "supported": true
+  },
+  {
+    "id": "SYN-14",
+    "text": "Person found; unconscious, breathing, oxygen mask required, send medic immediately.",
+    "ground_truth": {
+      "schema_id": 6,
+      "event": "PERSON_FOUND",
+      "consciousness": 2,
+      "breathing": 1,
+      "equipment_needed": [
+        0
+      ],
+      "request": 2,
+      "urgency": 3,
+      "location": null,
+      "location_quality": 0,
+      "person_count": null,
+      "responders_needed_min": null
+    },
+    "supported": true
+  },
+  {
+    "id": "SYN-15",
+    "text": "A missing person has been located. They are conscious, but breathing is not known.",
+    "ground_truth": {
+      "schema_id": 6,
+      "event": "PERSON_FOUND",
+      "consciousness": 1,
+      "breathing": 0,
+      "equipment_needed": [],
+      "request": 0,
+      "urgency": 0,
+      "location": null,
+      "location_quality": 0,
+      "person_count": null,
+      "responders_needed_min": null
+    },
+    "supported": true
+  },
+  {
+    "id": "SYN-16",
+    "text": "Found person is unconscious and not breathing. AED and medical assistance needed urgently.",
+    "ground_truth": {
+      "schema_id": 6,
+      "event": "PERSON_FOUND",
+      "consciousness": 2,
+      "breathing": 2,
+      "equipment_needed": [
+        2
+      ],
+      "request": 2,
+      "urgency": 2,
+      "location": null,
+      "location_quality": 0,
+      "person_count": null,
+      "responders_needed_min": null
+    },
+    "supported": true
+  },
+  {
+    "id": "SYN-17",
+    "text": "Person located, breathing normally, first aid kit requested.",
+    "ground_truth": {
+      "schema_id": 6,
+      "event": "PERSON_FOUND",
+      "consciousness": 0,
+      "breathing": 1,
+      "equipment_needed": [
+        1
+      ],
+      "request": 0,
+      "urgency": 0,
+      "location": null,
+      "location_quality": 0,
+      "person_count": null,
+      "responders_needed_min": null
+    },
+    "supported": true
+  },
+  {
+    "id": "SYN-18",
+    "text": "We found the missing person. Consciousness unknown; request a stretcher.",
+    "ground_truth": {
+      "schema_id": 6,
+      "event": "PERSON_FOUND",
+      "consciousness": 0,
+      "breathing": 0,
+      "equipment_needed": [
+        3
+      ],
+      "request": 0,
+      "urgency": 0,
+      "location": null,
+      "location_quality": 0,
+      "person_count": null,
+      "responders_needed_min": null
+    },
+    "supported": true
+  },
+  {
+    "id": "SYN-19",
+    "text": "The person is not unconscious, breathing, and medical help is requested.",
+    "ground_truth": {
+      "unsupported": true
+    },
+    "supported": false
+  },
+  {
+    "id": "SYN-20",
+    "text": "One person found, unconscious, breathing status unknown, oxygen mask urgently required.",
+    "ground_truth": {
+      "schema_id": 6,
+      "event": "PERSON_FOUND",
+      "consciousness": 2,
+      "breathing": 0,
+      "equipment_needed": [
+        0
+      ],
+      "request": 0,
+      "urgency": 2,
+      "location": null,
+      "location_quality": 0,
+      "person_count": null,
+      "responders_needed_min": null
+    },
+    "supported": true
+  },
+  {
+    "id": "SYN-21",
+    "text": "Vermisste Person gefunden, bewusstlos aber sie atmet. Sauerstoffmaske und dringend medizinische Hilfe.",
+    "ground_truth": {
+      "schema_id": 6,
+      "event": "PERSON_FOUND",
+      "consciousness": 2,
+      "breathing": 1,
+      "equipment_needed": [
+        0
+      ],
+      "request": 2,
+      "urgency": 2,
+      "location": null,
+      "location_quality": 0,
+      "person_count": null,
+      "responders_needed_min": null
+    },
+    "supported": true
+  },
+  {
+    "id": "SYN-22",
+    "text": "Person gefunden, ansprechbar und atmet. Bitte dringend medizinische Hilfe schicken.",
+    "ground_truth": {
+      "schema_id": 6,
+      "event": "PERSON_FOUND",
+      "consciousness": 1,
+      "breathing": 1,
+      "equipment_needed": [],
+      "request": 2,
+      "urgency": 2,
+      "location": null,
+      "location_quality": 0,
+      "person_count": null,
+      "responders_needed_min": null
+    },
+    "supported": true
+  },
+  {
+    "id": "SYN-23",
+    "text": "Person aufgefunden, bewusstlos und atmet nicht. Sofort medizinische Hilfe erforderlich.",
+    "ground_truth": {
+      "schema_id": 6,
+      "event": "PERSON_FOUND",
+      "consciousness": 2,
+      "breathing": 2,
+      "equipment_needed": [],
+      "request": 2,
+      "urgency": 3,
+      "location": null,
+      "location_quality": 0,
+      "person_count": null,
+      "responders_needed_min": null
+    },
+    "supported": true
+  },
+  {
+    "id": "SYN-24",
+    "text": "Wir haben jemanden gefunden, können aber nicht feststellen, ob die Person atmet.",
+    "ground_truth": {
+      "schema_id": 6,
+      "event": "PERSON_FOUND",
+      "consciousness": 0,
+      "breathing": 0,
+      "equipment_needed": [],
+      "request": 0,
+      "urgency": 0,
+      "location": null,
+      "location_quality": 0,
+      "person_count": null,
+      "responders_needed_min": null
+    },
+    "supported": true
+  },
+  {
+    "id": "SYN-25",
+    "text": "Vermisste Person gefunden, wach und atmend. Keine Sauerstoffmaske benötigt.",
+    "ground_truth": {
+      "schema_id": 6,
+      "event": "PERSON_FOUND",
+      "consciousness": 1,
+      "breathing": 1,
+      "equipment_needed": [],
+      "request": 0,
+      "urgency": 0,
+      "location": null,
+      "location_quality": 0,
+      "person_count": null,
+      "responders_needed_min": null
+    },
+    "supported": true
+  },
+  {
+    "id": "SYN-26",
+    "text": "Bewusstlose Person gefunden, Atmung unbekannt. Trage wird benötigt.",
+    "ground_truth": {
+      "schema_id": 6,
+      "event": "PERSON_FOUND",
+      "consciousness": 2,
+      "breathing": 0,
+      "equipment_needed": [
+        3
+      ],
+      "request": 0,
+      "urgency": 0,
+      "location": null,
+      "location_quality": 0,
+      "person_count": null,
+      "responders_needed_min": null
+    },
+    "supported": true
+  },
+  {
+    "id": "SYN-27",
+    "text": "Person gefunden. Bewusstlos, atmet; Sauerstoffmaske und Erste-Hilfe-Koffer dringend bringen.",
+    "ground_truth": {
+      "schema_id": 6,
+      "event": "PERSON_FOUND",
+      "consciousness": 2,
+      "breathing": 1,
+      "equipment_needed": [
+        0,
+        1
+      ],
+      "request": 0,
+      "urgency": 2,
+      "location": null,
+      "location_quality": 0,
+      "person_count": null,
+      "responders_needed_min": null
+    },
+    "supported": true
+  },
+  {
+    "id": "SYN-28",
+    "text": "Eine Person gefunden, ansprechbar und atmend. AED und medizinische Hilfe werden dringend gebraucht.",
+    "ground_truth": {
+      "schema_id": 6,
+      "event": "PERSON_FOUND",
+      "consciousness": 1,
+      "breathing": 1,
+      "equipment_needed": [
+        2
+      ],
+      "request": 2,
+      "urgency": 2,
+      "location": null,
+      "location_quality": 0,
+      "person_count": null,
+      "responders_needed_min": null
+    },
+    "supported": true
+  },
+  {
+    "id": "SYN-29",
+    "text": "Person gefunden, Bewusstsein unbekannt, atmet nicht. Medizinische Hilfe erforderlich.",
+    "ground_truth": {
+      "schema_id": 6,
+      "event": "PERSON_FOUND",
+      "consciousness": 0,
+      "breathing": 2,
+      "equipment_needed": [],
+      "request": 2,
+      "urgency": 0,
+      "location": null,
+      "location_quality": 0,
+      "person_count": null,
+      "responders_needed_min": null
+    },
+    "supported": true
+  },
+  {
+    "id": "SYN-30",
+    "text": "Zwei Personen gefunden. Eine ist bewusstlos und atmet. Medizinische Hilfe dringend.",
+    "ground_truth": {
+      "unsupported": true
+    },
+    "supported": false
+  },
+  {
+    "id": "SYN-31",
+    "text": "Gefundene Person ist nicht bewusstlos und braucht keinen Sauerstoff.",
+    "ground_truth": {
+      "schema_id": 6,
+      "event": "PERSON_FOUND",
+      "consciousness": 1,
+      "breathing": 0,
+      "equipment_needed": [],
+      "request": 0,
+      "urgency": 0,
+      "location": null,
+      "location_quality": 0,
+      "person_count": null,
+      "responders_needed_min": null
+    },
+    "supported": true
+  },
+  {
+    "id": "SYN-32",
+    "text": "Person gefunden, wach; Atmung unbekannt, medizinische Hilfe angefordert.",
+    "ground_truth": {
+      "schema_id": 6,
+      "event": "PERSON_FOUND",
+      "consciousness": 1,
+      "breathing": 0,
+      "equipment_needed": [],
+      "request": 2,
+      "urgency": 0,
+      "location": null,
+      "location_quality": 0,
+      "person_count": null,
+      "responders_needed_min": null
+    },
+    "supported": true
+  },
+  {
+    "id": "SYN-33",
+    "text": "There is smoke spreading on the east stairwell; avoid that route.",
+    "ground_truth": {
+      "unsupported": true
+    },
+    "supported": false
+  },
+  {
+    "id": "SYN-34",
+    "text": "Gas concentration is rising near the loading bay; request evacuation.",
+    "ground_truth": {
+      "unsupported": true
+    },
+    "supported": false
+  },
+  {
+    "id": "SYN-35",
+    "text": "Team Delta is safe, two responders accounted for.",
+    "ground_truth": {
+      "unsupported": true
+    },
+    "supported": false
+  },
+  {
+    "id": "SYN-36",
+    "text": "Need one technical rescue team and cutting equipment at the north entrance.",
+    "ground_truth": {
+      "unsupported": true
+    },
+    "supported": false
+  },
+  {
+    "id": "SYN-37",
+    "text": "Three people were found: one conscious, one unconscious, one status unknown.",
+    "ground_truth": {
+      "unsupported": true
+    },
+    "supported": false
+  },
+  {
+    "id": "SYN-38",
+    "text": "The caller is unsure whether the person is breathing or even at this location.",
+    "ground_truth": {
+      "unsupported": true
+    },
+    "supported": false
+  },
+  {
+    "id": "SYN-39",
+    "text": "Please relay the coordinates 50.9375, 6.9603 to command.",
+    "ground_truth": {
+      "unsupported": true
+    },
+    "supported": false
+  },
+  {
+    "id": "SYN-40",
+    "text": "Person found; needs help.",
+    "ground_truth": {
+      "unsupported": true
+    },
+    "supported": false
+  },
+  {
+    "id": "SYN-41",
+    "text": "I found the person at 50.9375, 6.9603. He is unconscious and breathing, needs an oxygen mask, and we need at least two people.",
+    "ground_truth": {
+      "schema_id": 6,
+      "event": "PERSON_FOUND",
+      "consciousness": 2,
+      "breathing": 1,
+      "equipment_needed": [
+        0
+      ],
+      "request": 0,
+      "urgency": 0,
+      "location": [
+        50.9375,
+        6.9603
+      ],
+      "location_quality": 2,
+      "person_count": null,
+      "responders_needed_min": 2
+    },
+    "supported": true
+  },
+  {
+    "id": "SYN-42",
+    "text": "Person gefunden, bewusstlos und atmet. Sauerstoffmaske benötigt; bitte mindestens zwei weitere Einsatzkräfte schicken.",
+    "ground_truth": {
+      "schema_id": 6,
+      "event": "PERSON_FOUND",
+      "consciousness": 2,
+      "breathing": 1,
+      "equipment_needed": [
+        0
+      ],
+      "request": 0,
+      "urgency": 0,
+      "location": null,
+      "location_quality": 0,
+      "person_count": null,
+      "responders_needed_min": 2
+    },
+    "supported": true
+  }
+]
