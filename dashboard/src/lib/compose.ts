@@ -1,21 +1,23 @@
 // Logic of the Send panel (the command post's composer), kept pure so it is unit tested.
 // Who to send to, what the preview says, and which API call a send becomes.
-import type { Channel, ExtractResult, Health, MeshNode, SendMessageBody, SendTextBody } from "../api/types";
+import type { ExtractBody, ExtractResult, Health, MeshNode, RadioChannel, SendMessageBody, SendTextBody } from "../api/types";
 import { t, type Lang } from "./i18n";
 
 /** A channel (by name, like the gateway) or one person (a direct message to a node). */
 export type Target = { kind: "channel"; name: string } | { kind: "direct"; node: string };
 
-/** The gateway checks a text at 180 bytes of UTF-8 (spec), so the composer stops there. */
+/** The gateway checks a text at 180 bytes of UTF-8 (spec), so the composer stops there on a normal chat. */
 export const MAX_TEXT_BYTES = 180;
+/** A chat that packs (send_as "compressed") takes up to 400 bytes of typed text; the gateway packs it into one packet. */
+export const MAX_PACKED_TEXT_BYTES = 400;
 
 export const byteLength = (s: string) => new TextEncoder().encode(s).length;
 
 /** Channels the command post may pick: the gateway's channels (health), private ones first, the default one first. */
-export function sendChannels(health: Health | null): Channel[] {
+export function sendChannels(health: Health | null): RadioChannel[] {
   const all = health?.radio.channels ?? [];
   const dflt = health?.radio.channel?.toLowerCase();
-  const rank = (c: Channel) => (c.public ? 2 : c.name.toLowerCase() === dflt ? 0 : 1);
+  const rank = (c: RadioChannel) => (c.public ? 2 : c.name.toLowerCase() === dflt ? 0 : 1);
   return [...all].sort((a, b) => rank(a) - rank(b) || a.index - b.index);
 }
 
@@ -52,17 +54,64 @@ export function parseTargetKey(key: string): Target | null {
 export function plainOnlyReason(target: Target | null, health: Health | null): "direct" | "public" | null {
   if (!target) return null;
   if (target.kind === "direct") return "direct";
-  const ch = health?.radio.channels?.find((c) => c.name.toLowerCase() === target.name.toLowerCase());
-  return ch?.public ? "public" : null;
+  return findChannel(health, target.name)?.public ? "public" : null;
 }
 
-/** What the preview line shows. `report` = it goes out as a compact report; else as a plain text. */
+const findChannel = (health: Health | null, name: string) =>
+  health?.radio.channels?.find((c) => c.name.toLowerCase() === name.toLowerCase());
+
+/** Where a text goes, as the API names it: `channel` (a name) or `to` (a node, direct message). */
+export const targetWhere = (target: Target): { channel: string } | { to: string } =>
+  target.kind === "channel" ? { channel: target.name } : { to: target.node };
+
+/** Body of POST /v2/extract: the trimmed words and the target, so the gateway answers for that chat. */
+export function extractBody(text: string, target: Target | null): ExtractBody {
+  return { text: text.trim(), ...(target ? targetWhere(target) : {}) };
+}
+
+/**
+ * Most bytes the operator may type for this target. The gateway's preview says it (`max_text_bytes`); without one, a
+ * channel that packs (send_as "compressed" in health) takes 400 B and everything else 180 B (a direct message too).
+ * `preview` must belong to this target (the caller checks); its words may be older.
+ */
+export function textLimit(target: Target | null, health: Health | null, preview: ExtractResult | null): number {
+  if (preview?.max_text_bytes) return preview.max_text_bytes;
+  const packs = target?.kind === "channel" && findChannel(health, target.name)?.send_as === "compressed";
+  return packs ? health?.text_limits?.packed ?? MAX_PACKED_TEXT_BYTES : health?.text_limits?.text ?? MAX_TEXT_BYTES;
+}
+
+/** The byte counter under the composer. */
+export interface CounterView {
+  used: number;
+  limit: number;
+  /** 20 bytes or less left. */
+  near: boolean;
+  /** The gateway will shorten the text to fit one radio message ("Too long: will be cut ..."). */
+  cut: boolean;
+}
+
+/** `preview` must belong to exactly this text and target (its `cut` is about these words), else null. */
+export function counterView(text: string, limit: number, preview: ExtractResult | null): CounterView {
+  const used = byteLength(text);
+  return { used, limit, near: used > limit - 20, cut: preview?.cut === true || used > limit };
+}
+
+/**
+ * What the input keeps of a new value: at most `limit` bytes, but never less than the text already there (after
+ * switching to a chat with a lower limit, deleting must not cut the rest of the text).
+ */
+export const inputCap = (limit: number, current: string) => Math.max(limit, byteLength(current));
+
+/** What the preview line shows. `report` = it goes out as a compact report; else as a text. */
 export interface PreviewView {
   report: boolean;
-  /** "Person found", "Request", ... from the readable line; "" for a text (the UI says "Text"). */
+  /**
+   * "Person found", "Request", ... from the readable line; "Compact words" for a text sent as word tokens;
+   * "" for any other text (the UI says "Text").
+   */
   head: string;
   bytes: number;
-  /** Plain-text size of the same words, only when the report is smaller. */
+  /** Plain-text size of the same words, only when the report or the compact words are smaller. */
   textBytes: number | null;
   chips: string[];
 }
@@ -76,6 +125,11 @@ export const headOf = (line: string) => line.replace(/^\[[^\]]*\]\s*/, "").split
  */
 export function previewView(text: string, preview: ExtractResult | null, plain: boolean, lang: Lang): PreviewView {
   const words = text.trim();
+  if (preview?.type === "text" && preview.form === "words") {
+    // A text goes to /v2/text either way, so "plain text" ticked changes nothing: the gateway picked word tokens.
+    const textBytes = preview.text_bytes > preview.coded_bytes ? preview.text_bytes : null;
+    return { report: false, head: t(lang, "compactWords"), bytes: preview.coded_bytes, textBytes, chips: [] };
+  }
   if (!preview || plain || preview.type === "text") {
     const bytes = !preview ? byteLength(words) : plain ? preview.text_bytes : preview.coded_bytes;
     return { report: false, head: "", bytes, textBytes: null, chips: [] };
@@ -100,7 +154,7 @@ export type SendCall =
  */
 export function buildSend(text: string, target: Target, preview: ExtractResult | null, plain: boolean, health: Health | null): SendCall {
   const words = text.trim();
-  const where = target.kind === "channel" ? { channel: target.name } : { to: target.node };
+  const where = targetWhere(target);
   if (!plain && !plainOnlyReason(target, health) && preview && preview.type !== "text") {
     return { path: "/v2/messages", body: { message: preview.message, ...where } };
   }
