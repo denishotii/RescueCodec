@@ -51,6 +51,7 @@ import org.rescuecodec.engine.Task
 import org.rescuecodec.engine.TaskKey
 import org.rescuecodec.engine.TaskState
 import org.rescuecodec.engine.TextFit
+import org.rescuecodec.engine.TextMode
 
 /** Result of [Messenger.submit]. */
 sealed interface SubmitResult {
@@ -98,9 +99,10 @@ data class AirtimeStatus(val usedMs: Double, val limitMs: Double) {
  * (index, name, public) and, for a direct message, the other node. Reports become tasks, Acks update tasks.
  * Everything is written to the database, so a restart loses nothing.
  *
- * Normal Meshtastic texts (port 1, spec section 2.1) are stored as `text` rows marked [MeshText.SOURCE]. With
- * [AppSettings.plainTextAsMeshtastic] on, a message with only a text also goes out that way, so the official app and
- * radio screens show it. Reports always go on port 256, never on a public channel.
+ * Normal Meshtastic texts (port 1, spec section 2.1) are stored as `text` rows marked [MeshText.SOURCE]. A message with
+ * only a text goes out packed for RescueCodec (port 256, raw DEFLATE with the shared dictionary) or as a normal
+ * Meshtastic text that every app can read, by the chat's mode and who we heard in it ([TextRoutes], spec section
+ * 2.3). Reports always go on port 256, never on a public channel.
  *
  * Tasks: [answer] sends Accept, Decline or Done as an Ack on the report's channel and applies it locally at once.
  */
@@ -134,6 +136,8 @@ class Messenger(
     private val nodes: NodeDirectory? = null,
     /** How long a message whose channel is not on the radio waits before we look again. */
     private val parkMs: Long = 5_000,
+    /** Who runs RescueCodec and the text mode of each chat: decides packed or normal text. */
+    val routes: TextRoutes = TextRoutes.inMemory(settings, clock),
 ) {
     private val mutex = Mutex()
     private val wake = Channel<Unit>(Channel.CONFLATED)
@@ -195,8 +199,9 @@ class Messenger(
      * has none. [source] says who asked: "app" or a package name.
      *
      * Where it goes: [channel] by name, or the team channel when null. With [peer] set it is a direct message to that
-     * node: text only, as a normal Meshtastic text (port 1). A public channel takes plain texts and answers only,
-     * never a report (it would leak positions and injuries).
+     * node: text only. A public channel takes plain texts and answers only, never a report (it would leak positions
+     * and injuries). A text goes packed (port 256, with its id and position) or as a normal Meshtastic text (port 1)
+     * by [textForm].
      */
     suspend fun submit(message: Map<String, Any?>, source: String = "app", channel: String? = null, peer: Long? = null): SubmitResult {
         val input = LinkedHashMap(message)
@@ -205,15 +210,14 @@ class Messenger(
         } catch (e: CodecException) {
             return SubmitResult.Rejected(e.code, e.field, e.message ?: e.code)
         }
-        if (peer != null) {
-            if (type != "text") return SubmitResult.Rejected("direct_text_only", null, "A direct message carries text only. Reports go on a channel.")
-            return submitPlain(input, null, peer)
+        if (peer != null && type != "text") {
+            return SubmitResult.Rejected("direct_text_only", null, "A direct message carries text only. Reports go on a channel.")
         }
-        val public = channel != null && _radioChannels.value?.firstOrNull { it.name == channel }?.isPublic == true
+        val public = peer == null && isPublic(channel)
         if (public && type != "text" && type != "ack") {
             return SubmitResult.Rejected("public_channel", null, "Reports never go on a public channel. Send them on a private channel.")
         }
-        if (type == "text" && (settings.plainTextAsMeshtastic || public)) return submitPlain(input, channel, null)
+        if (type == "text") return submitText(input, source, channel, peer)
         // Every message except an Ack gets an id (spec section 14), so a second "Hilfe" is a new message and not a
         // repeat of the first. It costs 1 to 2 bytes. An Ack is a repeat by design and carries none.
         if (type != "ack" && (input["id"] as? Number)?.toInt().let { it == null || it == 0 }) {
@@ -243,6 +247,60 @@ class Messenger(
             SubmitResult.Queued(rowId, type, msgId, bytes, RescueCodec.reconstruct(canonical, settings.language))
         }
     }
+
+    /**
+     * A message with only a text, to [channel] (null: the team channel) or to [peer]. Packed for RescueCodec when the
+     * chat's mode and the people in it allow it and it saves at least 3 bytes (spec section 2.3), else a normal
+     * Meshtastic text. A packed text keeps its id and position, like any RescueCodec message.
+     */
+    private suspend fun submitText(input: Map<String, Any?>, source: String, channel: String?, peer: Long?): SubmitResult {
+        try {
+            RescueCodec.encode(TextFit.fitText(input))
+        } catch (e: CodecException) {
+            return SubmitResult.Rejected(e.code, e.field, e.message ?: e.code)
+        } catch (e: IllegalArgumentException) {
+            return SubmitResult.Rejected("invalid_value", null, e.message ?: "invalid message")
+        }
+        val wish = routes.wish(chatOf(channel, peer), peer == null && isPublic(channel))
+        if (!wish.packed) return submitPlain(input, channel, peer)
+        val message = LinkedHashMap(input)
+        if ((message["id"] as? Number)?.toInt().let { it == null || it == 0 }) message["id"] = settings.nextMessageId()
+        val form = TextMode.chooseForm(message, true, wish.reason)
+        if (!form.packed) return submitPlain(input, channel, peer)
+        val msgId = (form.message["id"] as? Number)?.toInt() ?: 0
+        return mutex.withLock {
+            val row = MessageEntity(
+                dir = "out", node = currentNode(), type = "text", msgId = msgId, bytes = form.payload,
+                json = Json.stringify(form.message), atMs = clock(), state = MessageState.QUEUED, source = source,
+                channelName = channel, peer = peer,
+            )
+            val rowId = messages.insert(row)
+            rowBySeq[queue.enqueue(form.message, form.payload).seq] = rowId
+            wake.trySend(Unit)
+            SubmitResult.Queued(rowId, "text", msgId, form.payload, RescueCodec.reconstruct(form.message, settings.language))
+        }
+    }
+
+    /**
+     * What a text would look like on the air in this chat: packed or normal, and both sizes (for the composer). The
+     * message is measured with a 2-byte id when it has none, the largest one [submit] gives.
+     */
+    suspend fun textForm(message: Map<String, Any?>, channel: String?, peer: Long?): TextMode.Form {
+        val wish = routes.wish(chatOf(channel, peer), peer == null && isPublic(channel))
+        val probe = if (message["id"] == null) LinkedHashMap(message).also { it["id"] = ID_PROBE } else message
+        return TextMode.chooseForm(probe, wish.packed, wish.reason)
+    }
+
+    /** The chat a message goes to: the direct chat with [peer], else the channel (null: the team channel). */
+    fun chatOf(channel: String?, peer: Long?): ChatId =
+        if (peer != null) ChatId.Direct(peer) else ChatId.Channel(channel ?: teamChannelName())
+
+    /** Name of the team channel: from the radio when it is known, else the one we knew last. */
+    private fun teamChannelName(): String =
+        (_channel.value as? ChannelChoice.Ready)?.name?.takeIf { it.isNotBlank() } ?: settings.lastTeamChannel
+
+    private fun isPublic(channel: String?): Boolean =
+        channel != null && _radioChannels.value?.firstOrNull { it.name == channel }?.isPublic == true
 
     /**
      * A message with only a text, sent as a normal Meshtastic text (port 1) on [channel] (null: the team channel), or
@@ -670,6 +728,7 @@ class Messenger(
             )
             return
         }
+        routes.heardRescueCodec(from, ch.name)
         val type = RescueCodec.messageType(canonical)
         val outcome = tracker.onReceived(from, canonical)
         val duplicate = when (outcome) {
@@ -725,7 +784,13 @@ class Messenger(
         if (text.isBlank()) return
         val packetId = p.id.toLong() and 0xFFFFFFFFL
         val now = clock()
-        if (MeshText.isCopy(text) || textSeenBefore(from, packetId, bytes, now)) {
+        if (MeshText.isCopy(text)) {
+            stats.add(StatNames.RX_DUPLICATES)
+            return
+        }
+        // Someone writing normal texts on a channel may not read packed ones: auto mode sends them normal text.
+        if (inbound.peer == null) routes.heardText(from, ch.name)
+        if (textSeenBefore(from, packetId, bytes, now)) {
             stats.add(StatNames.RX_DUPLICATES)
             return
         }
@@ -934,6 +999,9 @@ class Messenger(
 
     companion object {
         private const val DUTY_CYCLE_LIMIT_RES = 9
+
+        /** A 2-byte id (128 and up): the size of the real id that is added when a message is sent. */
+        private const val ID_PROBE = 128
 
         /** Plain texts remembered for dedupe at most (the team channel is quiet; this only bounds memory). */
         private const val MAX_TEXTS_SEEN = 2_000

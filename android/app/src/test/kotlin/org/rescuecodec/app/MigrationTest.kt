@@ -35,8 +35,10 @@ class MigrationTest {
 
     private fun exec(sql: String) = db.createStatement().use { it.execute(sql) }
 
-    private fun createVersion1() {
-        for (e in entities(schema(1))) {
+    private fun createVersion1() = create(1)
+
+    private fun create(version: Int) {
+        for (e in entities(schema(version))) {
             val table = e["tableName"] as String
             exec((e["createSql"] as String).replace("\${TABLE_NAME}", table))
             @Suppress("UNCHECKED_CAST")
@@ -103,6 +105,63 @@ class MigrationTest {
                 assertEquals(0, rs.getInt(2))
             }
         }
+    }
+
+    /** Every table, column and index of the exported schema [version] is there, as Room checks it on open. */
+    private fun assertMatchesSchema(version: Int) {
+        for (e in entities(schema(version))) {
+            val table = e["tableName"] as String
+            val have = columns(table)
+            @Suppress("UNCHECKED_CAST")
+            for (f in e["fields"] as List<Map<String, Any?>>) {
+                val name = f["columnName"] as String
+                val col = have[name] ?: throw AssertionError("$table.$name missing after the migration")
+                assertEquals(f["affinity"], col.type, "$table.$name type")
+                assertEquals((f["notNull"] as? Boolean) ?: false, col.notNull, "$table.$name NOT NULL")
+                assertEquals(f["defaultValue"] as String?, col.default?.trim('\''), "$table.$name default")
+            }
+            assertEquals((e["fields"] as List<*>).size, have.size, "$table has no extra columns")
+            @Suppress("UNCHECKED_CAST")
+            val wanted = (e["indices"] as? List<Map<String, Any?>>).orEmpty().map { it["name"] as String }.toSet()
+            assertTrue(indices(table).containsAll(wanted), "$table indices ${indices(table)} lack some of $wanted")
+            @Suppress("UNCHECKED_CAST")
+            val pk = ((e["primaryKey"] as Map<String, Any?>)["columnNames"] as List<String>)
+            val havePk = db.createStatement().use { st ->
+                st.executeQuery("PRAGMA table_info(`$table`)").use { rs -> buildList { while (rs.next()) if (rs.getInt("pk") > 0) add(rs.getInt("pk") to rs.getString("name")) } }
+            }.sortedBy { it.first }.map { it.second }
+            assertEquals(pk, havePk, "$table primary key")
+        }
+    }
+
+    @Test
+    fun version2To3AddsTheTextTablesAndKeepsEveryRow() {
+        create(2)
+        exec("INSERT INTO messages (dir, node, type, msgId, bytes, json, atMs, state, attempts, channelName, channelPublic) VALUES ('in', 2, 'text', 0, x'01', '{\"text\":{\"text\":\"hi\"}}', 100, 'received', 0, 'RescueCodec', 0)")
+        exec("INSERT INTO tasks (`key`, node, msgId, type, json, local, state, meshDelivered, createdMs, updatedMs, answersJson, rank, channelName, channelPublic) VALUES ('00000001-7', 1, 7, 'found', '{}', 1, 'open', 0, 200, 200, '[]', 1, 'RescueCodec', 0)")
+
+        for (sql in Migrations.SQL_2_TO_3) exec(sql)
+
+        assertMatchesSchema(3)
+        db.createStatement().use { st ->
+            st.executeQuery("SELECT COUNT(*) FROM messages").use { rs -> rs.next(); assertEquals(1, rs.getInt(1)) }
+            st.executeQuery("SELECT COUNT(*) FROM tasks").use { rs -> rs.next(); assertEquals(1, rs.getInt(1)) }
+        }
+        // The new tables work like the DAOs use them: one row per (node, channel, port), the newest time wins.
+        exec("INSERT OR REPLACE INTO nodes_seen (node, channel, port, lastSeenMs) VALUES (11, 'RescueCodec', 1, 1000)")
+        exec("INSERT OR REPLACE INTO nodes_seen (node, channel, port, lastSeenMs) VALUES (11, 'RescueCodec', 1, 2000)")
+        exec("INSERT OR REPLACE INTO chat_modes (chat, mode) VALUES ('ch:RescueCodec', 'compressed')")
+        db.createStatement().use { st ->
+            st.executeQuery("SELECT COUNT(*), MAX(lastSeenMs) FROM nodes_seen").use { rs -> rs.next(); assertEquals(1, rs.getInt(1)); assertEquals(2000L, rs.getLong(2)) }
+            st.executeQuery("SELECT mode FROM chat_modes WHERE chat = 'ch:RescueCodec'").use { rs -> rs.next(); assertEquals("compressed", rs.getString(1)) }
+        }
+    }
+
+    @Test
+    fun version1To3InOneGo() {
+        createVersion1()
+        for (sql in Migrations.sql1To2("RescueCodec") + Migrations.SQL_2_TO_3) exec(sql)
+        assertMatchesSchema(3)
+        assertNull(Migrations.SQL_2_TO_3.firstOrNull { it.contains("DROP") }, "the migration never drops data")
     }
 
     @Test

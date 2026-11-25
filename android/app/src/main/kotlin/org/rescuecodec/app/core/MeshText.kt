@@ -24,6 +24,16 @@ object MeshText {
     /** True for a row that is a plain Meshtastic text, not a RescueCodec message. */
     fun isPlain(row: MessageEntity): Boolean = row.source == SOURCE
 
+    /**
+     * True for a RescueCodec text that went packed (raw DEFLATE with the shared dictionary, spec section 3.5). The
+     * stored JSON keeps the unpacked words and `"dict": 1`.
+     */
+    fun isPacked(row: MessageEntity): Boolean {
+        if (isPlain(row) || row.type != "text") return false
+        val json = row.json ?: return false
+        return runCatching { (org.rescuecodec.codec.Json.parseObject(json)["text"] as? Map<*, *>)?.get("dict") != null }.getOrDefault(false)
+    }
+
     /** True for a gateway's readable copy of a RescueCodec message. */
     fun isCopy(text: String): Boolean = text.startsWith(COPY_PREFIX)
 
