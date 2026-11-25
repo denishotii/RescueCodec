@@ -188,6 +188,7 @@ def node_from_dict(raw: dict[str, Any]) -> dict[str, Any] | None:
 
 class MeshtasticRadio(RadioAdapter):
     """kind="tcp": target is "host:port". kind="serial": target is "auto" or a device path.
+    kind="ble": target is "auto" (first Meshtastic radio found), a Bluetooth name or an address.
 
     `interface_factory(kind, target)` returns a not yet connected meshtastic interface. Tests replace it.
     """
@@ -196,8 +197,8 @@ class MeshtasticRadio(RadioAdapter):
                  retry_s: float = 3.0, channel_name: str = DEFAULT_CHANNEL_NAME, channel_index: int | None = None,
                  listen: list[str] | None = None, show_public: bool = False):
         super().__init__()
-        if kind not in ("tcp", "serial"):
-            raise ValueError("kind must be tcp or serial")
+        if kind not in ("tcp", "serial", "ble"):
+            raise ValueError("kind must be tcp, serial or ble")
         self.kind, self.target = kind, target
         self._factory = interface_factory or self._default_factory
         self._retry_s = retry_s
@@ -224,6 +225,10 @@ class MeshtasticRadio(RadioAdapter):
             from rescuecodec.gateway.config import split_host_port
             host, port = split_host_port(target, 4403)
             return TCPInterface(hostname=host, portNumber=port, connectNow=False, timeout=TIMEOUT_S)
+        if kind == "ble":
+            # The Bluetooth interface connects and loads the radio's config while it is created.
+            from meshtastic.ble_interface import BLEInterface
+            return BLEInterface(address=None if target in ("", "auto") else target, timeout=TIMEOUT_S)
         from meshtastic.serial_interface import SerialInterface
         return SerialInterface(devPath=pick_serial_port(target), connectNow=False, timeout=TIMEOUT_S)
 
@@ -277,7 +282,8 @@ class MeshtasticRadio(RadioAdapter):
         self._iface = iface
         self._lost.clear()
         log.info("connecting to the radio at %s", self._device)
-        iface.connect()
+        if self.kind != "ble":                  # a Bluetooth interface is already connected when created
+            iface.connect()
         iface.waitForConfig()
         self._last_error = None
         self._own_node = self._read_own_node()

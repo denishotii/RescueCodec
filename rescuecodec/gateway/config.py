@@ -8,9 +8,10 @@ from rescuecodec.v2 import codes as C
 
 @dataclass
 class GatewayConfig:
-    # radio: exactly one of tcp, serial, emulator
+    # radio: exactly one of tcp, serial, ble, emulator
     tcp: str | None = None                # "host:port"
     serial: str | None = None             # "auto" or a device path
+    ble: str | None = None                # Bluetooth: "auto" (first Meshtastic radio found), a name or an address
     emulator: bool = False
     emulator_demo: bool = False
     channel_index: int | None = None      # default channel for sending. None = find the channel named channel_name
@@ -59,9 +60,9 @@ class GatewayConfig:
     log_level: str = "INFO"
 
     def validate(self) -> None:
-        radios = [bool(self.tcp), bool(self.serial), bool(self.emulator)]
+        radios = [bool(self.tcp), bool(self.serial), bool(self.ble), bool(self.emulator)]
         if sum(radios) != 1:
-            raise ValueError("choose exactly one radio: --tcp HOST:PORT, --serial auto|PATH or --emulator")
+            raise ValueError("choose exactly one radio: --tcp HOST:PORT, --serial auto|PATH, --ble auto|NAME|ADDRESS or --emulator")
         if len(self.team.encode("utf-8")) > C.MAX_TEAM_BYTES:
             raise ValueError(f"--team is longer than {C.MAX_TEAM_BYTES} bytes")
         if self.text_over_air not in ("off", "out", "in", "both"):
