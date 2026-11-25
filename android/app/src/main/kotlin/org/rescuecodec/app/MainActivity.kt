@@ -23,7 +23,8 @@ import org.rescuecodec.app.ui.Screen
  * The one screen host. Everything on screen is Compose, see `ui/RescueRoot.kt`.
  *
  * `adb shell am start -n org.rescuecodec.app/.MainActivity --es screen TASKS` opens a screen
- * directly (TEAM, TASKS, STATS, RADIO, SETTINGS; the old names REPORT and FEED open Team, ACTIONS opens Tasks).
+ * directly (CHATS, TASKS, RADIO, SETTINGS; the old names REPORT, FEED and TEAM open Chats, ACTIONS opens Tasks,
+ * STATS opens Radio).
  * Debug builds also accept `--es connect host:port` to connect to a network radio (the simulator).
  */
 class MainActivity : ComponentActivity() {
@@ -74,9 +75,11 @@ class MainActivity : ComponentActivity() {
                 RadioService.start(this, RadioTarget.Tcp(host, port))
             }
         }
-        val initial = screenFrom(intent) ?: Screen.TEAM
+        // Debug builds only: `--ez demo true` fills the app with the demo content of the mockup (see Demo in src/debug).
+        if (BuildConfig.DEBUG) Demo.start(this, graph, intent)
+        val initial = screenFrom(intent) ?: Screen.CHATS
         // A notification names the chat to open ("chat" extra); otherwise the app opens the last chat used.
-        val initialChat = intent?.getStringExtra("chat")?.takeIf { initial == Screen.TEAM }
+        val initialChat = intent?.getStringExtra("chat")?.takeIf { initial == Screen.CHATS }
         setContent { RescueRoot(graph, initial, navRequest.value, initialChat) }
         injectReportText(intent)
     }

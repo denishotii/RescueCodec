@@ -45,6 +45,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
+import org.rescuecodec.app.core.Readable
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -102,7 +106,6 @@ fun ChatScreen(
     snackbar: SnackbarHostState,
     lang: String,
     onOpenRadio: () -> Unit,
-    onSos: () -> Unit,
 ) {
     val loaded by chat.messages.collectAsStateWithLifecycle()
     val messages = loaded.orEmpty()
@@ -115,7 +118,7 @@ fun ChatScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val list = rememberLazyListState()
-    var details by remember { mutableStateOf<MessageEntity?>(null) }
+    var sheetFor by remember { mutableStateOf<MessageEntity?>(null) }
 
     // Own position, for "1.2 km away" on cards. Read once; no permission means no distance.
     val fix by produceState<org.rescuecodec.app.core.Fix?>(null) { value = withContext(Dispatchers.IO) { LocationHelper.lastKnown(context) } }
@@ -172,12 +175,12 @@ fun ChatScreen(
         ChatActions(
             answer = { t, status -> tasksVm.answer(t.key, status) { r -> if (r !is AnswerResult.Sent) scope.launch { snackbar.showSnackbar(errorText.format(r.toString())) } } },
             speak = { m, words -> messagesVm.speaker.speak("m${m.id}", words, lang) },
-            copy = { words ->
-                (context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager)?.setPrimaryClip(ClipData.newPlainText("RescueCodec", words))
-                scope.launch { snackbar.showSnackbar(copied) }
-            },
-            details = { details = it },
+            menu = { sheetFor = it },
         )
+    }
+    val copy: (String) -> Unit = { words ->
+        (context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager)?.setPrimaryClip(ClipData.newPlainText("RescueCodec", words))
+        scope.launch { snackbar.showSnackbar(copied) }
     }
 
     Column(Modifier.fillMaxSize().background(Rc.colors.chatGround)) {
@@ -223,10 +226,12 @@ fun ChatScreen(
                 }
             }
         }
-        Composer(reportVm, lang, onSos = onSos, onSent = {})
+        Composer(reportVm, lang, textOnly = chat.chat is org.rescuecodec.app.core.ChatId.Direct || isPublic, onSent = {})
     }
 
-    details?.let { m -> DetailsSheet(m, lang, messagesVm, onDismiss = { details = null }) }
+    sheetFor?.let { m ->
+        MessageSheet(m, lang, messagesVm, onSpeak = { w -> actions.speak(m, w) }, onCopy = copy, onDismiss = { sheetFor = null })
+    }
 }
 
 /** "No radio connected. Messages wait. [Connect]" at the top of the chat, or the channel problem when there is one. */
@@ -243,7 +248,7 @@ private fun RadioBanner(link: LinkState, channel: ChannelChoice, onOpenRadio: ()
             RcIcon(R.drawable.ic_error_outline, null, tint = c.open, size = 22.dp)
             Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
             TextButton(onClick = onOpenRadio, modifier = Modifier.heightIn(min = 48.dp).testTag("banner_connect")) {
-                Text(stringResource(R.string.action_connect), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                Text(stringResource(R.string.action_connect), style = MaterialTheme.typography.labelLarge, color = c.open)
             }
         }
     }
@@ -265,7 +270,9 @@ private fun DaySeparator(day: LocalDate) {
         today.minusDays(1) -> stringResource(R.string.day_yesterday)
         else -> SimpleDateFormat("d MMM yyyy", Locale.getDefault()).format(Date.from(day.atStartOfDay(ZoneId.systemDefault()).toInstant()))
     }
-    SystemLine(text)
+    Box(Modifier.fillMaxWidth().padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
+        Text(text.uppercase(), style = MaterialTheme.typography.titleLarge.copy(fontSize = 15.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.2.sp), color = Rc.colors.muted)
+    }
 }
 
 @Composable
@@ -279,42 +286,92 @@ private fun EmptyChat() {
     }
 }
 
-/** Long-press, Details: size, bytes on air, signal, route, state, and Cancel or Send again. */
+/**
+ * Long-press a message: a bottom sheet with Read aloud, Show position (Grid), Copy text and Details (bytes on air and
+ * as text, signal, hops, hex), and Cancel or Send again for my own waiting or failed messages.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DetailsSheet(m: MessageEntity, lang: String, vm: MessagesViewModel, onDismiss: () -> Unit) {
+private fun MessageSheet(m: MessageEntity, lang: String, vm: MessagesViewModel, onSpeak: (String) -> Unit, onCopy: (String) -> Unit, onDismiss: () -> Unit) {
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet, containerColor = MaterialTheme.colorScheme.surface) {
-        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp).verticalScroll(rememberScrollState()).testTag("details_sheet"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(stringResource(R.string.details_title), style = MaterialTheme.typography.headlineSmall)
-            wordsOf(m, lang)?.let { Text(it, style = MaterialTheme.typography.bodyLarge) }
-            val incoming = m.dir == "in"
-            DetailRow(stringResource(R.string.details_state), if (incoming) stringResource(R.string.feed_received) else stateLabel(m.state))
-            DetailRow(stringResource(R.string.details_time), SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ROOT).format(Date(m.atMs)))
-            DetailRow(stringResource(R.string.details_size), stringResource(R.string.feed_bytes, m.bytes.size))
-            if (incoming) DetailRow(stringResource(R.string.feed_received), stringResource(R.string.feed_from, "!%08x".format(m.node)))
-            if (incoming && m.rssi != null && m.rssi != 0) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    DetailRow(stringResource(R.string.details_signal), stringResource(R.string.feed_signal, m.rssi, m.snr ?: 0f), Modifier.weight(1f))
-                    SourceTag(measured = true)
+    val context = LocalContext.current
+    val words = remember(m.json, lang) { wordsOf(m, lang) }
+    val grid = remember(m.json) { Readable.gridRef(m.json) }
+    val incoming = m.dir == "in"
+    var full by remember { mutableStateOf(false) }
+    val asText = remember(m.json, lang) { (textBody(m.json) ?: Readable.of(m.json, lang))?.toByteArray(Charsets.UTF_8)?.size }
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet, containerColor = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)) {
+        Column(Modifier.semantics { testTagsAsResourceId = true }.padding(horizontal = 16.dp).padding(bottom = 20.dp).verticalScroll(rememberScrollState()).testTag("message_sheet")) {
+            if (words != null) SheetItem(R.drawable.ic_volume_up, stringResource(R.string.action_read_aloud), "sheet_speak") { onSpeak(words); onDismiss() }
+            if (grid != null) SheetItem(R.drawable.ic_location_on, stringResource(R.string.action_show_position, grid), "sheet_position") {
+                // A map app if there is one (offline maps work too), else the grid reference goes to the clipboard.
+                val pos = runCatching { org.rescuecodec.codec.Json.parseObject(m.json!!)["pos"] as Map<*, *> }.getOrNull()
+                val ok = pos != null && runCatching {
+                    val lat = (pos["lat"] as Number).toDouble(); val lon = (pos["lon"] as Number).toDouble()
+                    context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("geo:$lat,$lon?q=$lat,$lon")).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                }.isSuccess
+                if (!ok) onCopy(grid)
+                onDismiss()
+            }
+            if (words != null) SheetItem(R.drawable.ic_content_copy, stringResource(R.string.action_copy_text), "sheet_copy") { onCopy(words); onDismiss() }
+            SheetItem(R.drawable.ic_info, stringResource(R.string.action_details), "sheet_details", last = true) { full = !full }
+            // The short details, always: bytes on air and as text, signal and hops, the first bytes in hex.
+            Column(
+                Modifier.fillMaxWidth().padding(top = 8.dp).background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 8.dp).testTag("details_box"),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                val small = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp, fontFeatureSettings = "tnum")
+                Text(if (asText != null) stringResource(R.string.details_compact, m.bytes.size, asText) else stringResource(R.string.feed_bytes, m.bytes.size), style = small, color = Rc.colors.ink3)
+                if (incoming && m.rssi != null && m.rssi != 0) {
+                    Text(
+                        stringResource(R.string.details_signal_line, m.rssi, m.snr ?: 0f) + (m.hops?.let { " · " + stringResource(R.string.feed_hops, it) } ?: ""),
+                        style = small, color = Rc.colors.ink3,
+                    )
+                }
+                val hex = m.bytes.joinToString(" ") { "%02x".format(it) }
+                Text(
+                    if (full || m.bytes.size <= 15) hex else m.bytes.take(15).joinToString(" ") { "%02x".format(it) } + " …",
+                    style = small.copy(fontFamily = FontFamily.Monospace, fontSize = 13.sp), color = Rc.colors.ink3,
+                )
+            }
+            if (full) {
+                Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    DetailRow(stringResource(R.string.details_state), if (incoming) stringResource(R.string.feed_received) else stateLabel(m.state))
+                    DetailRow(stringResource(R.string.details_time), SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ROOT).format(Date(m.atMs)))
+                    DetailRow(stringResource(R.string.details_size), stringResource(R.string.feed_bytes, m.bytes.size))
+                    if (incoming) DetailRow(stringResource(R.string.feed_received), stringResource(R.string.feed_from, "!%08x".format(m.node)))
+                    if (incoming && m.rssi != null && m.rssi != 0) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            DetailRow(stringResource(R.string.details_signal), stringResource(R.string.feed_signal, m.rssi, m.snr ?: 0f), Modifier.weight(1f))
+                            SourceTag(measured = true)
+                        }
+                    }
+                    if (incoming && m.hops != null) DetailRow(stringResource(R.string.details_route), stringResource(R.string.feed_hops, m.hops))
+                    if (!incoming && !m.detail.isNullOrBlank()) Text(m.detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            if (incoming && m.hops != null) DetailRow(stringResource(R.string.details_route), stringResource(R.string.feed_hops, m.hops))
-            if (!incoming && !m.detail.isNullOrBlank()) Text(m.detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(stringResource(R.string.details_hex), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(
-                m.bytes.joinToString(" ") { "%02x".format(it) },
-                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace, fontSize = 14.sp),
-                modifier = Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(8.dp)).padding(10.dp).fillMaxWidth(),
-            )
             if (!incoming && m.state in MessageState.WAITING) BigButton(
                 stringResource(R.string.action_cancel), onClick = { vm.cancel(m.id); onDismiss() }, outlined = true,
-                container = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth().testTag("details_cancel"),
+                container = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth().padding(top = 12.dp).testTag("details_cancel"),
             )
             if (!incoming && m.state in setOf(MessageState.NOT_CONFIRMED, MessageState.FAILED, MessageState.EXPIRED, MessageState.CANCELLED)) BigButton(
-                stringResource(R.string.action_send_again), onClick = { vm.resend(m.id); onDismiss() }, modifier = Modifier.fillMaxWidth().testTag("details_resend"),
+                stringResource(R.string.action_send_again), onClick = { vm.resend(m.id); onDismiss() }, modifier = Modifier.fillMaxWidth().padding(top = 12.dp).testTag("details_resend"),
             )
         }
+    }
+}
+
+/** One row of the long-press sheet: icon and words, 52 dp, a hairline under it. */
+@Composable
+private fun SheetItem(icon: Int, text: String, tag: String, last: Boolean = false, onClick: () -> Unit) {
+    Column {
+        Surface(onClick = onClick, color = androidx.compose.ui.graphics.Color.Transparent, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag(tag)) {
+            Row(Modifier.heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                RcIcon(icon, null, size = 22.dp)
+                Text(text, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium), maxLines = 2)
+            }
+        }
+        if (!last) org.rescuecodec.app.ui.components.Hairline()
     }
 }
 

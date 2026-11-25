@@ -8,8 +8,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -30,11 +28,17 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.BadgedBox
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
+import org.rescuecodec.app.ui.screens.RadioScreen
 import androidx.compose.material3.Badge
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.NavigationRailItemDefaults
@@ -80,46 +84,44 @@ import org.rescuecodec.app.ui.chat.ChatScreen
 import org.rescuecodec.app.ui.components.Hairline
 import org.rescuecodec.app.ui.components.SosBar
 import org.rescuecodec.app.ui.components.StatusDot
-import org.rescuecodec.app.ui.screens.ConnectScreen
 import org.rescuecodec.app.ui.screens.MaydayBanner
 import org.rescuecodec.app.ui.screens.TasksScreen
 import org.rescuecodec.app.ui.screens.SettingsScreen
-import org.rescuecodec.app.ui.screens.StatsScreen
 import org.rescuecodec.app.ui.theme.Rc
 import org.rescuecodec.app.ui.theme.RescueTheme
 import org.rescuecodec.app.ui.theme.ThemeMode
 import java.util.Locale
 
 /**
- * The places in the app. Two tabs (Team, Tasks); Radio, Airtime and savings, and Settings open from the top bar
- * menu, with a back arrow.
+ * The places in the app. Three tabs (Chats, Tasks, Radio); Settings opens from the gear in the top bar.
  */
 enum class Screen(val labelRes: Int, val iconRes: Int, val tag: String) {
-    TEAM(R.string.nav_team, R.drawable.ic_forum, "tab_team"),
+    CHATS(R.string.chats_title, R.drawable.ic_chat, "tab_chats"),
     TASKS(R.string.nav_tasks, R.drawable.ic_assignment_turned_in, "tab_tasks"),
-    STATS(R.string.nav_stats, R.drawable.ic_bar_chart, "menu_stats"),
-    RADIO(R.string.nav_radio, R.drawable.ic_cell_tower, "menu_radio"),
-    SETTINGS(R.string.nav_settings, R.drawable.ic_settings, "menu_settings"),
+    RADIO(R.string.nav_radio, R.drawable.ic_radio_tab, "tab_radio"),
+    SETTINGS(R.string.nav_settings, R.drawable.ic_settings, "settings_button"),
     ;
 
-    val isTab: Boolean get() = this == TEAM || this == TASKS
+    val isTab: Boolean get() = this != SETTINGS
 
     companion object {
-        /** The `--es screen X` launch extra. Old names still work: REPORT and FEED open Team, ACTIONS opens Tasks. */
+        /**
+         * The `--es screen X` launch extra and notification taps. Old names still work: REPORT, FEED and TEAM open
+         * Chats, ACTIONS opens Tasks, STATS opens Radio (the airtime numbers live there now).
+         */
         fun from(name: String?): Screen? = when (name?.trim()?.uppercase()) {
-            "TEAM", "CHAT", "REPORT", "FEED", "HISTORY" -> TEAM
+            "CHATS", "CHAT", "TEAM", "REPORT", "FEED", "HISTORY" -> CHATS
             "TASKS", "ACTIONS" -> TASKS
-            "STATS", "AIRTIME" -> STATS
-            "RADIO", "CONNECT" -> RADIO
+            "RADIO", "CONNECT", "STATS", "AIRTIME" -> RADIO
             "SETTINGS" -> SETTINGS
             else -> null
         }
     }
 }
 
-private val TABS = listOf(Screen.TEAM, Screen.TASKS)
+private val TABS = listOf(Screen.CHATS, Screen.TASKS, Screen.RADIO)
 
-/** A screen (and for Team, a chat by its key) asked for by an intent while the app is open. [n] makes each one new. */
+/** A screen (and for Chats, a chat by its key) asked for by an intent while the app is open. [n] makes each one new. */
 data class NavRequest(val n: Int, val screen: Screen, val chat: String? = null)
 
 private class LocalizedContext(base: android.content.Context, private val res: android.content.res.Resources) : android.content.ContextWrapper(base) {
@@ -144,16 +146,16 @@ fun WithAppLanguage(lang: String, content: @Composable () -> Unit) {
     ) { content() }
 }
 
-/** The whole app: theme, language, top bar, the two tabs and the screens of the menu. */
+/** The whole app: theme, language, top bar, the three tabs and Settings. */
 @Composable
-fun RescueRoot(graph: AppGraph, initial: Screen = Screen.TEAM, navRequest: NavRequest? = null, initialChat: String? = null) {
+fun RescueRoot(graph: AppGraph, initial: Screen = Screen.CHATS, navRequest: NavRequest? = null, initialChat: String? = null) {
     val app = LocalContext.current.applicationContext as Application
     val factory = remember(graph) { AppViewModelFactory(app, graph) }
     val settings: SettingsViewModel = viewModel(factory = factory)
     val lang by settings.language.collectAsStateWithLifecycle()
-    val theme by settings.theme.collectAsStateWithLifecycle()
     WithAppLanguage(lang) {
-        RescueTheme(ThemeMode.of(theme)) {
+        // Light only for now: always Day, whatever the phone's dark setting. The night palette stays in the theme.
+        RescueTheme(ThemeMode.DAY) {
             // Test tags become resource ids, so uiautomator and the screenshot script can find buttons.
             Surface(Modifier.fillMaxSize().semantics { testTagsAsResourceId = true }, color = MaterialTheme.colorScheme.background) {
                 RescueScaffold(graph, factory, settings, lang, initial, navRequest, initialChat)
@@ -179,7 +181,7 @@ private fun RescueScaffold(
     val stats: StatsViewModel = viewModel(factory = factory)
     val report: ReportViewModel = viewModel(factory = factory)
     val chatList: ChatListViewModel = viewModel(factory = factory)
-    // Team is the chat list or one chat. For speed in an emergency the app opens straight into the last chat used;
+    // Chats is the chat list or one chat. For speed in an emergency the app opens straight into the last chat used;
     // back goes to the list.
     var openChat by rememberSaveable { mutableStateOf<String?>(initialChat ?: chatList.startChat().key) }
     val chatId = openChat?.let { ChatId.parse(it) }
@@ -189,7 +191,7 @@ private fun RescueScaffold(
     val chatTitle = chat?.title?.collectAsStateWithLifecycle()?.value
 
     var screen by rememberSaveable { mutableStateOf(initial.name) }
-    var lastTab by rememberSaveable { mutableStateOf(if (initial.isTab) initial.name else Screen.TEAM.name) }
+    var lastTab by rememberSaveable { mutableStateOf(if (initial.isTab) initial.name else Screen.CHATS.name) }
     val current = Screen.valueOf(screen)
     fun go(s: Screen) {
         if (s.isTab) lastTab = s.name
@@ -198,14 +200,18 @@ private fun RescueScaffold(
     LaunchedEffect(navRequest) { navRequest?.let { r -> r.chat?.let { openChat = it }; go(r.screen) } }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    val link by connection.state.collectAsStateWithLifecycle()
+    val link = org.rescuecodec.app.Demo.link(connection.state.collectAsStateWithLifecycle().value)
     val channel by connection.channel.collectAsStateWithLifecycle()
     val tasks by tasksVm.tasks.collectAsStateWithLifecycle()
     val waiting by messages.waiting.collectAsStateWithLifecycle()
+    val chats by chatList.chats.collectAsStateWithLifecycle()
+    val names by graph.nodes.nodes.collectAsStateWithLifecycle()
     val wide = LocalConfiguration.current.screenWidthDp >= 600
-    // With the keyboard up the bottom bar goes away, so the composer rides on the keyboard.
+    // With the keyboard up the bottom bar goes away and a slim SOS strip rides on the keyboard.
     val imeUp = WindowInsets.isImeVisible
     val openCount = tasks.count { !it.local && (it.state == "open" || (it.type == "mayday" && it.state != "done")) }
+    val unread = chats.orEmpty().sumOf { it.unread }
+    val inChat = current == Screen.CHATS && chat != null
 
     // In-app cue for a new message or task while the app is open: the phone's own tone and a haptic tick.
     val view = LocalView.current
@@ -216,11 +222,11 @@ private fun RescueScaffold(
         }
     }
 
-    // Back: from a menu screen to the last tab, from Tasks to Team, from a chat to the chat list, then out of the app.
-    BackHandler(enabled = current != Screen.TEAM || openChat != null) {
+    // Back: from a chat to the chat list, from Settings to the last tab, from Tasks or Radio to Chats, then out.
+    BackHandler(enabled = current != Screen.CHATS || openChat != null) {
         when {
-            current == Screen.TEAM -> openChat = null
-            current.isTab -> go(Screen.TEAM)
+            current == Screen.CHATS -> openChat = null
+            current.isTab -> go(Screen.CHATS)
             else -> screen = lastTab
         }
     }
@@ -240,81 +246,48 @@ private fun RescueScaffold(
 
     val content: @Composable (Modifier) -> Unit = { m ->
         Column(m) {
-            MaydayBanner(tasksVm, tasks, waiting, lang) { go(Screen.TASKS) }
-            // SOS is always one hold away: in the composer of a chat, in a slim bar under every other screen, at the
-            // same bottom-left spot. The bar covers nothing.
-            val sosBar = (current != Screen.TEAM || chat == null) && !imeUp
+            // The Mayday banner on every screen, except Tasks (its Mayday card is right there) and while typing.
+            if (current != Screen.TASKS && !imeUp) MaydayBanner(tasksVm, tasks, waiting, lang, names) { go(Screen.TASKS) }
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when (current) {
-                    Screen.TEAM -> if (chat == null) ChatListScreen(chatList, lang, onOpen = { openChat = it.key })
-                    else ChatScreen(chat, messages, tasksVm, report, tasks, link, channel, snackbar, lang, onOpenRadio = { go(Screen.RADIO) }, onSos = onSos)
+                    Screen.CHATS -> if (chat == null) ChatListScreen(chatList, tasks, lang, onOpen = { openChat = it.key })
+                    else ChatScreen(chat, messages, tasksVm, report, tasks, link, channel, snackbar, lang, onOpenRadio = { go(Screen.RADIO) })
                     Screen.TASKS -> TasksScreen(tasksVm, tasks, snackbar, lang)
-                    Screen.STATS -> StatsScreen(stats, lang)
-                    Screen.RADIO -> ConnectScreen(connection, snackbar)
+                    Screen.RADIO -> RadioScreen(connection, stats, chats.orEmpty(), link, snackbar, lang)
                     Screen.SETTINGS -> SettingsScreen(settings, connection, lang)
                 }
             }
-            if (sosBar) SosBar(onSos)
+            // SOS on every screen, one hold away: the red strip above the tabs, slimmer on top of the keyboard.
+            SosBar(onSos, slim = imeUp)
         }
     }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0),
-        snackbarHost = { SnackbarHost(snackbar, Modifier.padding(bottom = 80.dp)) },
+        snackbarHost = { SnackbarHost(snackbar, Modifier.padding(bottom = 64.dp)) },
         topBar = {
-            if (current.isTab) {
-                val directFallback = (chatId as? ChatId.Direct)?.let { stringResource(R.string.sender_node, TeamAlerts.shortNode(it.node)) }
-                TabTopBar(
-                    title = when {
-                        current == Screen.TASKS -> stringResource(R.string.nav_tasks)
-                        chatId == null -> stringResource(R.string.chats_title)
-                        else -> chatTitle ?: directFallback ?: stringResource(R.string.nav_team)
-                    },
-                    onBack = if (current == Screen.TEAM && chatId != null) ({ openChat = null }) else null,
-                    link = link,
-                    queued = waiting.size,
-                    lang = lang,
-                    onLanguage = settings::toggleLanguage,
-                    onStatus = { go(Screen.RADIO) },
-                    onMenu = { go(it) },
-                )
-            } else {
-                BackTopBar(stringResource(current.labelRes)) { screen = lastTab }
-            }
+            val (dot, status, tint) = statusOf(link, waiting.size, if (inChat) names.keys.count { it != graph.settings.lastOwnNode } else 0)
+            val directFallback = (chatId as? ChatId.Direct)?.let { stringResource(R.string.sender_node, TeamAlerts.shortNode(it.node)) }
+            TopBar(
+                title = when {
+                    inChat -> chatTitle ?: directFallback ?: stringResource(R.string.chats_title)
+                    else -> stringResource(current.labelRes)
+                },
+                status = status, dot = dot, tint = tint,
+                onBack = if (inChat) ({ openChat = null }) else null,
+                inSettings = current == Screen.SETTINGS,
+                onSettings = { if (current == Screen.SETTINGS) screen = lastTab else go(Screen.SETTINGS) },
+                onStatus = { go(Screen.RADIO) },
+            )
         },
         bottomBar = {
-            if (!wide && !imeUp && current.isTab) {
-                NavigationBar(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 0.dp,
-                    modifier = Modifier.testTag("nav_bar"),
-                ) {
-                    TABS.forEach { s ->
-                        NavigationBarItem(
-                            selected = current == s,
-                            onClick = { go(s) },
-                            modifier = Modifier.testTag(s.tag),
-                            icon = {
-                                BadgedBox(badge = {
-                                    if (s == Screen.TASKS && openCount > 0) Badge(containerColor = Rc.colors.openSolid, contentColor = androidx.compose.ui.graphics.Color.Black) { Text(openCount.toString(), style = MaterialTheme.typography.labelMedium) }
-                                }) { RcIcon(s.iconRes, null, tint = LocalContentColorFor(current == s)) }
-                            },
-                            label = { Text(stringResource(s.labelRes), style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                            colors = NavigationBarItemDefaults.colors(
-                                indicatorColor = Rc.colors.acceptedSoft,
-                                selectedIconColor = MaterialTheme.colorScheme.primary,
-                                selectedTextColor = MaterialTheme.colorScheme.onSurface,
-                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            ),
-                        )
-                    }
-                }
+            if (!wide && !imeUp && !inChat) {
+                BottomTabs(current, unread, openCount) { go(it) }
             }
         },
     ) { padding ->
-        if (wide && current.isTab) {
+        if (wide && !inChat) {
             Row(Modifier.padding(padding).fillMaxSize()) {
                 NavigationRail(containerColor = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxHeight()) {
                     TABS.forEach { s ->
@@ -324,13 +297,14 @@ private fun RescueScaffold(
                             modifier = Modifier.testTag(s.tag),
                             icon = {
                                 BadgedBox(badge = {
-                                    if (s == Screen.TASKS && openCount > 0) Badge(containerColor = Rc.colors.openSolid, contentColor = androidx.compose.ui.graphics.Color.Black) { Text(openCount.toString()) }
-                                }) { RcIcon(s.iconRes, null, tint = LocalContentColorFor(current == s)) }
+                                    val n = if (s == Screen.TASKS) openCount else if (s == Screen.CHATS) unread else 0
+                                    if (n > 0) Badge(containerColor = Rc.colors.openSolid, contentColor = Color(0xFF1D1200)) { Text(n.toString()) }
+                                }) { RcIcon(s.iconRes, null, tint = Rc.colors.ink3) }
                             },
                             label = { Text(stringResource(s.labelRes), style = MaterialTheme.typography.labelLarge) },
                             colors = NavigationRailItemDefaults.colors(
                                 indicatorColor = Rc.colors.acceptedSoft,
-                                selectedIconColor = MaterialTheme.colorScheme.primary,
+                                selectedIconColor = Rc.colors.ink3,
                                 selectedTextColor = MaterialTheme.colorScheme.onSurface,
                             ),
                         )
@@ -338,7 +312,7 @@ private fun RescueScaffold(
                 }
                 content(Modifier.weight(1f).fillMaxHeight().windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Bottom)).imePadding())
             }
-        } else if (!current.isTab || wide) {
+        } else if (inChat || wide) {
             content(Modifier.padding(padding).fillMaxSize().windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Bottom)).imePadding())
         } else {
             content(Modifier.padding(padding).fillMaxSize().imePadding())
@@ -346,153 +320,124 @@ private fun RescueScaffold(
     }
 }
 
+private data class StatusLook(val dot: Color, val text: String, val tint: Color)
+
+/** The words and colours of the status pill. [inReach] > 0 inside a chat: "5 radios in reach" while connected. */
 @Composable
-private fun LocalContentColorFor(selected: Boolean) =
-    if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+private fun statusOf(link: LinkState, queued: Int, inReach: Int): StatusLook {
+    val c = Rc.colors
+    val noRadio = if (queued > 0) stringResource(R.string.link_radio_none_queued, queued) else stringResource(R.string.link_radio_none)
+    return when (link) {
+        is LinkState.Connected -> StatusLook(
+            c.doneSolid,
+            if (inReach > 0) stringResource(R.string.radios_in_reach, inReach) else stringResource(R.string.link_radio_connected, link.nodeName ?: link.target.label),
+            if (c.dark) Color(0xFF102018) else Color(0xFFE2EFE2),
+        )
+        is LinkState.Connecting -> StatusLook(c.openSolid, stringResource(R.string.link_connecting), c.openSoft)
+        is LinkState.Scanning -> StatusLook(c.openSolid, stringResource(R.string.link_scanning), c.openSoft)
+        is LinkState.Error -> StatusLook(c.mayday, stringResource(R.string.link_error), c.maydaySoft)
+        LinkState.Disconnected -> if (queued > 0) StatusLook(c.mayday, noRadio, c.maydaySoft) else StatusLook(MaterialTheme.colorScheme.outline, noRadio, MaterialTheme.colorScheme.surfaceContainerHigh)
+    }
+}
 
 /**
- * Top bar of the two tabs, like a messenger: the channel name with the radio status under it (tap: Radio screen),
- * EN / DE, and a menu with Radio, Airtime and savings, Settings.
+ * The overnight top bar: a status pill ("● Radio connected, D-Node 2" and the screen name in condensed capitals; tap:
+ * Radio) and the gear for Settings. Inside a chat: a back arrow, the pill with the chat name, no gear.
  */
 @Composable
-private fun TabTopBar(
+private fun TopBar(
     title: String,
-    /** Inside a chat: the back arrow to the chat list. */
+    status: String,
+    dot: Color,
+    tint: Color,
     onBack: (() -> Unit)?,
-    link: LinkState,
-    queued: Int,
-    lang: String,
-    onLanguage: () -> Unit,
+    inSettings: Boolean,
+    onSettings: () -> Unit,
     onStatus: () -> Unit,
-    onMenu: (Screen) -> Unit,
 ) {
-    val c = Rc.colors
-    val noRadio = if (queued > 0) stringResource(R.string.status_none_waiting, queued) else stringResource(R.string.status_none)
-    val (dot, text) = when (link) {
-        is LinkState.Connected -> c.doneSolid to stringResource(R.string.status_connected, link.nodeName ?: link.target.label)
-        is LinkState.Connecting -> c.openSolid to stringResource(R.string.status_connecting)
-        is LinkState.Scanning -> c.openSolid to stringResource(R.string.status_scanning)
-        is LinkState.Error -> c.mayday to stringResource(R.string.status_error)
-        LinkState.Disconnected -> (if (queued > 0) c.mayday else MaterialTheme.colorScheme.outline) to noRadio
-    }
-    var menu by remember { mutableStateOf(false) }
-    val statusDesc = stringResource(R.string.status_desc, text)
-    Surface(color = MaterialTheme.colorScheme.surface) {
-        Column {
-            Row(
-                Modifier.windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
-                    .fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (onBack != null) {
-                    Surface(onClick = onBack, color = androidx.compose.ui.graphics.Color.Transparent, shape = MaterialTheme.shapes.medium, modifier = Modifier.size(48.dp).testTag("chat_back")) {
-                        Box(contentAlignment = Alignment.Center) { RcIcon(R.drawable.ic_arrow_back, stringResource(R.string.chat_open_list)) }
-                    }
-                }
-                ChannelTitle(
-                    title = title,
-                    onClick = onStatus,
-                    description = "$title. $statusDesc",
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        StatusDot(dot, size = 10.dp)
-                        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag("status_text"))
-                    }
-                }
-                LanguageToggle(lang, onLanguage)
-                Box {
-                    Surface(
-                        onClick = { menu = true },
-                        color = androidx.compose.ui.graphics.Color.Transparent,
-                        shape = MaterialTheme.shapes.medium,
-                        modifier = Modifier.size(48.dp).testTag("menu_button"),
-                    ) {
-                        Box(contentAlignment = Alignment.Center) { RcIcon(R.drawable.ic_more_vert, stringResource(R.string.menu_more)) }
-                    }
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, modifier = Modifier.semantics { testTagsAsResourceId = true }) {
-                        listOf(Screen.RADIO, Screen.STATS, Screen.SETTINGS).forEach { s ->
-                            DropdownMenuItem(
-                                text = { Text(stringResource(s.labelRes), style = MaterialTheme.typography.bodyLarge) },
-                                leadingIcon = { RcIcon(s.iconRes, null) },
-                                onClick = { menu = false; onMenu(s) },
-                                modifier = Modifier.heightIn(min = 52.dp).testTag(s.tag),
-                            )
-                        }
-                    }
+    val desc = stringResource(R.string.status_desc, status)
+    Surface(color = MaterialTheme.colorScheme.background) {
+        Row(
+            Modifier.windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+                .fillMaxWidth().padding(start = if (onBack != null) 0.dp else 12.dp, end = if (onBack != null) 12.dp else 4.dp, top = 6.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            if (onBack != null) {
+                Surface(onClick = onBack, color = Color.Transparent, shape = MaterialTheme.shapes.medium, modifier = Modifier.size(48.dp).testTag("chat_back")) {
+                    Box(contentAlignment = Alignment.Center) { RcIcon(R.drawable.ic_arrow_back, stringResource(R.string.chat_open_list)) }
                 }
             }
-            Hairline()
-        }
-    }
-}
-
-/**
- * The conversation title with a line under it (today: the radio status). One tap target. Today it opens the Radio
- * screen; with several channels it opens the chat list, and the radio status moves to its own chip.
- */
-@Composable
-fun ChannelTitle(title: String, onClick: () -> Unit, description: String, modifier: Modifier = Modifier, subtitle: @Composable () -> Unit) {
-    Surface(
-        onClick = onClick,
-        color = androidx.compose.ui.graphics.Color.Transparent,
-        shape = MaterialTheme.shapes.medium,
-        modifier = modifier.heightIn(min = 56.dp).testTag("status_pill").semantics { contentDescription = description },
-    ) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp), verticalArrangement = Arrangement.Center) {
-            Text(title, style = MaterialTheme.typography.titleLarge.copy(fontSize = 24.sp), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag("top_title"))
-            subtitle()
-        }
-    }
-}
-
-/** EN | DE in the top bar: the current language is filled. One tap switches the whole app. */
-@Composable
-private fun LanguageToggle(lang: String, onToggle: () -> Unit) {
-    val desc = stringResource(R.string.lang_toggle_desc, lang.uppercase())
-    Surface(
-        onClick = onToggle,
-        shape = RoundedCornerShape(10.dp),
-        color = androidx.compose.ui.graphics.Color.Transparent,
-        modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = desc }.testTag("lang_toggle"),
-    ) {
-        Box(Modifier.heightIn(min = 48.dp).padding(horizontal = 4.dp), contentAlignment = Alignment.Center) {
-            Row(
-                Modifier.border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp)).padding(2.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            Surface(
+                onClick = onStatus,
+                modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("status_pill").semantics { contentDescription = "$title. $desc" },
+                shape = MaterialTheme.shapes.medium,
+                color = tint,
+                border = androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.outlineVariant),
             ) {
-                listOf("en", "de").forEach { l ->
-                    val on = l == lang
+                Row(Modifier.heightIn(min = 48.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    StatusDot(dot, size = 11.dp)
                     Text(
-                        l.uppercase(),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = if (on) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.background(if (on) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(6.dp))
-                            .padding(horizontal = 8.dp, vertical = 5.dp),
+                        status, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp, fontWeight = FontWeight.Medium),
+                        color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f).testTag("status_text"),
+                    )
+                    Text(
+                        title.uppercase(), style = MaterialTheme.typography.titleLarge.copy(fontSize = 18.sp, letterSpacing = 0.5.sp),
+                        color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.widthIn(max = 170.dp).testTag("top_title"),
                     )
                 }
             }
+            if (onBack == null) Surface(
+                onClick = onSettings,
+                modifier = Modifier.size(48.dp).testTag("settings_button"),
+                shape = MaterialTheme.shapes.medium,
+                color = if (inSettings) MaterialTheme.colorScheme.primary else Color.Transparent,
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    RcIcon(R.drawable.ic_settings, stringResource(R.string.nav_settings), tint = if (inSettings) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
+                }
+            }
         }
     }
 }
 
-/** Top bar of a menu screen: back arrow and title. */
+/** The three tabs, overnight style: card colour, a hairline on top, a soft blue pill behind the chosen icon, amber counts. */
 @Composable
-private fun BackTopBar(title: String, onBack: () -> Unit) {
-    Surface(color = MaterialTheme.colorScheme.surface) {
-        Column {
-            Row(
-                Modifier.windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
-                    .fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Surface(onClick = onBack, color = androidx.compose.ui.graphics.Color.Transparent, shape = MaterialTheme.shapes.medium, modifier = Modifier.size(48.dp).testTag("back_button")) {
-                    Box(contentAlignment = Alignment.Center) { RcIcon(R.drawable.ic_arrow_back, stringResource(R.string.action_back)) }
-                }
-                Text(title, style = MaterialTheme.typography.titleLarge.copy(fontSize = 24.sp), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag("top_title"))
-            }
+private fun BottomTabs(current: Screen, unread: Int, open: Int, onGo: (Screen) -> Unit) {
+    val c = Rc.colors
+    Surface(color = MaterialTheme.colorScheme.surface, modifier = Modifier.testTag("nav_bar")) {
+        Column(Modifier.windowInsetsPadding(WindowInsets.navigationBars)) {
             Hairline()
+            Row(Modifier.fillMaxWidth().height(64.dp)) {
+                TABS.forEach { s ->
+                    val on = current == s
+                    val n = when (s) { Screen.CHATS -> unread; Screen.TASKS -> open; else -> 0 }
+                    val label = stringResource(s.labelRes)
+                    Column(
+                        Modifier.weight(1f).fillMaxHeight()
+                            .selectable(selected = on, role = Role.Tab, onClick = { onGo(s) })
+                            .semantics { contentDescription = if (n > 0) "$label, $n" else label }
+                            .testTag(s.tag),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        Box {
+                            Box(
+                                Modifier.size(width = 56.dp, height = 28.dp).background(if (on) c.acceptedSoft else Color.Transparent, RoundedCornerShape(14.dp)),
+                                contentAlignment = Alignment.Center,
+                            ) { RcIcon(s.iconRes, null, tint = if (on) c.accepted else c.ink3, size = 22.dp) }
+                            if (n > 0) Box(
+                                Modifier.align(Alignment.TopEnd).offset(x = (-6).dp, y = (-4).dp).heightIn(min = 19.dp).widthIn(min = 19.dp)
+                                    .background(c.openSolid, RoundedCornerShape(10.dp)).padding(horizontal = 5.dp),
+                                contentAlignment = Alignment.Center,
+                            ) { Text(if (n > 99) "99+" else n.toString(), style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp), color = Color(0xFF1D1200)) }
+                        }
+                        Text(label, style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp, fontWeight = FontWeight.Medium), color = if (on) MaterialTheme.colorScheme.onSurface else c.ink3, maxLines = 1)
+                    }
+                }
+            }
         }
     }
 }

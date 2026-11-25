@@ -106,61 +106,8 @@ fun Modifier.holdToConfirm(
 }
 
 /**
- * The SOS button at the start of the composer: a red disc with the word SOS. Hold 2 seconds: a ring fills around it
- * and the composer shows a red strip that fills too (the thumb hides the button itself), then it sends a Mayday with
- * the last known position. A tap does nothing. [progress] and [onHoldingChange] let the composer draw that strip.
- */
-@Composable
-fun SosButton(
-    onConfirm: () -> Unit,
-    progress: MutableFloatState,
-    onHoldingChange: (Boolean) -> Unit,
-    modifier: Modifier = Modifier,
-    holdMs: Long = 2000,
-) {
-    val c = Rc.colors
-    val p = progress.floatValue
-    Box(
-        modifier
-            .size(56.dp)
-            .semantics { contentDescription = "SOS" }
-            .holdToConfirm(holdMs, progress, onConfirm, onHoldingChange, longClickLabel = stringResource(R.string.sos_send))
-            .testTag("sos_button"),
-        contentAlignment = Alignment.Center,
-    ) {
-        Box(Modifier.size(52.dp).clip(CircleShape).background(c.mayday), contentAlignment = Alignment.Center) {
-            Text("SOS", style = MaterialTheme.typography.labelLarge.copy(fontSize = 16.sp, letterSpacing = 0.5.sp), color = c.onMayday)
-        }
-        Canvas(Modifier.size(56.dp)) {
-            val w = 4.dp.toPx()
-            if (p > 0f) drawArc(
-                c.maydayText, startAngle = -90f, sweepAngle = 360f * p, useCenter = false,
-                topLeft = Offset(w / 2, w / 2), size = androidx.compose.ui.geometry.Size(size.width - w, size.height - w),
-                style = Stroke(width = w, cap = StrokeCap.Round),
-            )
-        }
-    }
-}
-
-/** The strip the composer shows while SOS is held: it fills from left to right, with words, so the hold is never silent. */
-@Composable
-fun SosHoldStrip(progress: Float, modifier: Modifier = Modifier) {
-    val c = Rc.colors
-    Box(modifier.fillMaxWidth().heightIn(min = 56.dp).background(c.mayday).testTag("sos_hold_strip"), contentAlignment = Alignment.CenterStart) {
-        Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).heightIn(min = 56.dp).background(Color.Black.copy(alpha = 0.28f)))
-        Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            RcIcon(R.drawable.ic_warning, null, tint = c.onMayday)
-            Text(
-                stringResource(if (progress >= 1f) R.string.sos_sent else R.string.sos_keep_holding),
-                style = MaterialTheme.typography.titleMedium, color = c.onMayday,
-            )
-        }
-    }
-}
-
-/**
- * Hold to talk, in the composer: a 56 dp disc. Press to listen, let go to stop. While listening it turns red and
- * contour rings around it grow with the loudness of the voice.
+ * Hold to talk, in the composer: a 52 dp ink disc with a grey ring around it (overnight). Press to listen, let go to
+ * stop. While listening it turns red and contour rings around it grow with the loudness of the voice.
  */
 @Composable
 fun ComposerMic(
@@ -173,14 +120,15 @@ fun ComposerMic(
     modifier: Modifier = Modifier,
 ) {
     val c = Rc.colors
-    val accent = MaterialTheme.colorScheme.primary
-    val disc = if (listening) c.mayday else if (ready) accent else MaterialTheme.colorScheme.surfaceContainerHighest
-    val fg = if (listening) c.onMayday else if (ready) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+    val ink = MaterialTheme.colorScheme.primary
+    // Always the ink disc; without a speech model the icon is the crossed-out mic and a press explains why.
+    val disc = if (listening) c.mayday else ink
+    val fg = if (listening) c.onMayday else MaterialTheme.colorScheme.onPrimary
     val press = rememberUpdatedState(onPress)
     val release = rememberUpdatedState(onRelease)
     Box(
         modifier
-            .size(56.dp)
+            .size(64.dp)
             .semantics { this.contentDescription = contentDescription }
             .pointerInput(Unit) {
                 awaitEachGesture {
@@ -193,59 +141,78 @@ fun ComposerMic(
             .testTag("mic_button"),
         contentAlignment = Alignment.Center,
     ) {
-        if (listening) Canvas(Modifier.size(56.dp)) {
+        Canvas(Modifier.size(64.dp)) {
             val center = Offset(size.width / 2, size.height / 2)
-            for (i in 1..3) {
-                val r = 26.dp.toPx() + i * 5.dp.toPx() + level * i * 5.dp.toPx()
-                drawCircle(c.mayday.copy(alpha = 0.55f / i), radius = r, center = center, style = Stroke(width = 2.dp.toPx()))
+            // The grey ring, 3 dp off the disc, always there.
+            drawCircle(if (listening) c.mayday else c.ring, radius = 30.dp.toPx(), center = center, style = Stroke(width = 2.dp.toPx()))
+            if (listening) for (i in 1..2) {
+                val r = (30.dp.toPx() + i * 1.dp.toPx() + level * i * 1.dp.toPx()).coerceAtMost(size.minDimension / 2)
+                drawCircle(c.mayday.copy(alpha = 0.5f / i), radius = r, center = center, style = Stroke(width = 1.5.dp.toPx()))
             }
         }
         Box(Modifier.size(52.dp).clip(CircleShape).background(disc), contentAlignment = Alignment.Center) {
-            RcIcon(if (ready || listening) R.drawable.ic_mic else R.drawable.ic_mic_off, null, tint = fg, size = 26.dp)
+            RcIcon(if (ready || listening) R.drawable.ic_mic else R.drawable.ic_mic_off, null, tint = fg, size = 24.dp)
         }
     }
 }
 
 /**
- * SOS on the screens without the composer (chat list, Tasks, menu screens): a slim bar under the content with the same
- * red disc at the bottom left, where it sits in the composer too. It covers nothing. While it is held, the hold strip
- * shows above it.
+ * The SOS strip (overnight), on every screen above the navigation bar: red, "Hold 2 seconds for SOS" and a ring with
+ * SOS. Hold 2 seconds: it fills with dark red from left to right and the ring closes, then it sends a Mayday with the
+ * last known position. A tap does nothing. [slim] is the thinner strip that rides on the keyboard while typing.
  */
 @Composable
-fun SosBar(onConfirm: () -> Unit, modifier: Modifier = Modifier) {
+fun SosBar(onConfirm: () -> Unit, modifier: Modifier = Modifier, slim: Boolean = false, holdMs: Long = 2000) {
     val progress = remember { mutableFloatStateOf(0f) }
     var holding by remember { mutableStateOf(false) }
-    Column(modifier.fillMaxWidth().testTag("sos_bar")) {
-        if (holding || progress.floatValue >= 1f) SosHoldStrip(progress.floatValue)
-        Surface(color = MaterialTheme.colorScheme.surface) {
-            Column {
-                Hairline()
-                Row(
-                    Modifier.fillMaxWidth().padding(start = 8.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    SosButton(onConfirm, progress, { holding = it })
-                    Text(stringResource(R.string.sos_hold), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val p = progress.floatValue
+    val h = if (slim) 40.dp else 52.dp
+    val ring = if (slim) 32.dp else 42.dp
+    // A solid red control with white text, so it reads as a button and not as a warning note.
+    Box(
+        modifier
+            .fillMaxWidth()
+            .heightIn(min = h)
+            .background(Rc.colors.mayday)
+            .testTag("sos_bar"),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Box(Modifier.fillMaxWidth(p).heightIn(min = h).background(Color(0xFF6E0510)))
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = h)
+                .semantics { contentDescription = "SOS" }
+                .holdToConfirm(holdMs, progress, onConfirm, { holding = it }, longClickLabel = stringResource(R.string.sos_send))
+                .testTag("sos_button")
+                .padding(start = 14.dp, end = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RcIcon(R.drawable.ic_warning, null, tint = Color.White, size = if (slim) 20.dp else 24.dp)
+            Text(
+                if (holding && p < 1f) stringResource(R.string.sos_keep_holding) else if (p >= 1f) stringResource(R.string.sos_sent) else stringResource(R.string.sos_hold),
+                style = MaterialTheme.typography.titleMedium.copy(fontSize = if (slim) 15.sp else 17.sp),
+                color = Color.White,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Box(Modifier.size(ring), contentAlignment = Alignment.Center) {
+                Canvas(Modifier.size(ring)) {
+                    val w = (if (slim) 2 else 3).dp.toPx()
+                    val inset = w / 2
+                    drawCircle(Color.White.copy(alpha = 0.55f), radius = size.minDimension / 2 - inset, style = Stroke(width = w))
+                    if (p > 0f) drawArc(
+                        Color.White, startAngle = -90f, sweepAngle = 360f * p, useCenter = false,
+                        topLeft = Offset(inset, inset), size = androidx.compose.ui.geometry.Size(size.width - w, size.height - w),
+                        style = Stroke(width = w, cap = StrokeCap.Round),
+                    )
                 }
+                Text(
+                    stringResource(R.string.sos_short),
+                    style = MaterialTheme.typography.titleLarge.copy(fontSize = if (slim) 12.sp else 14.sp, letterSpacing = 0.6.sp),
+                    color = Color.White,
+                )
             }
-        }
-    }
-}
-
-/**
- * SOS on the screens without the composer (Tasks and the menu screens): the same red disc at the bottom left, where
- * the left thumb reaches it, with the hold strip across the bottom while it is held.
- */
-@Composable
-fun SosDock(onConfirm: () -> Unit, modifier: Modifier = Modifier) {
-    val progress = remember { mutableFloatStateOf(0f) }
-    var holding by remember { mutableStateOf(false) }
-    Box(modifier.fillMaxWidth(), contentAlignment = Alignment.BottomStart) {
-        if (holding || progress.floatValue >= 1f) SosHoldStrip(progress.floatValue, Modifier.padding(bottom = 72.dp))
-        // A ring of the page colour lifts the disc off the cards that scroll under it.
-        Box(Modifier.padding(start = 6.dp, bottom = 6.dp).size(60.dp).background(MaterialTheme.colorScheme.background, CircleShape), contentAlignment = Alignment.Center) {
-            SosButton(onConfirm, progress, { holding = it })
         }
     }
 }

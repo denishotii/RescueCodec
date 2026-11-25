@@ -50,6 +50,8 @@ import org.rescuecodec.app.ui.components.RcIcon
 import org.rescuecodec.app.ui.components.SectionHeader
 import org.rescuecodec.app.ui.components.StateTag
 import org.rescuecodec.app.ui.components.Tag
+import org.rescuecodec.app.ui.components.PlainTag
+import org.rescuecodec.app.ui.components.GridChip
 import org.rescuecodec.app.ui.components.agoText
 import org.rescuecodec.app.ui.components.rememberNow
 import org.rescuecodec.app.ui.theme.BarlowCondensed
@@ -94,14 +96,14 @@ fun TasksScreen(vm: TasksViewModel, tasks: List<TaskItem>, snackbar: SnackbarHos
     }
     val maydayColor = Rc.colors.maydayText
     LazyColumn(
-        Modifier.fillMaxSize().background(Rc.colors.chatGround).testTag("actions_list"),
+        Modifier.fillMaxSize().testTag("actions_list"),
         contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         section(R.string.lane_mayday, mayday, maydayColor, lang, now, showChannel, onAnswer)
         section(R.string.lane_open, open, null, lang, now, showChannel, onAnswer)
-        section(R.string.lane_mine, mine, null, lang, now, showChannel, onAnswer)
-        section(R.string.lane_others, others, null, lang, now, showChannel, onAnswer)
+        section(R.string.lane_mine_short, mine, null, lang, now, showChannel, onAnswer, plain = true)
+        section(R.string.lane_others, others, null, lang, now, showChannel, onAnswer, plain = true)
         if (done.isNotEmpty()) {
             item(key = "done_header") {
                 Surface(
@@ -110,7 +112,7 @@ fun TasksScreen(vm: TasksViewModel, tasks: List<TaskItem>, snackbar: SnackbarHos
                     modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("lane_done_toggle"),
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        SectionHeader(stringResource(R.string.lane_done), count = done.size, modifier = Modifier.weight(1f))
+                        SectionHeader(stringResource(R.string.lane_done), count = done.size, modifier = Modifier.weight(1f), plain = true)
                         Text(stringResource(if (showDone) R.string.lane_hide else R.string.lane_show), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                         RcIcon(if (showDone) R.drawable.ic_expand_less else R.drawable.ic_expand_more, null, tint = MaterialTheme.colorScheme.primary)
                     }
@@ -123,9 +125,10 @@ fun TasksScreen(vm: TasksViewModel, tasks: List<TaskItem>, snackbar: SnackbarHos
 
 private fun androidx.compose.foundation.lazy.LazyListScope.section(
     title: Int, list: List<TaskItem>, color: androidx.compose.ui.graphics.Color?, lang: String, now: Long, showChannel: Boolean, onAnswer: (TaskItem, String) -> Unit,
+    plain: Boolean = false,
 ) {
     if (list.isEmpty()) return
-    item(key = "h$title") { SectionHeader(stringResource(title), count = list.size, color = color ?: MaterialTheme.colorScheme.onSurface) }
+    item(key = "h$title") { SectionHeader(stringResource(title), count = list.size, color = color ?: MaterialTheme.colorScheme.onSurface, plain = plain) }
     items(list, key = { it.key }) { t -> TaskCard(t, lang, now, showChannel, onAnswer) }
 }
 
@@ -135,38 +138,40 @@ private fun TaskCard(t: TaskItem, lang: String, now: Long, showChannel: Boolean,
     val c = Rc.colors
     val isMayday = t.type == "mayday"
     val channelDesc = stringResource(R.string.task_channel, t.channelName.orEmpty())
-    val readable = remember(t.json, lang) { Readable.withoutPosition(t.json, lang) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val names by remember { org.rescuecodec.app.AppGraph.from(context).nodes.nodes }.collectAsStateWithLifecycle()
+    val line = remember(t.json, lang) { org.rescuecodec.app.ui.chat.cardLine(t.json, t.type, lang) }
+    val node = t.key.substringBefore('-').toLongOrNull(16)
+    val who = if (t.local || node == null) null else names[node]?.label ?: stringResource(R.string.sender_node, org.rescuecodec.app.core.TeamAlerts.shortNode(node))
+    val readable = line?.let { if (who != null) "$who: ${it.replaceFirstChar { ch -> ch.lowercase() }}" else it }
     val gridRef = remember(t.json) { Readable.gridRef(t.json) }
     RcCard(
         container = if (isMayday) c.maydaySoft else MaterialTheme.colorScheme.surface,
         outline = if (isMayday) c.mayday else MaterialTheme.colorScheme.outlineVariant,
+        padding = PaddingValues(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 12.dp),
         modifier = Modifier.testTag("task_${t.key}"),
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                RcIcon(org.rescuecodec.app.ui.chat.typeIcon(t.type), null, tint = if (isMayday) c.maydayText else MaterialTheme.colorScheme.onSurface, size = 26.dp)
-                Text(
-                    if (isMayday) Labels.head(lang, "mayday").uppercase() else Labels.head(lang, t.type.takeIf { it != "unknown" } ?: "unknown"),
-                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 20.sp),
-                    color = if (isMayday) c.maydayText else MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(agoText(t.updatedMs, now), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                StateTag(t.state)
-                if (t.local) Tag(stringResource(R.string.tag_ours), MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurfaceVariant)
-                if (showChannel && t.channelName != null) Tag(
-                    "# ${t.channelName}", MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.semantics { contentDescription = channelDesc }.testTag("task_channel_${t.key}"),
-                )
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    if (isMayday) Tag("⚠ " + Labels.head(lang, "mayday").uppercase(), c.mayday, c.onMayday)
+                    else PlainTag(Labels.head(lang, t.type.takeIf { it != "unknown" } ?: "unknown"))
+                    StateTag(t.state)
+                    if (t.local) PlainTag(stringResource(R.string.tag_ours))
+                    if (showChannel && t.channelName != null) Tag(
+                        t.channelName, androidx.compose.ui.graphics.Color.Transparent, MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.semantics { contentDescription = channelDesc }.testTag("task_channel_${t.key}"),
+                        border = MaterialTheme.colorScheme.outlineVariant,
+                    )
+                }
+                Text(agoText(t.updatedMs, now), style = MaterialTheme.typography.bodySmall.copy(fontSize = 14.sp), color = c.muted)
             }
             Text(
                 readable ?: stringResource(R.string.task_unknown_report),
-                    style = MaterialTheme.typography.bodyLarge,
+                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp, lineHeight = 23.sp),
                 color = MaterialTheme.colorScheme.onSurface,
             )
-            if (gridRef != null) GridRefChip(gridRef)
+            if (gridRef != null) GridChip(gridRef)
             if (t.local && t.state == "open") {
                 Text(
                     stringResource(if (t.meshDelivered) R.string.task_local_delivered else R.string.task_local_waiting),
@@ -177,38 +182,8 @@ private fun TaskCard(t: TaskItem, lang: String, now: Long, showChannel: Boolean,
                 Text(stringResource(R.string.task_delivery_unknown), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             t.answers.forEach { AnswerLine(it) }
-            if (t.moves.isNotEmpty()) {
-                val hasMain = "accepted" in t.moves || "done" in t.moves
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if ("accepted" in t.moves) BigButton(
-                        stringResource(R.string.action_accept), { onAnswer(t, "accepted") }, Modifier.weight(0.6f).testTag("accept_${t.key}"),
-                        icon = R.drawable.ic_check, container = c.acceptSolid, content = c.onSolid,
-                    )
-                    if ("done" in t.moves) BigButton(
-                        stringResource(R.string.action_done), { onAnswer(t, "done") }, Modifier.weight(0.6f).testTag("done_${t.key}"),
-                        icon = R.drawable.ic_check_circle, container = c.doneSolid, content = c.onSolid,
-                    )
-                    // Decline is smaller and far from Accept, so a glove does not hit it by mistake.
-                    if ("declined" in t.moves) BigButton(
-                        stringResource(R.string.action_decline), { onAnswer(t, "declined") }, Modifier.weight(if (hasMain) 0.4f else 1f).testTag("decline_${t.key}"),
-                        outlined = true, container = MaterialTheme.colorScheme.onSurfaceVariant, height = 48.dp,
-                    )
-                }
-            }
+            if (t.moves.isNotEmpty()) org.rescuecodec.app.ui.chat.AnswerButtons(t, onAnswer)
         }
-    }
-}
-
-/** The UTM grid reference as a chip, in monospace, the same as the dashboard. */
-@Composable
-private fun GridRefChip(ref: String) {
-    Row(
-        Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(6.dp)).padding(horizontal = 10.dp, vertical = 6.dp).testTag("grid_ref"),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Text(stringResource(R.string.task_grid_ref), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(ref, style = MaterialTheme.typography.titleSmall.copy(fontFamily = FontFamily.Monospace), color = MaterialTheme.colorScheme.onSurface)
     }
 }
 
@@ -245,9 +220,9 @@ fun EmptyState(title: Int, body: Int, icon: Int) {
 }
 
 /**
- * The red Mayday banner under the top bar, on every screen: one line, 64 dp. It shows our own
- * Mayday (waiting, sent, answered) or one we received. Tap it to open the Tasks tab. Received
- * ones have the Accept or Done button right here; the full text is on the card in Tasks.
+ * The red Mayday banner under the top bar, on every screen (overnight): the warning sign, MAYDAY in condensed capitals,
+ * who and why with the age on a second line, and a white Accept (or Done) button. It shows our own Mayday (waiting,
+ * sent, answered) or one we received. Tap it to open the Tasks tab.
  */
 @Composable
 fun MaydayBanner(
@@ -255,6 +230,7 @@ fun MaydayBanner(
     tasks: List<TaskItem>,
     waiting: List<org.rescuecodec.app.data.MessageEntity>,
     lang: String,
+    names: Map<Long, org.rescuecodec.app.core.NodeName> = emptyMap(),
     onOpen: () -> Unit,
 ) {
     val c = Rc.colors
@@ -265,6 +241,14 @@ fun MaydayBanner(
 
     val now by rememberNow()
     val persons = remember(active?.json) { Readable.maydayPersons(active?.json) }
+    val reason = remember(active?.json, lang) {
+        runCatching {
+            val body = org.rescuecodec.codec.Json.parseObject(active!!.json!!)["mayday"] as Map<*, *>
+            (body["reason"] as? String)?.let { org.rescuecodec.app.core.Labels.value(lang, "mayday", it) }
+        }.getOrNull()
+    }
+    val node = active?.key?.substringBefore('-')?.toLongOrNull(16)
+    val who = node?.let { names[it]?.label ?: stringResource(R.string.sender_node, org.rescuecodec.app.core.TeamAlerts.shortNode(it)) }
     val status = when {
         active == null -> stringResource(R.string.banner_queued)
         active.local && active.state == "accepted" -> stringResource(R.string.banner_ours_accepted, active.answers.lastOrNull()?.team ?: stringResource(R.string.answer_other_team))
@@ -274,34 +258,29 @@ fun MaydayBanner(
         active.state == "accepted" -> stringResource(R.string.banner_theirs_accepted)
         else -> null
     }
-    // One short line: persons and age for a Mayday we received, the state for our own.
-    val line = if (status != null) status else buildList {
-        persons?.let { add(stringResource(R.string.banner_persons, it)) }
-        active?.let { add(agoText(it.updatedMs, now)) }
-    }.joinToString(", ")
+    // Two short lines: who and why, then the age. Our own Mayday: its state.
+    val line1 = status ?: listOfNotNull(who, reason ?: persons?.let { stringResource(R.string.banner_persons, it) }).joinToString(" · ")
+    val line2 = if (status == null && active != null) agoText(active.updatedMs, now) else null
     val word = Labels.head(lang, "mayday").uppercase()
     Surface(onClick = onOpen, color = c.mayday, contentColor = c.onMayday, modifier = Modifier.fillMaxWidth().testTag("mayday_banner")) {
         Row(
-            Modifier.heightIn(min = 64.dp).padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
+            Modifier.heightIn(min = 60.dp).padding(start = 14.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            RcIcon(R.drawable.ic_warning, null, tint = c.onMayday, size = 28.dp)
-            Text(
-                buildAnnotatedString {
-                    withStyle(SpanStyle(fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 24.sp)) { append(word) }
-                    if (line.isNotEmpty()) { append("  "); append(line) }
-                },
-                style = MaterialTheme.typography.titleMedium, color = c.onMayday, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
+            RcIcon(R.drawable.ic_warning, null, tint = c.onMayday, size = 26.dp)
+            Text(word, style = MaterialTheme.typography.titleLarge.copy(fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 24.sp, letterSpacing = 0.4.sp), color = c.onMayday)
+            Column(Modifier.weight(1f)) {
+                Text(line1, style = MaterialTheme.typography.titleSmall.copy(fontSize = 15.sp, lineHeight = 18.sp), color = c.onMayday, maxLines = if (line2 == null) 2 else 1, overflow = TextOverflow.Ellipsis)
+                if (line2 != null) Text(line2, style = MaterialTheme.typography.titleSmall.copy(fontSize = 15.sp, lineHeight = 18.sp), color = c.onMayday, maxLines = 1)
+            }
             if (active != null) {
                 if ("accepted" in active.moves) BigButton(
-                    stringResource(R.string.action_accept), { vm.answer(active.key, "accepted") }, Modifier.width(112.dp).testTag("banner_accept"),
-                    container = c.onMayday, content = c.mayday, height = 56.dp,
+                    stringResource(R.string.action_accept), { vm.answer(active.key, "accepted") }, Modifier.testTag("banner_accept"),
+                    container = c.onMayday, content = c.mayday, height = 48.dp,
                 )
                 else if ("done" in active.moves) BigButton(
-                    stringResource(R.string.action_done), { vm.answer(active.key, "done") }, Modifier.width(112.dp).testTag("banner_done"),
-                    container = c.onMayday, content = c.mayday, height = 56.dp,
+                    stringResource(R.string.action_done), { vm.answer(active.key, "done") }, Modifier.testTag("banner_done"),
+                    container = c.onMayday, content = c.mayday, height = 48.dp,
                 )
             }
         }
