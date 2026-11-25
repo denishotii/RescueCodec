@@ -98,6 +98,18 @@ fun SettingsScreen(vm: SettingsViewModel, connection: ConnectionViewModel, lang:
             }
         }
 
+        SectionHeader(stringResource(R.string.set_sounds))
+        val sounds by vm.sounds.collectAsStateWithLifecycle()
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("sounds_row"),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(stringResource(R.string.set_sounds_switch), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+            Switch(checked = sounds, onCheckedChange = vm::setSounds, modifier = Modifier.testTag("sounds_switch"))
+        }
+        Text(stringResource(R.string.set_sounds_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
         SectionHeader(stringResource(R.string.set_team))
         OutlinedTextField(
             team, { team = it; vm.setTeamLabel(it) }, singleLine = true,

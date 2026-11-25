@@ -22,6 +22,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -56,16 +59,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 
-/** Tasks: Mayday first, then open, accepted and done. Accept and Done are the big buttons. */
+/**
+ * Tasks: Mayday first, then open, then the ones I accepted, then the ones other teams took, then done (folded away).
+ * Accept and Done are the big buttons. A finished task has no Accept.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun ActionsScreen(vm: TasksViewModel, tasks: List<TaskItem>, snackbar: SnackbarHostState, lang: String) {
+fun TasksScreen(vm: TasksViewModel, tasks: List<TaskItem>, snackbar: SnackbarHostState, lang: String) {
     val scope = rememberCoroutineScope()
     val now by rememberNow()
+    var showDone by rememberSaveable { mutableStateOf(false) }
     val mayday = tasks.filter { it.type == "mayday" && it.state != "done" }
     val rest = tasks - mayday.toSet()
     val open = rest.filter { it.state == "open" || it.state == "declined" || it.state == "delivery_unknown" }
-    val accepted = rest.filter { it.state == "accepted" }
+    val mine = rest.filter { it.state == "accepted" && it.ownStatus == "accepted" }
+    val others = rest.filter { it.state == "accepted" && it.ownStatus != "accepted" }
     val done = rest.filter { it.state == "done" }
 
     val errorText = stringResource(R.string.answer_failed)
@@ -81,14 +89,30 @@ fun ActionsScreen(vm: TasksViewModel, tasks: List<TaskItem>, snackbar: SnackbarH
     }
     val maydayColor = Rc.colors.maydayText
     LazyColumn(
-        Modifier.fillMaxSize().testTag("actions_list"),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        Modifier.fillMaxSize().background(Rc.colors.chatGround).testTag("actions_list"),
+        contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         section(R.string.lane_mayday, mayday, maydayColor, lang, now, onAnswer)
         section(R.string.lane_open, open, null, lang, now, onAnswer)
-        section(R.string.lane_accepted, accepted, null, lang, now, onAnswer)
-        section(R.string.lane_done, done, null, lang, now, onAnswer)
+        section(R.string.lane_mine, mine, null, lang, now, onAnswer)
+        section(R.string.lane_others, others, null, lang, now, onAnswer)
+        if (done.isNotEmpty()) {
+            item(key = "done_header") {
+                Surface(
+                    onClick = { showDone = !showDone },
+                    color = androidx.compose.ui.graphics.Color.Transparent,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("lane_done_toggle"),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SectionHeader(stringResource(R.string.lane_done), count = done.size, modifier = Modifier.weight(1f))
+                        Text(stringResource(if (showDone) R.string.lane_hide else R.string.lane_show), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                        RcIcon(if (showDone) R.drawable.ic_expand_less else R.drawable.ic_expand_more, null, tint = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+            if (showDone) items(done, key = { it.key }) { t -> TaskCard(t, lang, now, onAnswer) }
+        }
     }
 }
 
@@ -108,23 +132,28 @@ private fun TaskCard(t: TaskItem, lang: String, now: Long, onAnswer: (TaskItem, 
     val readable = remember(t.json, lang) { Readable.withoutPosition(t.json, lang) }
     val gridRef = remember(t.json) { Readable.gridRef(t.json) }
     RcCard(
-        container = if (isMayday) c.maydaySoft else MaterialTheme.colorScheme.surfaceContainerLow,
+        container = if (isMayday) c.maydaySoft else MaterialTheme.colorScheme.surface,
         outline = if (isMayday) c.mayday else MaterialTheme.colorScheme.outlineVariant,
         modifier = Modifier.testTag("task_${t.key}"),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    if (isMayday) Tag(Labels.head(lang, "mayday"), c.mayday, c.onMayday, icon = R.drawable.ic_warning)
-                    else Tag(Labels.head(lang, t.type.takeIf { it != "unknown" } ?: "unknown"), MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurface)
-                    StateTag(t.state)
-                    if (t.local) Tag(stringResource(R.string.tag_ours), MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                RcIcon(org.rescuecodec.app.ui.chat.typeIcon(t.type), null, tint = if (isMayday) c.maydayText else MaterialTheme.colorScheme.onSurface, size = 26.dp)
+                Text(
+                    if (isMayday) Labels.head(lang, "mayday").uppercase() else Labels.head(lang, t.type.takeIf { it != "unknown" } ?: "unknown"),
+                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 20.sp),
+                    color = if (isMayday) c.maydayText else MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f),
+                )
                 Text(agoText(t.updatedMs, now), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                StateTag(t.state)
+                if (t.local) Tag(stringResource(R.string.tag_ours), MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Text(
                 readable ?: stringResource(R.string.task_unknown_report),
-                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 20.sp, lineHeight = 28.sp),
+                    style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurface,
             )
             if (gridRef != null) GridRefChip(gridRef)
@@ -206,8 +235,8 @@ fun EmptyState(title: Int, body: Int, icon: Int) {
 
 /**
  * The red Mayday banner under the top bar, on every screen: one line, 64 dp. It shows our own
- * Mayday (waiting, sent, answered) or one we received. Tap it to open the task list. Received
- * ones have the Accept or Done button right here; the full text is on the card in Actions.
+ * Mayday (waiting, sent, answered) or one we received. Tap it to open the Tasks tab. Received
+ * ones have the Accept or Done button right here; the full text is on the card in Tasks.
  */
 @Composable
 fun MaydayBanner(

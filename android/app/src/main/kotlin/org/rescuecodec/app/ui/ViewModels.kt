@@ -275,6 +275,10 @@ class SettingsViewModel(app: Application, private val graph: AppGraph) : Android
     fun toggleLanguage() = graph.ui.toggleLanguage()
     fun setTheme(m: String) = graph.ui.setTheme(m)
 
+    /** In-app sound and haptic tick for new messages and tasks. */
+    val sounds: StateFlow<Boolean> = graph.ui.sounds
+    fun setSounds(on: Boolean) = graph.ui.setSounds(on)
+
     val teamLabel: String get() = graph.settings.teamLabel
     fun setTeamLabel(v: String) { graph.settings.teamLabel = Messenger.teamLabelFor(v).orEmpty() }
 
