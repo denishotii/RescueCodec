@@ -47,7 +47,7 @@ Four decisions shape everything:
 | Kotlin libraries | `android/codec`, `android/engine` | Same as Python, for the JVM and Android. |
 | Android app | `android/app` | Field device: speech, report, send queue, radio link, tasks. |
 | Simulator | `sim/` | Three real firmware nodes in Docker. |
-| Hardware check | `hil/`, `HARDWARE_CHECK.md` | Read-only checks and a checklist for real radios. |
+| Hardware check | `hil/`, `docs/HARDWARE_CHECK.md` | Read-only checks and a checklist for real radios. |
 
 ### Spec (`spec/`)
 
@@ -106,7 +106,7 @@ A Vite and React page, built into `rescuecodec/gateway/static/` and served by th
 
 ### Simulator
 
-`sim/` runs three `meshtasticd` containers (2.7.26) with a simulated radio module. They send each packet as a UDP multicast on a Docker network, so every node hears every other node. This is the firmware's own mesh-over-LAN feature, so the real routing, channel and encryption code runs. Each node offers the normal Meshtastic TCP API on ports 4403 to 4405. The gateway and the Android emulator use it exactly as they would use a real radio. What it cannot test: radio range, airtime, RSSI and SNR, Bluetooth, USB. That is what `HARDWARE_CHECK.md` covers.
+`sim/` runs three `meshtasticd` containers (2.7.26) with a simulated radio module. They send each packet as a UDP multicast on a Docker network, so every node hears every other node. This is the firmware's own mesh-over-LAN feature, so the real routing, channel and encryption code runs. Each node offers the normal Meshtastic TCP API on ports 4403 to 4405. The gateway and the Android emulator use it exactly as they would use a real radio. What it cannot test: radio range, airtime, RSSI and SNR, Bluetooth, USB. That is what `docs/HARDWARE_CHECK.md` covers.
 
 ## Data flow: one report, end to end
 

@@ -1,6 +1,6 @@
 # Run RescueCodec from Denis's MacBook
 
-Everything runs from this one Mac. Nobody else installs anything. (Another laptop: `SETUP-NEW-DEVICE.md`.) Teammates only need an Android phone (for the app) or a browser (to watch the dashboard).
+Everything runs from this one Mac. Nobody else installs anything. (Another laptop: `docs/SETUP-NEW-DEVICE.md`.) Teammates only need an Android phone (for the app) or a browser (to watch the dashboard).
 
 ```
 Phone + app --Bluetooth--> field radio (T1000-E / T-Watch) ~~LoRa~~ Heltec V3 --USB--> this Mac: gateway + dashboard
@@ -154,7 +154,7 @@ One phone per radio. Each field radio talks to one phone.
 
    You should see: a red Mayday banner on the dashboard.
 
-If all three work, the system works. The longer checklist (reconnect, battery saver, what to write down) is `HARDWARE_CHECK.md`.
+If all three work, the system works. The longer checklist (reconnect, battery saver, what to write down) is `docs/HARDWARE_CHECK.md`.
 
 ---
 
@@ -234,7 +234,7 @@ A real phone cannot reach the simulator. It only listens on this Mac.
 | Dashboard: card does not show up | Phone radio and Heltec need the same channel QR, region and preset. http://127.0.0.1:8000/v2/health shows `other_channel` going up if the channel differs |
 | Dashboard: Accept refused (429) | More than 30 sends in a minute. Wait one minute |
 
-More causes and fixes: `HARDWARE_CHECK.md`, section "If it fails".
+More causes and fixes: `docs/HARDWARE_CHECK.md`, section "If it fails".
 
 ---
 
@@ -256,9 +256,9 @@ Tests: `.venv/bin/python -m pytest -q`
 
 ## More
 
-- `HARDWARE_CHECK.md`: the full real-radio checklist.
+- `docs/HARDWARE_CHECK.md`: the full real-radio checklist.
 - `README.md`: what is in the repo.
 - `docs/INTEGRATE.md`: use RescueCodec from other apps (REST, MQTT, TAK, Python, Kotlin, TypeScript, Android Intent).
 - `docs/VOICE.md`: offline speech.
-- `SETUP-NEW-DEVICE.md`: set up another laptop from zero.
-- `OFFLINE.md`: every download and its licence.
+- `docs/SETUP-NEW-DEVICE.md`: set up another laptop from zero.
+- `docs/OFFLINE.md`: every download and its licence.

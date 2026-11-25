@@ -7,7 +7,7 @@ Both work with no internet.
 The Report screen has a big mic button. Hold it, speak, let go. The words land in the text field, the fields are read from them, and a person checks the chips before pressing Send.
 
 - Engine: Vosk 0.3.75 (`com.alphacephei:vosk-android`, Apache-2.0). It adds about 13 MB to the APK (native code for arm64, armv7 and x86_64).
-- Models: `vosk-model-small-de-0.15` (about 45 MB zipped, 50 MB unpacked) and `vosk-model-small-en-us-0.15` (40 MB zipped, 68 MB unpacked). Both Apache-2.0. They are in `assets-offline/vosk/` (see `OFFLINE.md`).
+- Models: `vosk-model-small-de-0.15` (about 45 MB zipped, 50 MB unpacked) and `vosk-model-small-en-us-0.15` (40 MB zipped, 68 MB unpacked). Both Apache-2.0. They are in `assets-offline/vosk/` (see `docs/OFFLINE.md`).
 - The app keeps one model in memory (roughly 100 to 300 MB of RAM while loaded). Changing the language in the app loads the other model.
 - The app reads the microphone itself (16 kHz mono), so the screen can draw the loudness rings and so letting go of the button ends the phrase at once.
 

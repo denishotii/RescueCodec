@@ -42,7 +42,7 @@ Details: `docs/ARCHITECTURE.md`. The wire format and every rule: `spec/SPEC.md`.
 | `android/app` | The Android app (Compose, Meshtastic SDK, offline speech) | GPL-3.0 |
 | `dashboard/` | Web dashboard (React, MapLibre) | Apache-2.0 |
 | `sim/` | Three real Meshtastic nodes in Docker, no radio needed | Apache-2.0 |
-| `hil/`, `HARDWARE_CHECK.md` | Checklist and scripts for the real radios | Apache-2.0 |
+| `hil/`, `docs/HARDWARE_CHECK.md` | Checklist and scripts for the real radios | Apache-2.0 |
 
 ## Licences
 
@@ -50,13 +50,13 @@ Libraries, spec, gateway and dashboard are **Apache-2.0**, so anyone can use the
 
 The Android app is **GPL-3.0** (`android/app/LICENSE`) because the Meshtastic Kotlin SDK it links is GPL-3.0. The app uses our Apache-2.0 libraries (`android/codec`, `android/engine`), which is allowed. If you want to build your own closed-source Android app, use those two libraries and talk to a radio yourself, or call our app with an Intent (see `docs/INTEGRATE.md`). If you ship a changed version of the app, you must publish its source under GPL-3.0.
 
-Third-party parts are listed in `OFFLINE.md` with their licences (map data ODbL, Barlow and Noto fonts OFL, Vosk models Apache-2.0, Swagger UI Apache-2.0).
+Third-party parts are listed in `docs/OFFLINE.md` with their licences (map data ODbL, Barlow and Noto fonts OFL, Vosk models Apache-2.0, Swagger UI Apache-2.0).
 
 ## Quick start
 
-Run everything from Denis's MacBook (gateway, dashboard, app on the phones, radios), step by step: **`SETUP.md`**. Another laptop from zero: **`SETUP-NEW-DEVICE.md`**. The steps below are the short version.
+Run everything from Denis's MacBook (gateway, dashboard, app on the phones, radios), step by step: **`docs/SETUP.md`**. Another laptop from zero: **`docs/SETUP-NEW-DEVICE.md`**. The steps below are the short version.
 
-You need Python 3.10 or newer. For the simulator also Docker. All steps work with no internet once the downloads in `OFFLINE.md` are done.
+You need Python 3.10 or newer. For the simulator also Docker. All steps work with no internet once the downloads in `docs/OFFLINE.md` are done.
 
 ```bash
 python3 -m venv .venv
@@ -98,7 +98,7 @@ The debug APK is `dist/RescueCodec-debug.apk` (about 51 MB, not in git). Install
 adb install -r dist/RescueCodec-debug.apk
 ```
 
-Build it yourself (JDK 17, Android SDK, see `OFFLINE.md`):
+Build it yourself (JDK 17, Android SDK, see `docs/OFFLINE.md`):
 
 ```bash
 . scripts/env.sh
@@ -123,7 +123,7 @@ Kotlin, TypeScript, REST, MQTT, TAK, GeoJSON and the Android Intent are in `docs
 
 ### 5. Real radios
 
-`HARDWARE_CHECK.md` is the Wednesday-morning checklist (about 10 minutes): private channel, Heltec on USB, app on the phone, Bluetooth pairing, the same scenario as the simulator test, and what to write down. Start with `hil/preflight.sh`.
+`docs/HARDWARE_CHECK.md` is the Wednesday-morning checklist (about 10 minutes): private channel, Heltec on USB, app on the phone, Bluetooth pairing, the same scenario as the simulator test, and what to write down. Start with `hil/preflight.sh`.
 
 ## Tests
 
@@ -144,14 +144,14 @@ All three libraries run the same vectors in `spec/vectors/` and must give the sa
 | `docs/INTEGRATE.md` | Integrate in 10 minutes: Python, TypeScript, Kotlin, REST, WebSocket, MQTT, TAK, GeoJSON, readable text, Android Intent |
 | `docs/ARCHITECTURE.md` | How the parts work together and why |
 | `spec/SPEC.md` | The spec: wire format, JSON, rules, test vectors, security |
-| `HARDWARE_CHECK.md` | Real-device checklist |
-| `OFFLINE.md` | Every download, its size and licence |
+| `docs/HARDWARE_CHECK.md` | Real-device checklist |
+| `docs/OFFLINE.md` | Every download, its size and licence |
 | `docs/VOICE.md` | Offline speech models |
 | `docs/PLAN.md` | The team plan |
 
 ## Known limits
 
-- Not tested on real radios yet. That is what `HARDWARE_CHECK.md` is for.
+- Not tested on real radios yet. That is what `docs/HARDWARE_CHECK.md` is for.
 - A broadcast has no delivery proof. "Relayed by a neighbour" means a radio repeated it. Only a person's Accept proves that someone has it.
 - Anyone who holds the channel key can send as a team member. Share the key by QR code only with your team.
 - German and English are checked. Ukrainian, Turkish and Arabic texts are machine drafts.
