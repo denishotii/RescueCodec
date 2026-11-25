@@ -6,12 +6,15 @@ package org.rescuecodec.codec
  * and `spec/vocab/sar.yaml`. Flag tables map a name to its bit number.
  */
 object Codes {
-    const val SPEC_VERSION = "2.0.0"
+    const val SPEC_VERSION = "2.1.0"
     const val MAX_ENCODE_BYTES = 200
     const val MAX_DECODE_BYTES = 233
     const val MAX_ID = 16383
     const val MAX_TRACK_POINTS = 16
     const val MAX_TEXT_BYTES = 180
+
+    /** Typed text a chat that packs (DEFLATE or word tokens) accepts; the packet stays at most 200 bytes. */
+    const val MAX_PACKED_TEXT_BYTES = 400
     const val MAX_TEAM_BYTES = 12
     const val MAX_COUNT = 255
     const val MAX_RADIUS_M = 100_000

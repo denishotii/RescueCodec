@@ -36,6 +36,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -749,6 +750,132 @@ class MessengerTest {
         assertTrue(MeshText.isPacked(row))
         assertEquals("Message: $hut.", Readable.of(row.json, "en"))
         assertTrue(m.routes.isRescueCodec(other))
+    }
+
+    // ----------------------------------------------- compact texts (word tokens, spec section 3.6)
+
+    @Test
+    fun compactTextIsOffByDefault() {
+        assertFalse(AppSettings(MemoryKeyValueStore()).compactText)
+        val s = AppSettings(MemoryKeyValueStore())
+        s.compactText = true
+        assertTrue(s.compactText)
+        assertEquals(TextMode.AUTO, s.defaultChannelMode, "other settings keep their defaults")
+        assertFalse(s.showPublicChannel)
+    }
+
+    @Test
+    fun withCompactOffTheSendPathIsUnchanged() = runUnit {
+        val m = messenger()
+        m.start()
+        connectTeamRadio()
+        m.routes.heardRescueCodec(other, "RescueCodec")
+        val pos = mapOf("lat" to 50.69212, "lon" to 7.21345)
+        val r = m.submit(mapOf("pos" to pos, "text" to mapOf("text" to hut))) as SubmitResult.Queued
+        val id = r.msgId
+        // The bytes are those of the 2.0 rule: DEFLATE with the same id and position.
+        val old = TextMode.chooseForm(linkedMapOf("pos" to pos, "text" to mapOf("text" to hut), "id" to id), true, "rescuecodec_only")
+        assertContentEquals(old.payload, r.bytes)
+        eventually(10_000, "sent") { radio.sentPrivateApp().size == 1 }
+        assertEquals(mapOf("text" to hut, "dict" to 1), wordsOf(radio.sentPrivateApp().single()))
+        assertNull(MeshText.compactDict(messages.all.single()))
+        assertEquals("deflate", m.textForm(mapOf("text" to mapOf("text" to hut)), null, null).form)
+    }
+
+    @Test
+    fun withCompactOnALongSentenceGoesAsWordsOnARescueCodecOnlyChat() = runUnit {
+        settings.compactText = true
+        val m = messenger()
+        m.start()
+        connectTeamRadio()
+        m.routes.heardRescueCodec(other, "RescueCodec")
+        val pos = mapOf("lat" to 50.69212, "lon" to 7.21345)
+        val form = m.textForm(mapOf("pos" to pos, "text" to mapOf("text" to hut)), null, null)
+        assertEquals("words", form.form)
+        assertTrue(form.wordsSize!! < form.packedSize!!, "smaller than DEFLATE")
+        val r = m.submit(mapOf("pos" to pos, "text" to mapOf("text" to hut))) as SubmitResult.Queued
+        eventually(10_000, "sent") { radio.sentPrivateApp().size == 1 }
+        val p = radio.sentPrivateApp().single()
+        assertEquals(1, p.channel)
+        val decoded = RescueCodec.decodeAny(p.decoded!!.payload.toByteArray())
+        assertEquals(mapOf("text" to hut, "words" to 1), decoded["text"])
+        assertEquals(pos, decoded["pos"], "the position stays in the Envelope")
+        assertEquals(r.bytes.size, form.payload.size)
+        val row = messages.all.single()
+        assertEquals(1, MeshText.compactDict(row))
+        assertEquals("Message: $hut. Position 50.69212, 7.21345.", Readable.of(row.json, "en"))
+    }
+
+    @Test
+    fun compactNeverGoesOnAPublicChannelOrAlwaysNormal() = runUnit {
+        settings.compactText = true
+        val m = messenger()
+        m.start()
+        connectTeamRadio()
+        eventually(5_000, "channels known") { m.radioChannels.value.orEmpty().any { it.isPublic } }
+        val public = m.radioChannels.value!!.first { it.isPublic }.name
+        m.routes.setMode(ChatId.Channel(public), TextMode.COMPRESSED)
+        m.routes.setMode(ChatId.Channel("RescueCodec"), TextMode.NORMAL)
+        m.routes.heardRescueCodec(other, "RescueCodec")
+        assertEquals("plain", m.textForm(mapOf("text" to mapOf("text" to hut)), public, null).form)
+        assertEquals("plain", m.textForm(mapOf("text" to mapOf("text" to hut)), null, null).form)
+        m.submit(mapOf("text" to mapOf("text" to hut)), channel = public)
+        m.submit(mapOf("text" to mapOf("text" to hut)))
+        eventually(10_000, "two normal texts") { radio.sentText().size == 2 }
+        assertEquals(0, radio.sentPrivateApp().size)
+        assertTrue(radio.sentText().all { it.decoded!!.payload.utf8() == hut })
+    }
+
+    @Test
+    fun aPackingChatTakesLongTextsAndCutsWhatDoesNotFit() = runUnit {
+        settings.compactText = true
+        val m = messenger()
+        m.start()
+        connectTeamRadio()
+        m.routes.heardRescueCodec(other, "RescueCodec")
+        val long = ("Sector 4 fully searched, nothing found. Moving to sector 5 along the river, two people, " +
+            "radio check every 30 minutes. ").repeat(3).trim() // about 330 bytes
+        assertTrue(long.toByteArray().size > 300)
+        val a = m.submit(mapOf("text" to mapOf("text" to long)))
+        assertIs<SubmitResult.Queued>(a)
+        val over = "Sector 4 searched, nothing found, moving on. ".repeat(12) // over 400 bytes
+        val b = m.submit(mapOf("text" to mapOf("text" to over)))
+        assertIs<SubmitResult.Queued>(b)
+        eventually(10_000, "both sent") { radio.sentPrivateApp().size == 2 }
+        val (first, second) = radio.sentPrivateApp().map { (wordsOf(it) as Map<*, *>)["text"] as String }
+        assertEquals(long, first, "330 bytes go whole in one packet")
+        assertTrue(second.endsWith("…") && over.startsWith(second.dropLast(1)), second)
+        assertTrue(second.toByteArray().size <= 400)
+        assertTrue(radio.sentPrivateApp().all { it.decoded!!.payload.size <= 200 })
+        // A normal chat keeps the 180-byte limit.
+        m.routes.setMode(ChatId.Channel("RescueCodec"), TextMode.NORMAL)
+        assertIs<SubmitResult.Rejected>(m.submit(mapOf("text" to mapOf("text" to long))))
+    }
+
+    @Test
+    fun aReceivedCompactTextShowsItsWordsAndAnUnknownDictionaryIsNamed() = runUnit {
+        val m = messenger()
+        m.start()
+        connectTeamRadio()
+        val bytes = RescueCodec.encode(mapOf("id" to 9, "text" to mapOf("text" to hut, "words" to 1)))
+        radio.injectPacket(privateAppPacket(other, 11, bytes, channel = 1))
+        eventually(5_000, "stored") { messages.all.size == 1 }
+        val row = messages.all.single()
+        assertEquals("text", row.type)
+        assertEquals(1, MeshText.compactDict(row))
+        assertEquals(hut, (Json.parseObject(row.json!!)["text"] as Map<*, *>)["text"])
+        assertEquals("Message: $hut.", Readable.of(row.json, "en"))
+        // Word dictionary 2 does not exist yet: a visible "update the app" line, never guessed words.
+        val unknown = org.rescuecodec.v2.proto.Envelope.newBuilder().setId(10).setText(
+            org.rescuecodec.v2.proto.Text.newBuilder().setWords(com.google.protobuf.ByteString.copyFrom(byteArrayOf(0, 0x10, 0, 0x11))).setWordsDict(2),
+        ).build().toByteArray()
+        radio.injectPacket(privateAppPacket(other, 12, unknown, channel = 1))
+        eventually(5_000, "stored") { messages.all.size == 2 }
+        val u = messages.all.last()
+        assertEquals("unknown", u.type)
+        assertEquals(MessageState.RECEIVED, u.state)
+        assertTrue(Readable.of(u.json, "en")!!.contains("dictionary this app does not have"), Readable.of(u.json, "en"))
+        assertTrue(Readable.of(u.json, "de")!!.contains("Wörterbuch"))
     }
 
     @Test

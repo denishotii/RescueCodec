@@ -276,6 +276,8 @@
     <string name="set_intent_api_note">Nutzt den Android-Intent org.rescuecodec.action.SEND_REPORT.</string>
     <string name="text_mode_packed">Komprimiert für RescueCodec · %1$d B statt %2$d B</string>
     <string name="text_mode_plain">Normale Meshtastic-Nachricht · für alle lesbar</string>
+    <string name="text_mode_words">Kompakte Wörter · %1$d B (als Text %2$d B)</string>
+    <string name="text_too_long">Zu lang: wird gekürzt, damit es in eine Funknachricht passt</string>
     <string name="text_mode_title">Text in diesem Chat</string>
     <string name="text_mode_auto">Automatisch</string>
     <string name="text_mode_auto_note">Komprimiert, wenn hier alle RescueCodec nutzen</string>
@@ -285,6 +287,7 @@
     <string name="text_mode_normal_note">Jede Meshtastic-App kann es lesen</string>
     <string name="text_mode_menu">Textmodus</string>
     <string name="details_packed">Komprimierter Text · lesbar in RescueCodec-Apps</string>
+    <string name="details_words">Kompakte Wörter, Wörterbuch %1$d</string>
     <string name="set_battery">Akku-Einstellungen</string>
     <string name="set_about">Über</string>
     <string name="set_version">Version</string>
@@ -374,6 +377,8 @@
     <string name="notif_on_channel">Auf %1$s.</string>
     <string name="set_show_public">Öffentlichen Kanal zeigen</string>
     <string name="set_show_public_note">Zeigt den öffentlichen Kanal (zum Beispiel LongFast) in der Chatliste. Jeder kann ihn lesen. Meldungen gehen nie dorthin.</string>
+    <string name="set_compact_text">Kompakte Kodierung für Textnachrichten verwenden</string>
+    <string name="set_compact_text_note">Kürzere Nachrichten zwischen RescueCodec-Apps. Ältere Apps können sie nicht lesen.</string>
     <string name="chats_title">Chats</string>
     <string name="chat_public_title">Öffentlich (%1$s)</string>
     <string name="chat_new_direct">Neue Direktnachricht</string>

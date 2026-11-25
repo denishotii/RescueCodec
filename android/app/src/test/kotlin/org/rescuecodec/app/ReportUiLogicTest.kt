@@ -108,6 +108,16 @@ class ReportUiLogicTest {
     }
 
     @Test
+    fun sendAsTextKeeps180BytesOrTheWholeSentenceWhereTheChatPacks() {
+        val found = extractor.extract("Child found, conscious, hypothermia, need stretcher", "en").message
+        val long = "Sector 4 fully searched, nothing found, moving on along the river. ".repeat(5).trim()
+        val normal = ReportFields.setType(found, "text", long)
+        assertEquals(180, ((normal["text"] as Map<*, *>)["text"] as String).toByteArray().size)
+        val packing = ReportFields.setType(found, "text", long, Int.MAX_VALUE)
+        assertEquals(long, (packing["text"] as Map<*, *>)["text"])
+    }
+
+    @Test
     fun aLongTextWithThePositionIsShortenedSoItCanBeSent() {
         // The bug: a 180-byte free text plus the position was 201 to 204 bytes and could not be sent.
         val text = ReportFields.clampText("Wir sind am Waldweg hinter der Mühle, die Brücke über den Bach ist weggespült. ".repeat(3))

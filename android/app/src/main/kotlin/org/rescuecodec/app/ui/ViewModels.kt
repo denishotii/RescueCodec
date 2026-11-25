@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -61,6 +62,7 @@ import org.rescuecodec.app.service.RadioService
 import org.rescuecodec.app.voice.SpeechInput
 import org.rescuecodec.app.voice.Speaker
 import org.rescuecodec.codec.CodecException
+import org.rescuecodec.codec.Codes
 import org.rescuecodec.codec.Json
 import org.rescuecodec.codec.RescueCodec
 import org.rescuecodec.engine.Airtime
@@ -499,6 +501,10 @@ class SettingsViewModel(app: Application, private val graph: AppGraph) : Android
     val showPublic: StateFlow<Boolean> = graph.ui.showPublic
     fun setShowPublic(on: Boolean) = graph.ui.setShowPublic(on)
 
+    /** Compact texts (word tokens) on chats that pack. Off by default. */
+    val compactText: StateFlow<Boolean> = graph.ui.compactText
+    fun setCompactText(on: Boolean) = graph.ui.setCompactText(on)
+
     val teamLabel: String get() = graph.settings.teamLabel
     fun setTeamLabel(v: String) { graph.settings.teamLabel = Messenger.teamLabelFor(v).orEmpty() }
 
@@ -558,8 +564,12 @@ data class ReportUi(
     val busy: Boolean = false,
     /** A text goes packed for RescueCodec ([sentBytes] on air) instead of as a normal Meshtastic text ([plainBytes]). */
     val packed: Boolean = false,
-    /** Bytes of a text as a normal Meshtastic text, 0 when the message is not a text. */
+    /** Bytes of a text as a normal Meshtastic text (as typed, when it goes packed), 0 when the message is not a text. */
     val plainBytes: Int = 0,
+    /** How a text goes: [TextMode.FORM_PLAIN], [TextMode.FORM_DEFLATE] or [TextMode.FORM_WORDS] (compact words). */
+    val textForm: String = TextMode.FORM_PLAIN,
+    /** The text is too long for one radio message and will be cut, ending with "…". */
+    val textCut: Boolean = false,
     /** The chat's text mode: auto, compressed or normal. */
     val textMode: String = TextMode.AUTO,
 )
@@ -619,6 +629,10 @@ class ReportViewModel(app: Application, private val graph: AppGraph) : AndroidVi
 
     val speech = SpeechInput(app, viewModelScope)
 
+    /** True when the chat the composer sends to packs texts (spec section 2.3): it then takes up to 400 bytes. */
+    @Volatile var packs: Boolean = false
+        private set
+
     init {
         viewModelScope.launch {
             textInput.debounce(120).distinctUntilChanged().collect { rebuild(it, force = false) }
@@ -626,7 +640,15 @@ class ReportViewModel(app: Application, private val graph: AppGraph) : AndroidVi
         viewModelScope.launch {
             graph.ui.language.collect { lang -> if (_ui.value.message != null) recompute(_ui.value.message, lang) }
         }
+        viewModelScope.launch {
+            // The compact text setting changes the byte line of a text.
+            graph.ui.compactText.drop(1).collect { if (_ui.value.message != null) recompute(_ui.value.message, graph.ui.language.value) }
+        }
     }
+
+    /** "Send as plain text instead": the typed words, cut to 180 bytes unless the chat packs (it fits them itself). */
+    fun asText(message: Map<String, Any?>): Map<String, Any?> =
+        ReportFields.setType(message, "text", _ui.value.text, if (packs) Int.MAX_VALUE else Codes.MAX_TEXT_BYTES)
 
     /** The person typed, or a quick chip added words. */
     fun onText(text: String) {
@@ -668,7 +690,20 @@ class ReportViewModel(app: Application, private val graph: AppGraph) : AndroidVi
         val ex = withContext(Dispatchers.Default) { extractor.extract(text, graph.ui.language.value) }
         withContext(Dispatchers.IO) { fix = LocationHelper.lastKnown(getApplication()) }
         _ui.update { it.copy(fallback = ex.unsupported, edited = false) }
-        recompute(ex.message, graph.ui.language.value, fallback = ex.unsupported)
+        recompute(longText(ex.message, text, ex.unsupported), graph.ui.language.value, fallback = ex.unsupported)
+    }
+
+    /**
+     * The extractor keeps at most 180 bytes of a text it could not code. A chat that packs takes up to 400 bytes (spec
+     * 2.1), so there the whole sentence stays (spaces made single like the extractor does) and [TextMode] fits it.
+     */
+    private suspend fun longText(message: Map<String, Any?>, typed: String, fallback: Boolean): Map<String, Any?> {
+        if (!fallback || ReportFields.typeOf(message) != "text" || typed.toByteArray(Charsets.UTF_8).size <= Codes.MAX_TEXT_BYTES) return message
+        val (channel, peer) = destination()
+        if (!graph.messenger.textWish(channel, peer).packed) return message
+        val out = LinkedHashMap(message)
+        out["text"] = mapOf("text" to typed.trim().split(Regex("\\s+")).joinToString(" "))
+        return out
     }
 
     /** Applies a chip edit. [change] gets the current message and returns the new one. */
@@ -690,8 +725,24 @@ class ReportViewModel(app: Application, private val graph: AppGraph) : AndroidVi
         var shortened = false
         var packed = false
         var plainBytes = 0
+        var textForm = TextMode.FORM_PLAIN
+        var textCut = false
         withContext(Dispatchers.Default) {
             try {
+                val (channel, peer) = destination()
+                val isText = ReportFields.typeOf(withPos) == "text"
+                packs = graph.messenger.textWish(channel, peer).packed
+                if (isText && packs && textBytes(withPos) > Codes.MAX_TEXT_BYTES) {
+                    // A chat that packs takes up to 400 bytes of text; what does not fit one packet is cut (spec 2.1).
+                    val form = graph.messenger.textForm(withPos, channel, peer)
+                    sent = form.payload.size
+                    packed = form.packed
+                    plainBytes = if (form.packed) form.text.toByteArray(Charsets.UTF_8).size else form.plainSize
+                    textForm = form.form
+                    textCut = form.cut
+                    readable = RescueCodec.reconstruct(form.message, lang)
+                    return@withContext
+                }
                 val out = fitForSending(withPos)
                 shortened = out != withPos
                 // A placeholder id of 2 bytes (128 and up) gives the real size of almost every message. Every message
@@ -700,13 +751,14 @@ class ReportViewModel(app: Application, private val graph: AppGraph) : AndroidVi
                 val bytes = RescueCodec.encode(probe)
                 sent = bytes.size
                 readable = RescueCodec.reconstruct(RescueCodec.decodeAny(bytes), lang)
-                if (ReportFields.typeOf(out) == "text") {
+                if (isText) {
                     // A text goes packed or as a normal Meshtastic text, by the chat's mode (spec section 2.3).
-                    val (channel, peer) = destination()
                     val form = graph.messenger.textForm(out, channel, peer)
                     sent = form.payload.size
                     packed = form.packed
-                    plainBytes = form.plainSize
+                    plainBytes = if (form.packed) form.text.toByteArray(Charsets.UTF_8).size else form.plainSize
+                    textForm = form.form
+                    textCut = form.cut
                 }
             } catch (e: CodecException) {
                 problem = e.message ?: e.code
@@ -718,10 +770,13 @@ class ReportViewModel(app: Application, private val graph: AppGraph) : AndroidVi
             it.copy(
                 message = message, fallback = fallback, sentBytes = sent, readable = readable,
                 problem = problem, hasPosition = withPos["pos"] != null, shortened = shortened,
-                packed = packed, plainBytes = plainBytes,
+                packed = packed, plainBytes = plainBytes, textForm = textForm, textCut = textCut,
             )
         }
     }
+
+    private fun textBytes(message: Map<String, Any?>): Int =
+        ((message["text"] as? Map<*, *>)?.get("text") as? String)?.toByteArray(Charsets.UTF_8)?.size ?: 0
 
     private fun withPosition(message: Map<String, Any?>): Map<String, Any?> {
         if (textOnly || message["pos"] != null) return message

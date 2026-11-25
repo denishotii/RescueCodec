@@ -61,6 +61,14 @@ class AppSettings(private val store: KeyValueStore) {
         store.putLong("text_mode_migrated", 1)
     }
 
+    /**
+     * Compact texts (spec section 3.6): on a chat that packs, a text goes as 2-byte word tokens when that is smaller
+     * than the packed or normal text. Only RescueCodec apps with spec 2.1 can read them. Off by default.
+     */
+    var compactText: Boolean
+        get() = store.getLong("compact_text", 0) == 1L
+        set(v) = store.putLong("compact_text", if (v) 1 else 0)
+
     /** Show the public channel (no key or the default key, for example LongFast) in the chat list. Off by default. */
     var showPublicChannel: Boolean
         get() = store.getLong("show_public_channel", 0) == 1L

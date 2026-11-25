@@ -75,13 +75,26 @@ class TextModeTest {
     }
 
     @Test
+    fun overLongTextIsCutOnAPackingChat() {
+        // A chat that packs takes up to 400 bytes of text (spec 2.1): 1100 bytes are cut to 400 with "…" and packed.
+        val form = TextMode.chooseForm(mapOf("id" to 3, "text" to mapOf("text" to "A".repeat(1100))), true, "x")
+        assertTrue(form.packed)
+        assertTrue(form.cut)
+        assertEquals("deflate", form.form)
+        assertEquals("A".repeat(397) + "…", form.text)
+        assertEquals(mapOf("text" to form.text, "dict" to 1), RescueCodec.decode(form.payload)["text"])
+        assertEquals(200, form.plainSize)
+    }
+
+    @Test
     fun longTextThatDoesNotPackFitsAsPlain() {
-        // 1100 bytes of text cannot be packed (over 1024), so it goes plain and is cut to 200 bytes.
-        val form = TextMode.chooseForm(mapOf("id" to 3, "text" to mapOf("text" to "A".repeat(1100))), true)
+        // Where the chat does not pack, 1100 bytes go plain and are cut to 200 bytes; the packed form is not possible.
+        val form = TextMode.chooseForm(mapOf("id" to 3, "text" to mapOf("text" to "A".repeat(1100))), false, "peer_unknown")
         assertFalse(form.packed)
-        assertEquals("too_large", form.reason)
+        assertEquals("peer_unknown", form.reason)
         assertNull(form.packedSize)
         assertEquals(200, form.plainSize)
+        assertTrue(form.cut)
     }
 
     @Test

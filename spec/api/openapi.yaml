@@ -61,6 +61,18 @@ info:
     is at least 3 bytes smaller than the normal text. A received packed text shows its words like any other text, with
     `codec.packed: true` and `message.text.dict`.
 
+    **Compact texts** (SPEC section 3.6, opt-in with `--compact-text on`, default off). In a chat that packs, the
+    gateway also builds the word-token form (2-byte tokens from the word dictionary, names and numbers as exact
+    literals) and sends it when its whole packet is smaller than what the rule above picked; a tie keeps the existing
+    form. Never on a public channel or to a stock Meshtastic user. Received compact texts are shown like any other
+    text, whatever the flag says: `codec.packed: true`, `codec.form: words` and `message.text.words`. A compact text
+    with a word dictionary this gateway does not have is a record of type `unknown` with `message.unknown.words`
+    and the readable line "Message encoded with a dictionary this app does not have".
+
+    **Text limits.** A chat that packs (`send_as: compressed`) takes up to 400 bytes of UTF-8; the packet stays at most
+    200 bytes, and a text that does not fit one packet is cut to the longest prefix that fits and ends with "…". Any
+    other chat takes up to 180 bytes (`GET /v2/health` -> `text_limits`). There is no multipart message.
+
     **Other connectors** (not part of this HTTP API, same JSON): MQTT topic `rescuecodec/v2/messages`
     carries `MessageRecord` objects, `rescuecodec/v2/channels/<channel name>` the same records per channel, and
     `rescuecodec/v2/tasks` carries `Task` objects. The TAK
@@ -127,8 +139,9 @@ paths:
         A message with a `text` body goes out packed for RescueCodec (port 256, with id and `pos`) or as a normal
         Meshtastic text (port 1, TEXT_MESSAGE_APP, only the words), as the chat's text mode says (see "Packed texts"
         above and `GET /v2/channels/{name}/mode`). Both use the same queue, priority, airtime budget and `want_ack`.
-        A normal text record has `codec.version: 0` and no `key`; a packed one has `codec.packed: true`. A `dict`
-        in the text body is ignored: the chat's mode decides.
+        A normal text record has `codec.version: 0` and no `key`; a packed one has `codec.packed: true` and
+        `codec.form` (`deflate` or `words`). A `dict` or `words` in the text body is ignored: the chat's mode and
+        `--compact-text` decide. The words may be up to 400 bytes in a chat that packs, else 180 (see "Text limits").
         With `dry_run: true` nothing is sent; you get the record as it would be queued.
         `channel` picks a channel by name (one of `GET /v2/health` -> `radio.channels`); without it the message goes
         out on the default channel. Reports never go out on a public channel. `to` makes a text a direct message to
@@ -244,7 +257,8 @@ paths:
       operationId: sendText
       summary: Send a short free text (packed for RescueCodec or a normal Meshtastic text, per chat).
       description: |
-        Shortcut for `POST /v2/messages` with a `text` body. 1 to 180 bytes of UTF-8.
+        Shortcut for `POST /v2/messages` with a `text` body. 1 to 180 bytes of UTF-8, or up to 400 bytes in a chat
+        that packs (`send_as: compressed`); what does not fit one 200-byte packet is cut and ends with "…".
         The chat's text mode decides how it goes out (see "Packed texts" above): packed for RescueCodec (port 256),
         which stock apps do not show, or a normal Meshtastic text (port 1), which every app shows; `also_plain` then
         changes nothing. To reach stock apps with a packed text anyway, set `also_plain: true`: the gateway then also
@@ -258,7 +272,7 @@ paths:
               required: [text]
               additionalProperties: false
               properties:
-                text: { type: string, minLength: 1, description: "1..180 bytes of UTF-8." }
+                text: { type: string, minLength: 1, maxLength: 400, description: "1..180 bytes of UTF-8; up to 400 bytes in a chat that packs (send_as compressed). The gateway checks bytes, maxLength is the character bound." }
                 priority: { $ref: "#/components/schemas/Priority" }
                 also_plain: { type: boolean, default: false }
                 channel: { type: string, description: "Channel name to send on. Default: the default channel." }
@@ -587,6 +601,9 @@ paths:
           counts like `POST /v2/text` (its UTF-8 bytes with `--text-as-meshtastic on`, the default).
         - `text_bytes`: bytes on air for the same words sent as a plain text.
         - `fields`: the facts of the report as short labels in English and German (chips in a UI). Empty for a text.
+        - With `channel` or `to`: `send_as` and `max_text_bytes` of that chat (400 when it packs, else 180), and for a
+          text `form` (`plain`, `deflate` or `words`), `cut` (it will be shortened to fit one radio message) and
+          `coded_bytes` of the form that would go out (with `--compact-text on` this can be `words`).
 
         Input is at most 1000 characters. Not limited by `--tx-per-minute`: nothing goes on air.
       requestBody:
@@ -600,6 +617,8 @@ paths:
               properties:
                 text: { type: string, minLength: 1, maxLength: 1000, description: "One sentence, German or English." }
                 lang: { type: string, enum: [en, de], description: "Language of the sentence. Leave it out to detect it." }
+                channel: { type: string, description: "Size a text for this chat (channel name)." }
+                to: { type: string, pattern: "^![0-9a-f]{8}$", description: "Size a text for a direct chat with this node." }
             example: { text: "Kind gefunden, ansprechbar, unterkühlt. Wir brauchen eine Trage." }
       responses:
         "200":
@@ -756,7 +775,12 @@ components:
         mayday: { $ref: "#/components/schemas/Mayday" }
         ack: { $ref: "#/components/schemas/Ack" }
         text: { $ref: "#/components/schemas/TextBody" }
-        unknown: { type: object, additionalProperties: false, description: "Body of a newer type this gateway does not know." }
+        unknown:
+          type: object
+          additionalProperties: false
+          description: "Body of a newer type this gateway does not know. `words` is set for a compact text whose word dictionary this gateway does not have (shown as \"dictionary this app does not have\", never as words)."
+          properties:
+            words: { type: integer, minimum: 1 }
       oneOf:
         - required: [found]
         - required: [track]
@@ -869,6 +893,7 @@ components:
       properties:
         text: { type: string, minLength: 1, description: "1..180 bytes of UTF-8. In a record of a plain Meshtastic text (`codec.version: 0`) up to 233 bytes, as the sender typed it. In a packed text up to 1024 bytes." }
         dict: { type: integer, minimum: 1, description: "Set when the words came or went packed (DEFLATE with text dictionary `dict`, SPEC section 3.5). The words are always unpacked here." }
+        words: { type: integer, minimum: 1, description: "Set when the words came or went as a compact text (word tokens with word dictionary `words`, SPEC section 3.6). The words are always decoded here, exactly as typed." }
     Text2:
       type: object
       description: The message as one readable line, built from the spec templates.
@@ -946,7 +971,8 @@ components:
               description: "2 = RescueCodec v2, 1 = v1. 0 = a plain Meshtastic text (port 1, TEXT_MESSAGE_APP), not a RescueCodec packet: `hex` is the UTF-8 text, `type` is `text`, there is no id and no task, and a received one can be up to 233 bytes. A UI can show it with a small \"via Meshtastic\" hint."
             size: { type: integer, description: "Payload bytes (measured)." }
             hex: { type: string }
-            packed: { type: boolean, description: "Present and true for a packed text (DEFLATE with the shared dictionary). `message.text.text` holds the unpacked words." }
+            packed: { type: boolean, description: "Present and true for a packed text (DEFLATE with the shared dictionary, or compact word tokens). `message.text.text` holds the unpacked words." }
+            form: { type: string, enum: [deflate, words], description: "With packed: deflate (SPEC 3.5) or words (compact text, SPEC 3.6)." }
         radio:
           type: [object, "null"]
           description: Radio facts for received packets (measured). Null for outgoing records.
@@ -1078,7 +1104,7 @@ components:
       properties:
         status: { type: string, enum: [ok, degraded], description: "degraded = running, but no radio." }
         version: { type: string, description: Gateway version. }
-        spec_version: { type: string, example: 2.0.0 }
+        spec_version: { type: string, example: 2.1.0 }
         uptime_s: { type: integer }
         radio:
           type: object
@@ -1110,6 +1136,13 @@ components:
           required: [connected]
           properties:
             connected: { type: boolean }
+        compact_text: { type: boolean, description: "--compact-text: chats that pack may send compact word-token texts (SPEC section 3.6)." }
+        text_limits:
+          type: object
+          description: "Bytes of UTF-8 a sent text may have: `text` in a chat that does not pack, `packed` in one that packs."
+          properties:
+            text: { type: integer, example: 180 }
+            packed: { type: integer, example: 400 }
     EncodeResult:
       type: object
       required: [hex, size, message, text, text_size, airtime_s, text_airtime_s]
@@ -1142,6 +1175,10 @@ components:
         text: { $ref: "#/components/schemas/Text2" }
         coded_bytes: { type: integer, description: "Bytes on air for message (measured by encoding it)." }
         text_bytes: { type: integer, description: "Bytes on air for the same words as a plain text." }
+        send_as: { type: string, enum: [compressed, normal], description: "Only with channel or to: how a text goes out in that chat." }
+        max_text_bytes: { type: integer, enum: [180, 400], description: "Only with channel or to: the text limit of that chat." }
+        form: { type: string, enum: [plain, deflate, words], description: "Only for a text with channel or to: the form that would go out." }
+        cut: { type: boolean, description: "Only for a text with channel or to: the text is too long and will be cut to fit one radio message." }
     StreamEvent:
       type: object
       required: [event, data]

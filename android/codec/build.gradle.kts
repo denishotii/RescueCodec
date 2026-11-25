@@ -48,9 +48,11 @@ tasks.processResources {
         include("*.json")
         into("rescuecodec/i18n")
     }
-    // Preset dictionaries for packed texts (spec section 3.5). Copied byte for byte.
+    // Preset dictionaries for packed texts (spec section 3.5) and word dictionaries for compact texts (section 3.6).
+    // Copied byte for byte, the same files the gateway reads; each is checked by its SHA-256 when loaded.
     from(specDir.dir("vocab")) {
         include("text-dict-v*.txt")
+        include("words-dict-v*.txt")
         into("rescuecodec/vocab")
     }
 }

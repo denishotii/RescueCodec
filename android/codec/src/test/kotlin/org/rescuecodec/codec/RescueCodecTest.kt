@@ -113,6 +113,60 @@ class RescueCodecTest {
     }
 
     @Test
+    fun compactTextCases() {
+        val list = cases("compact_text")
+        assertTrue(list.size >= 10)
+        for (c in list) {
+            val name = c["name"] as String
+            assertEquals(c["hex"], RescueCodec.encode(obj(c["input"])).hex(), "$name: encode")
+            assertSame(c["decoded"], RescueCodec.decode(hex(c["hex"] as String)), "$name: decode")
+            assertEquals(c["words"], TextWords.encode(c["text"] as String, 1).hex(), "$name: encode words")
+            assertEquals(c["text"], TextWords.decode(hex(c["words"] as String), 1), "$name: decode words")
+            val render = obj(c["render"])
+            for (lang in listOf("en", "de")) {
+                assertEquals(render[lang], RescueCodec.reconstruct(obj(c["decoded"]), lang), "$name: render [$lang]")
+            }
+        }
+    }
+
+    @Test
+    fun wordStreamCases() {
+        val list = cases("word_streams")
+        assertTrue(list.size >= 5)
+        for (c in list) {
+            val name = c["name"] as String
+            assertEquals(c["words"], TextWords.encode(c["text"] as String, 1).hex(), "$name: encode")
+            assertEquals(c["text"], TextWords.decode(hex(c["words"] as String), 1), "$name: decode")
+        }
+        val invalid = cases("word_streams_invalid")
+        assertTrue(invalid.size >= 5)
+        for (c in invalid) {
+            val name = c["name"] as String
+            val e = assertFailsWith<CodecException>(name) { TextWords.decode(hex(c["words"] as String), 1) }
+            assertEquals(c["error"], e.code, "$name: code")
+            assertEquals("text.words", e.field, "$name: field")
+        }
+    }
+
+    @Test
+    fun wordDictionaryHashes() {
+        @Suppress("UNCHECKED_CAST")
+        val dicts = vectors["word_dicts"] as Map<String, Map<String, Any?>>
+        assertTrue(dicts.isNotEmpty())
+        for ((number, entry) in dicts) {
+            val file = File(System.getProperty("rescuecodec.spec"), entry["file"] as String).readBytes()
+            val sha = java.security.MessageDigest.getInstance("SHA-256").digest(file).joinToString("") { "%02x".format(it) }
+            assertEquals(entry["sha256"], sha, "word dictionary $number file")
+            assertEquals(TextWords.DICTS[number.toInt()]?.second, sha, "word dictionary $number in TextWords")
+            assertTrue(TextWords.available(number.toInt()), "word dictionary $number bundled")
+            assertEquals((entry["entries"] as Number).toInt(), TextWords.dictionary(number.toInt()).entries.size, "entries")
+            // The bundled copy is the spec file byte for byte.
+            val bundled = TextWords::class.java.getResourceAsStream("/rescuecodec/vocab/words-dict-v$number.txt")!!.use { it.readBytes() }
+            assertTrue(bundled.contentEquals(file), "word dictionary $number bundled byte for byte")
+        }
+    }
+
+    @Test
     fun packedTextIsSmallerAndRoundTrips() {
         val words = "We are at the hut, two people with us, waiting for the vehicle on the forest road"
         val packed = TextPack.pack(words)

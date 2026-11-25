@@ -1,2 +1,4 @@
 # The text dictionary is a preset dictionary for DEFLATE: its bytes must be identical everywhere.
 spec/vocab/text-dict-v1.txt -text
+# The word dictionary maps line numbers to tokens: its bytes must be identical everywhere.
+spec/vocab/words-dict-v1.txt -text

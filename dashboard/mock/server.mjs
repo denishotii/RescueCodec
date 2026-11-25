@@ -19,6 +19,10 @@ const GATEWAY = "!0badc0de";
 // Channels the mock gateway listens on (a channel is known by its name). RescueCodec is the default for sending.
 const CHANNELS = { RescueCodec: { index: 1, name: "RescueCodec", public: false }, "draeger-srs": { index: 2, name: "draeger-srs", public: false } };
 const DEFAULT_CHANNEL = "RescueCodec";
+// Text mode per channel (GET /v2/health): the team channel packs (400 B of typed text), the other one sends normal texts.
+const SEND_AS = { RescueCodec: "compressed", "draeger-srs": "normal" };
+const TEXT_LIMITS = { text: 180, packed: 400 };
+const withMode = (c) => ({ ...c, mode: "auto", send_as: SEND_AS[c.name] ?? "normal" });
 
 // ---------------------------------------------------------------- airtime (same formula as the dashboard)
 function airtime(payload) {
@@ -199,9 +203,9 @@ if (!flag("empty")) seed();
 // ---------------------------------------------------------------- derived
 function health() {
   return { status: state.control.radio ? "ok" : "degraded", version: "2.0.0-mock", spec_version: "2.0.0", uptime_s: Math.round((Date.now() - state.started) / 1000) + 3605,
-    radio: state.control.radio ? { connected: true, kind: "sim", node: GATEWAY, port: 256, channel: DEFAULT_CHANNEL, channel_index: CHANNELS[DEFAULT_CHANNEL].index, channels: Object.values(CHANNELS), region: "EU_868", preset: "LONG_FAST", firmware: "2.7.26" }
+    radio: state.control.radio ? { connected: true, kind: "sim", node: GATEWAY, port: 256, channel: DEFAULT_CHANNEL, channel_index: CHANNELS[DEFAULT_CHANNEL].index, channels: Object.values(CHANNELS).map(withMode), region: "EU_868", preset: "LONG_FAST", firmware: "2.7.26" }
       : { connected: false, kind: "none", node: null, port: 256, channel: null, channels: [], region: null, preset: null, firmware: null },
-    mqtt: { connected: false } };
+    mqtt: { connected: false }, compact_text: false, text_limits: TEXT_LIMITS };
 }
 function stats() {
   let inN = 0, outN = 0, inB = 0, outB = 0, txt = 0, air = 0, hour = 0; const by = {};
@@ -327,8 +331,12 @@ const server = http.createServer(async (req, res) => {
     const b = await body(req); const text = typeof b?.text === "string" ? b.text.trim().replace(/\s+/g, " ") : "";
     if (!text) return json(res, 400, { error: { code: "bad_request", message: "the body needs a text (one sentence)", field: "text" } });
     const size = Buffer.byteLength(text, "utf8");
+    // Limit of the asked chat: 400 B where it packs, else 180 B (direct messages too). The mock does not pack.
+    const sendAs = b.to ? "normal" : SEND_AS[b.channel ?? DEFAULT_CHANNEL] ?? "normal";
+    const max = sendAs === "compressed" ? TEXT_LIMITS.packed : TEXT_LIMITS.text;
     return json(res, 200, { type: "text", message: { text: { text } }, unsupported: true, reason: "no_supported_type", lang: "unknown",
-      fields: [], text: { en: `Message: ${text}`, de: `Nachricht: ${text}` }, coded_bytes: size, text_bytes: size });
+      fields: [], text: { en: `Message: ${text}`, de: `Nachricht: ${text}` }, coded_bytes: size, text_bytes: size,
+      send_as: sendAs, max_text_bytes: max, form: "plain", cut: size > max });
   }
   if ((m = /^\/v2\/messages\/(\d+)$/.exec(p))) { const r = state.messages.find((x) => x.seq === Number(m[1])); return r ? json(res, 200, r) : json(res, 404, { error: { code: "not_found", message: "no such record", field: null } }); }
 

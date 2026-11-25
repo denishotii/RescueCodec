@@ -20,7 +20,8 @@ from rescuecodec.protocol.codec import confirmation_packet, encode_report, encod
 from rescuecodec.schemas import (Assistance, Breathing, Consciousness, Equipment,  # noqa: E402
                                  PersonFoundReport, Urgency)
 from rescuecodec.v2 import CodecError, decode, decode_any, encode, render  # noqa: E402
-from rescuecodec.v2 import textpack  # noqa: E402
+from rescuecodec.v2 import textpack, textwords  # noqa: E402
+from rescuecodec.v2.textwords import decode_words, encode_words  # noqa: E402
 
 POS = {"lat": 50.69212, "lon": 7.21345}  # Siebengebirge, near the Drachenfels
 NODE = "!a1b2c3d4"
@@ -65,6 +66,84 @@ PACKED_TEXT = [
      {"id": 6, "priority": "urgent", "pos": POS, "text": {"text": "Need a stretcher and two more people at the edge of the forest", "dict": 1}}),
     ("packed-long", "A 300-byte text (too long for a plain text) fits packed.",
      {"id": 8, "text": {"text": ("Sector 4 fully searched, nothing found. " * 8)[:300], "dict": 1}}),
+]
+
+
+def words_wire(words: bytes, dict_no: int | None = 1, id_: int = 7, extra: str = "") -> str:
+    """Envelope{id, text{words, words_dict?}} as hex, built by hand (also for broken streams)."""
+    body = extra + _ld(4, words) + (f"28{dict_no:02x}" if dict_no else "")
+    return f"08{id_:02x}" + _ld(13, bytes.fromhex(body))
+
+
+def _lit(data: bytes) -> bytes:
+    return (textwords.LITERAL + len(data)).to_bytes(2, "big") + data
+
+
+def _tok(entry: str) -> bytes:
+    return textwords.dictionary(1).index[entry].to_bytes(2, "big")
+
+
+#: Compact texts (word tokens, SPEC section 3.6). The encoding is exact, so every library that encodes must give
+#: `words` and `hex` byte for byte; every library must decode `hex` to `decoded` and `words` to `text`.
+NEAR_LIMIT = ("Update from team 3 at 14:20. We searched the whole north side of the valley along the river and the "
+              "old mill. No trace of the missing hiker so far. The path near the bridge is flooded, please use the "
+              "forest road instead. Two of us are tired but fine. We need more batteries for the radios, water and a "
+              "dry blanket. Next report in one hour. Wind from the west, light rain, ridge in fog.")
+COMPACT_TEXT = [
+    ("words-conversation", "Ordinary conversation.",
+     {"id": 21, "text": {"text": "Hi, are you still at the station? I will be there in ten minutes.", "words": 1}}),
+    ("words-rescue-update", "Rescue update with a place name and coordinates typed as text.",
+     {"id": 22, "text": {"text": "Team 3 reached Löwenburg hut. Missing hiker found at 50.6921, 7.2134, conscious, "
+                                 "needs a stretcher.", "words": 1}}),
+    ("words-name", "A name is a literal that owns its leading space: [We] [found] [literal \" Aylin Demir\"].",
+     {"id": 23, "text": {"text": "We found Aylin Demir", "words": 1}}),
+    ("words-name-first", "Token after a literal: no implied space, the space travels in the literal \"Aylin Demir \".",
+     {"id": 24, "text": {"text": "Aylin Demir is safe", "words": 1}}),
+    ("words-coordinates-prose", "Coordinates typed as prose keep the minus sign, comma and trailing zeroes.",
+     {"id": 25, "text": {"text": "Meet at 50.6900, -1.2500", "words": 1}}),
+    ("words-gps-field", "GPS from the report flow stays in Envelope.pos; the words carry no coordinates.",
+     {"id": 26, "priority": "urgent", "pos": POS, "text": {"text": "Found him, conscious, needs a stretcher", "words": 1}}),
+    ("words-poem", "A poem with intentional line breaks and repeated spaces.",
+     {"id": 27, "text": {"text": "The river runs\n  under the bridge,\n\nand we wait   for morning.\n", "words": 1}}),
+    ("words-unfamiliar", "Unfamiliar words go as one literal, never a near match.",
+     {"id": 28, "text": {"text": "Zyxomorph flibberjab quantimeter", "words": 1}}),
+    ("words-mixed-de-en", "Mixed German and English.",
+     {"id": 29, "text": {"text": "Wir sind am Parkplatz, the road is blocked, bitte langsam fahren.", "words": 1}}),
+    ("words-punctuation", "Punctuation, brackets and quotes.",
+     {"id": 30, "text": {"text": "Wait... what?! (Really) [yes] {ok}; done: \"fine\" - right?", "words": 1}}),
+    ("words-emoji", "Emoji and other non-Latin characters.",
+     {"id": 31, "text": {"text": "All safe 🙂👍 see you soon ❤️ Дякую", "words": 1}}),
+    ("words-call-sign", "Apartment number, call sign and capitals.",
+     {"id": 32, "text": {"text": "Apt 4B, call sign DL1ABC. NEED WATER NOW", "words": 1}}),
+    ("words-whitespace", "Leading and trailing spaces, tab and CR LF.",
+     {"id": 33, "text": {"text": "  line one\r\nline two\tend  ", "words": 1}}),
+    ("words-near-limit", "385 bytes of text in a 198-byte packet, near the 200-byte encoder limit (too long as a plain text).",
+     {"id": 300, "text": {"text": NEAR_LIMIT, "words": 1}}),
+]
+#: Token streams only (no packet): literal lengths around 127, 128, 255, 256 bytes. There is no length switch: a
+#: literal is 0xF800 + N for N = 1..2047, so none of these lengths changes the header.
+WORD_STREAMS = [
+    ("stream-literal-127", "A literal of 127 bytes.", "x" * 127),
+    ("stream-literal-128", "A literal of 128 bytes.", "x" * 128),
+    ("stream-literal-255", "A literal of 255 bytes.", "x" * 255),
+    ("stream-literal-256", "A literal of 256 bytes.", "x" * 256),
+    ("stream-literal-utf8", "A literal counts bytes, not characters: 4 x 4-byte emoji = 16 bytes.", "🙂🙂🙂🙂"),
+    ("stream-only-spaces", "Only whitespace: one literal.", "   "),
+    ("stream-glue", "Two dictionary words without a space between them need GLUE.", "safe(water)"),
+    ("stream-caps", "Capitalised and all-caps words use CAP and UPPER.", "Water WATER water"),
+]
+WORD_STREAMS_INVALID = [
+    ("stream-empty", "An empty stream.", b"", "malformed"),
+    ("stream-half-token", "One byte of a token.", b"\x00", "malformed"),
+    ("stream-literal-cut", "A literal header promising 5 bytes, 4 present.", bytes.fromhex("f805") + b"Ayli", "malformed"),
+    ("stream-literal-zero", "A literal of 0 bytes.", bytes.fromhex("f800"), "malformed"),
+    ("stream-unknown-control", "Control 0xF004 is reserved.", bytes.fromhex("f004") + bytes.fromhex("0010"), "malformed"),
+    ("stream-token-past-end", "Token 0xEFFF is past the end of a 8192-entry dictionary.", bytes.fromhex("efff"), "malformed"),
+    ("stream-control-at-end", "CAP with no token after it.", bytes.fromhex("0010f001"), "malformed"),
+    ("stream-control-before-literal", "CAP before a literal.", bytes.fromhex("f001f80178"), "malformed"),
+    ("stream-two-case-controls", "CAP and UPPER before one token.", bytes.fromhex("f001f0020010"), "malformed"),
+    ("stream-bad-utf8", "A literal that is not UTF-8.", bytes.fromhex("f802c328"), "malformed"),
+    ("stream-too-large", "Decodes to more than 1024 bytes.", _lit(b"x" * 1000) + _lit(b"x" * 25), "too_large"),
 ]
 
 
@@ -236,6 +315,13 @@ INVALID_ENCODE = [
     ("text-packed-1025", "A packed text is at most 1024 bytes unpacked.", {"text": {"text": "A" * 1025, "dict": 1}},
      "invalid_value", "text.text"),
     ("text-packed-empty", "A packed text must not be empty.", {"text": {"text": "", "dict": 1}}, "missing_field", "text.text"),
+    ("text-words-empty", "A compact text must not be empty.", {"text": {"text": "", "words": 1}}, "missing_field", "text.text"),
+    ("text-words-and-dict", "Give dict or words, not both.", {"text": {"text": "Hallo", "dict": 1, "words": 1}},
+     "invalid_value", "text.words"),
+    ("text-words-unknown", "Word dictionary 2 does not exist yet.", {"text": {"text": "Hallo", "words": 2}},
+     "invalid_value", "text.words"),
+    ("text-words-1025", "A compact text is at most 1024 bytes.", {"text": {"text": "A" * 1025, "words": 1}},
+     "invalid_value", "text.text"),
 ]
 
 # Decode-only cases: bytes another (newer or differently ordered) encoder may send.
@@ -266,6 +352,11 @@ DECODE_ONLY = [
      packed_wire(_raw_deflate(b"A" * 1024)), {"id": 7, "text": {"text": "A" * 1024, "dict": 1}}),
     ("packed-unknown-dict", "Dictionary 2 is from a newer spec: decode as unknown, do not reject.",
      packed_wire(_raw_deflate(b"Hallo"), 2), {"id": 7, "unknown": {}}),
+    ("words-unknown-dict", "Word dictionary 2 is unknown: decode as unknown with the number, shown as "
+     "\"dictionary this app does not have\", never as words.",
+     words_wire(bytes.fromhex("00100011"), 2), {"id": 7, "unknown": {"words": 2}}),
+    ("words-by-hand", "A stream built by hand: [is] [safe] [.] decodes like the encoder's own.",
+     words_wire(_tok("is") + _tok("safe") + _tok(".")), {"id": 7, "text": {"text": "is safe.", "words": 1}}),
 ]
 
 INVALID_DECODE = [
@@ -310,6 +401,22 @@ INVALID_DECODE = [
     ("wire-packed-bad-utf8", "The unpacked bytes are not UTF-8.", packed_wire(_raw_deflate(b"\xff\xfeHallo")),
      "malformed", "text.deflate"),
     ("wire-packed-empty", "The packed words are empty.", packed_wire(_raw_deflate(b"")), "missing_field", "text.text"),
+    ("wire-words-no-dict", "Word tokens need their dictionary number.", words_wire(_tok("safe"), None),
+     "missing_field", "text.words_dict"),
+    ("wire-words-dict-alone", "A word dictionary number without word tokens.",
+     "0807" + _ld(13, bytes.fromhex(_ld(1, b"Hallo") + "2801")), "invalid_value", "text.words_dict"),
+    ("wire-words-and-text", "A text has words or word tokens, not both.", words_wire(_tok("safe"), 1, extra=_ld(1, b"Hallo")),
+     "invalid_value", "text.words"),
+    ("wire-words-truncated", "The packet is cut inside a literal: the token stream ends early.",
+     words_wire(_tok("We") + _tok("found") + bytes.fromhex("f80c") + b" Aylin"), "malformed", "text.words"),
+    ("wire-words-half-token", "The token stream ends after one byte of a token.", words_wire(_tok("safe") + b"\x00"),
+     "malformed", "text.words"),
+    ("wire-words-unknown-control", "A reserved control code.", words_wire(bytes.fromhex("f7ff") + _tok("safe")),
+     "malformed", "text.words"),
+    ("wire-words-past-end", "A token past the end of the dictionary.", words_wire(bytes.fromhex("efff")),
+     "malformed", "text.words"),
+    ("wire-words-oversized-literal", "A literal length larger than the rest of the packet.",
+     words_wire(bytes.fromhex("f8c8") + b"Aylin"), "malformed", "text.words"),
 ]
 
 
@@ -331,7 +438,7 @@ def v1_cases() -> list[tuple[str, str, bytes]]:
 
 def main() -> None:
     out: dict = {
-        "spec_version": "2.0.0",
+        "spec_version": "2.1.0",
         "about": ("RescueCodec v2 conformance vectors. See spec/SPEC.md, section 'Conformance'. "
                   "valid: encode(input) must give hex exactly; decode(hex) must give decoded. "
                   "text: Level 2, render(decoded) must give these strings. "
@@ -340,11 +447,20 @@ def main() -> None:
                   "v1: decode_any(hex) must give decoded. "
                   "packed_text: unpack(deflate, dict) must give text, decode(hex) must give decoded, and "
                   "decode(encode(decoded)) must give decoded (compressors may make other bytes). "
-                  "text_dicts: SHA-256 of each text dictionary file."),
+                  "text_dicts: SHA-256 of each text dictionary file. "
+                  "compact_text: encode(input) must give hex exactly, decode(hex) must give decoded, "
+                  "decode_words(words, 1) must give text and encode_words(text, 1) must give words exactly. "
+                  "word_streams: encode_words(text) must give words, decode_words(words) must give text. "
+                  "word_streams_invalid: decode_words(words, 1) must be rejected with error. "
+                  "word_dicts: SHA-256 and entry count of each word dictionary file."),
         "valid": [], "decode_only": [], "invalid_encode": [], "invalid_decode": [], "v1": [],
         "packed_text": [],
         "text_dicts": {str(n): {"file": f"vocab/{name}", "sha256": sha, "size": len(textpack.dictionary(n))}
                        for n, (name, sha) in textpack.DICTS.items()},
+        "compact_text": [], "word_streams": [], "word_streams_invalid": [],
+        "word_dicts": {str(n): {"file": f"vocab/{name}", "sha256": sha, "entries": len(textwords.dictionary(n).entries),
+                                "size": (ROOT / "spec" / "vocab" / name).stat().st_size}
+                       for n, (name, sha) in textwords.DICTS.items()},
     }
     names = set()
     for name, note, msg in VALID:
@@ -360,7 +476,8 @@ def main() -> None:
         assert decoded == expected, (name, decoded)
         out["decode_only"].append({"name": name, "note": note, "hex": hexstr, "size": len(hexstr) // 2,
                                    "decoded": decoded})
-    all_names = ([c[0] for c in VALID + DECODE_ONLY + INVALID_ENCODE + INVALID_DECODE + PACKED_TEXT]
+    all_names = ([c[0] for c in VALID + DECODE_ONLY + INVALID_ENCODE + INVALID_DECODE + PACKED_TEXT + COMPACT_TEXT
+                  + WORD_STREAMS + WORD_STREAMS_INVALID]
                  + [c[0] for c in v1_cases()])
     assert len(all_names) == len(set(all_names)), "case names must be unique"
     for name, note, msg, code, field in INVALID_ENCODE:
@@ -388,14 +505,38 @@ def main() -> None:
         out["packed_text"].append({"name": name, "note": note, "text": msg["text"]["text"], "dict": 1,
                                    "deflate": deflate.hex(), "hex": data.hex(), "size": len(data),
                                    "text_size": plain, "decoded": decoded})
+    for name, note, msg in COMPACT_TEXT:
+        data = encode(msg)
+        assert len(data) <= 200, name
+        decoded = decode(data)
+        assert encode(decoded) == data, name
+        text = msg["text"]["text"]
+        words = encode_words(text, 1)
+        assert decode_words(words, 1) == text and decoded["text"]["text"] == text, name
+        out["compact_text"].append({"name": name, "note": note, "input": msg, "text": text, "words": words.hex(),
+                                    "hex": data.hex(), "size": len(data), "text_size": len(text.encode("utf-8")),
+                                    "decoded": decoded,
+                                    "render": {"en": render(decoded, "en"), "de": render(decoded, "de")}})
+    for name, note, text in WORD_STREAMS:
+        words = encode_words(text, 1)
+        assert decode_words(words, 1) == text, name
+        out["word_streams"].append({"name": name, "note": note, "text": text, "words": words.hex()})
+    for name, note, words, code in WORD_STREAMS_INVALID:
+        try:
+            decode_words(words, 1)
+        except textwords.WordsError as exc:
+            assert exc.code == code, (name, exc.code)
+        else:
+            raise AssertionError(f"{name} was accepted")
+        out["word_streams_invalid"].append({"name": name, "note": note, "words": words.hex(), "error": code})
     for name, note, data in v1_cases():
         out["v1"].append({"name": name, "note": note, "hex": data.hex(), "size": len(data), "decoded": decode_any(data)})
     path = ROOT / "spec" / "vectors" / "codec.json"
     path.write_text(json.dumps(out, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
-    total = sum(len(out[k]) for k in ("valid", "decode_only", "invalid_encode", "invalid_decode", "v1", "packed_text"))
-    print(f"wrote {path.relative_to(ROOT)}: {total} cases "
-          + ", ".join(f"{k}={len(out[k])}" for k in ("valid", "decode_only", "invalid_encode", "invalid_decode", "v1",
-                                                     "packed_text")))
+    sections = ("valid", "decode_only", "invalid_encode", "invalid_decode", "v1", "packed_text", "compact_text",
+                "word_streams", "word_streams_invalid")
+    total = sum(len(out[k]) for k in sections)
+    print(f"wrote {path.relative_to(ROOT)}: {total} cases " + ", ".join(f"{k}={len(out[k])}" for k in sections))
 
 
 if __name__ == "__main__":

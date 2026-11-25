@@ -1,14 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
-  MAX_TEXT_BYTES, QUICK, buildSend, byteLength, defaultTarget, directOptions, headOf, parseTargetKey, plainOnlyReason,
-  previewView, sendChannels, sendErrorText, targetKey, type Target,
+  MAX_PACKED_TEXT_BYTES, MAX_TEXT_BYTES, QUICK, buildSend, byteLength, counterView, defaultTarget, directOptions,
+  extractBody, headOf, inputCap, parseTargetKey, plainOnlyReason, previewView, sendChannels, sendErrorText, targetKey,
+  textLimit, type Target,
 } from "../src/lib/compose";
-import type { Channel, ExtractResult, Health, MeshNode } from "../src/api/types";
+import type { Channel, ExtractResult, Health, MeshNode, RadioChannel } from "../src/api/types";
+import { t } from "../src/lib/i18n";
 
 const RC: Channel = { index: 1, name: "RescueCodec", public: false };
 const DR: Channel = { index: 2, name: "draeger-srs", public: false };
 const LF: Channel = { index: 0, name: "LongFast", public: true };
-const health = (channels: Channel[], channel: string | null = "RescueCodec"): Health => ({
+const health = (channels: RadioChannel[], channel: string | null = "RescueCodec"): Health => ({
   status: "ok", version: "x", spec_version: "2.0.0", uptime_s: 1, mqtt: { connected: false },
   radio: { connected: true, kind: "sim", node: "!0badc0de", port: 256, channel, channels },
 });
@@ -87,6 +89,68 @@ describe("preview line", () => {
   it("takes the head of a line with a priority mark", () => {
     expect(headOf("[URGENT] Request: 2 x stretcher.")).toBe("Request");
     expect(headOf("2 persons found: unconscious.")).toBe("2 persons found");
+  });
+});
+
+describe("compact texts and the 400-byte limit on a chat that packs", () => {
+  const PACKS: RadioChannel = { ...RC, mode: "auto", send_as: "compressed" };
+  const NORMAL: RadioChannel = { ...DR, mode: "normal", send_as: "normal" };
+  const h = { ...health([PACKS, NORMAL, LF]), compact_text: true, text_limits: { text: 180, packed: 400 } };
+  const team: Target = { kind: "channel", name: "RescueCodec" };
+  const WORDS: ExtractResult = {
+    ...TEXT, message: { text: { text: "Hi, are you still at the station?" } }, coded_bytes: 58, text_bytes: 151,
+    send_as: "compressed", max_text_bytes: 400, form: "words", cut: false,
+  };
+
+  it("takes 400 B on a chat that packs and 180 B elsewhere", () => {
+    expect(MAX_PACKED_TEXT_BYTES).toBe(400);
+    expect(textLimit(team, h, null)).toBe(400);
+    expect(textLimit({ kind: "channel", name: "rescuecodec" }, h, null)).toBe(400);
+    expect(textLimit({ kind: "channel", name: "draeger-srs" }, h, null)).toBe(180);
+    expect(textLimit({ kind: "channel", name: "LongFast" }, h, null)).toBe(180);
+    expect(textLimit({ kind: "direct", node: "!0000e002" }, h, null)).toBe(180);
+    expect(textLimit(null, null, null)).toBe(180);
+  });
+  it("an older gateway without send_as or text_limits keeps 180 B", () => {
+    expect(textLimit(team, health([RC]), null)).toBe(180);
+    expect(textLimit(team, health([{ ...RC, send_as: "compressed" }]), null)).toBe(400);
+  });
+  it("the gateway's preview has the last word, a direct message too", () => {
+    expect(textLimit({ kind: "direct", node: "!0000e002" }, h, { ...TEXT, max_text_bytes: 400 })).toBe(400);
+    expect(textLimit(team, h, { ...TEXT, max_text_bytes: 180 })).toBe(180);
+    expect(textLimit(team, h, TEXT)).toBe(400);
+  });
+  it("asks the gateway for the chosen chat", () => {
+    expect(extractBody("  Hi there ", team)).toEqual({ text: "Hi there", channel: "RescueCodec" });
+    expect(extractBody("Hi", { kind: "direct", node: "!0000e002" })).toEqual({ text: "Hi", to: "!0000e002" });
+    expect(extractBody("Hi", null)).toEqual({ text: "Hi" });
+  });
+  it("counts against the limit and warns when the text will be cut", () => {
+    expect(counterView("x".repeat(300), 400, null)).toEqual({ used: 300, limit: 400, near: false, cut: false });
+    expect(counterView("x".repeat(390), 400, null)).toEqual({ used: 390, limit: 400, near: true, cut: false });
+    expect(counterView("x".repeat(300), 400, { ...WORDS, cut: true }).cut).toBe(true);
+    expect(counterView("x".repeat(300), 180, null)).toEqual({ used: 300, limit: 180, near: true, cut: true });
+    expect(counterView("Grüß", 180, null).used).toBe(6);
+  });
+  it("never cuts text that is already there when the limit drops", () => {
+    expect(inputCap(400, "x".repeat(10))).toBe(400);
+    expect(inputCap(180, "x".repeat(300))).toBe(300);
+  });
+  it("shows compact words with the plain size", () => {
+    expect(previewView("Hi, are you still at the station?", WORDS, false, "en")).toEqual({
+      report: false, head: "Compact words", bytes: 58, textBytes: 151, chips: [],
+    });
+    expect(previewView("Hi, are you still at the station?", WORDS, true, "de")).toEqual({
+      report: false, head: "Kompakte Wörter", bytes: 58, textBytes: 151, chips: [],
+    });
+    expect(previewView("Hi", { ...WORDS, form: "deflate" }, false, "en").head).toBe("");
+    expect(previewView("Hi", { ...WORDS, form: "plain", coded_bytes: 151 }, false, "en")).toEqual({
+      report: false, head: "", bytes: 151, textBytes: null, chips: [],
+    });
+  });
+  it("says it in plain words, in both languages", () => {
+    expect(t("en", "willBeCut")).toBe("Too long: will be cut to fit one radio message");
+    expect(t("de", "willBeCut")).toBe("Zu lang: wird gekürzt, damit es in eine Funknachricht passt");
   });
 });
 

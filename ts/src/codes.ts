@@ -1,7 +1,7 @@
 // Code tables: JSON names <-> wire numbers. Mirrors spec/rescuecodec/v2/rescuecodec.proto.
 // test/codes.test.ts checks that these agree with the generated protobuf code.
 
-export const SPEC_VERSION = "2.0.0";
+export const SPEC_VERSION = "2.1.0";
 /** Meshtastic port number used for RescueCodec packets (PRIVATE_APP). */
 export const PORTNUM = 256;
 
@@ -10,6 +10,8 @@ export const MAX_DECODE_BYTES = 233;
 export const MAX_ID = 16383;
 export const MAX_TRACK_POINTS = 16;
 export const MAX_TEXT_BYTES = 180;
+/** Typed text a chat that packs (DEFLATE or word tokens) accepts; the packet stays <= 200 bytes. */
+export const MAX_PACKED_TEXT_BYTES = 400;
 export const MAX_TEAM_BYTES = 12;
 export const MAX_COUNT = 255;
 export const MAX_RADIUS_M = 100_000;

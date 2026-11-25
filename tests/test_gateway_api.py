@@ -22,7 +22,7 @@ class Basics(unittest.TestCase):
         with gateway() as gw:
             body = gw.client.get("/v2/health").json()
             self.assertEqual(body["status"], "ok")
-            self.assertEqual(body["spec_version"], "2.0.0")
+            self.assertEqual(body["spec_version"], "2.1.0")
             self.assertEqual(body["radio"]["kind"], "sim")
             self.assertEqual(body["radio"]["port"], 256)
             self.assertFalse(body["mqtt"]["connected"])

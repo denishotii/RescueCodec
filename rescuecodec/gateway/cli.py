@@ -54,6 +54,10 @@ def build_parser() -> argparse.ArgumentParser:
                      "always a normal text. Packed only when it saves 3 bytes; public channels always get normal text (default auto)")
     svc.add_argument("--text-as-meshtastic", choices=["on", "off"], default=env("TEXT_AS_MESHTASTIC", "on"),
                      help="old setting, replaced by --text-mode. off = channels default to compressed")
+    svc.add_argument("--compact-text", choices=["on", "off"], default=env("COMPACT_TEXT", "off"),
+                     help="compact encoding for text messages (word tokens, SPEC section 3.6). on = in a chat that packs "
+                     "(RescueCodec users only, never public channels), also build the word-token form and send it when "
+                     "its whole packet is smaller. Receiving compact texts works either way (default off)")
     con = p.add_argument_group("connectors")
     con.add_argument("--mqtt", metavar="HOST[:PORT]", default=env("MQTT"), help="publish JSON to this MQTT broker (needs paho-mqtt)")
     con.add_argument("--mqtt-user", default=env("MQTT_USER"))
@@ -85,6 +89,7 @@ def config_from_args(args: argparse.Namespace) -> GatewayConfig:
         db_path=args.db, team=args.team, preset=args.preset, ack_timeout_s=args.ack_timeout,
         text_over_air=args.text_over_air, text_lang=args.text_lang, text_mode=args.text_mode,
         text_as_meshtastic=str(args.text_as_meshtastic).lower() in ("on", "1", "true", "yes"),
+        compact_text=str(args.compact_text).lower() in ("on", "1", "true", "yes"),
         mqtt=args.mqtt, mqtt_user=args.mqtt_user, mqtt_password=args.mqtt_password, mqtt_prefix=args.mqtt_prefix,
         cot=args.cot or bool(args.cot_tcp), cot_udp=args.cot_udp, cot_iface=args.cot_iface, cot_tcp=args.cot_tcp,
         cot_stale_min=args.cot_stale_min, host=args.host, http_port=args.port, static_dir=args.static_dir,

@@ -254,6 +254,8 @@
 .plain-toggle.locked { cursor: default; color: var(--ink-3); }
 .send-count { font-size: var(--fs-xs); color: var(--ink-3); white-space: nowrap; }
 .send-count.near { color: var(--open); font-weight: 700; }
+.send-count.over { color: var(--mayday); font-weight: 700; }
+.send-warn { color: var(--open); font-weight: 600; }
 .send-result { display: flex; flex-wrap: wrap; align-items: center; gap: 4px var(--sp-2); font-size: var(--fs-sm); }
 .send-result.err { color: var(--mayday); font-weight: 600; background: var(--mayday-soft); padding: 6px 10px; border-radius: var(--r-ctl); }
 .send-result-text { color: var(--ink-2); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 8rem; }

@@ -383,7 +383,11 @@ class Text(_message.Message):
     TEXT_FIELD_NUMBER: _ClassVar[int]
     DEFLATE_FIELD_NUMBER: _ClassVar[int]
     DICT_FIELD_NUMBER: _ClassVar[int]
+    WORDS_FIELD_NUMBER: _ClassVar[int]
+    WORDS_DICT_FIELD_NUMBER: _ClassVar[int]
     text: str
     deflate: bytes
     dict: int
-    def __init__(self, text: _Optional[str] = ..., deflate: _Optional[bytes] = ..., dict: _Optional[int] = ...) -> None: ...
+    words: bytes
+    words_dict: int
+    def __init__(self, text: _Optional[str] = ..., deflate: _Optional[bytes] = ..., dict: _Optional[int] = ..., words: _Optional[bytes] = ..., words_dict: _Optional[int] = ...) -> None: ...

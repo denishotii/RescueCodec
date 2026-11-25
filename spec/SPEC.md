@@ -1,6 +1,6 @@
 # RescueCodec v2 specification
 
-Version 2.0.0, 25 Nov 2026. Licence: Apache-2.0 (spec, vocabulary, test vectors and libraries).
+Version 2.1.0, 25 Nov 2026 (2.1 adds compact texts, section 3.6). Licence: Apache-2.0 (spec, vocabulary, test vectors and libraries).
 
 ## 1. Purpose
 
@@ -101,12 +101,14 @@ A node not heard for 24 hours is forgotten. Readable copies (`[RC] ` texts) do n
 3. Auto, direct chat: packed when the peer runs RescueCodec, else normal text.
 4. Auto, channel: packed when at least one RescueCodec node and no Meshtastic user was heard on that channel in the last 24 hours. Otherwise normal text, also when nobody is known yet (reason `nobody_known`), so a new or foreign channel (for example a partner's) always gets text everyone can read.
 5. Packed only when it saves at least **3 bytes**: the packed packet (with id, `pos`, `time`, priority) must be at least 3 bytes smaller than the normal text (the words, cut to 200 bytes like `fit_plain`). Else normal text. A GPS position costs 11 bytes, so short texts with a position stay normal.
+6. **Compact text** (opt-in, off by default: app setting "Use compact encoding for text messages", gateway `--compact-text on`). Only when rules 1 to 4 say packed: the sender also builds the word-token form (section 3.6) and sends it when its whole payload is **smaller** than what rule 5 picked (the DEFLATE packet or the normal text). A tie or a loss keeps rule 5. Sizes are complete payloads: envelope, id, `pos`, mode and dictionary fields included.
+7. **Length.** A chat that packs (rules 2 to 4 say packed) takes up to **400 bytes** of typed text (`MAX_PACKED_TEXT_BYTES`); any other chat 180 bytes. The packet stays at most 200 bytes. A text that no form keeps whole in 200 bytes is cut (section 3.6.6) and the composer says "Too long: will be cut to fit one radio message". There is no multipart message.
 
 Examples: "Ok" is 2 bytes as a normal text and 12 packed: normal. "We are at the hut, two people with us, waiting for the vehicle on the forest road" is 81 bytes as a normal text and 42 packed with an id (53 with a GPS position): packed on a RescueCodec channel. As soon as someone with the official app writes on that channel, the next text goes normal, so that person can read it.
 
 The old setting "Send plain text as normal Meshtastic text" (app) and `--text-as-meshtastic` (gateway) are replaced by the mode. Migration: if the setting was off, channels start as Always compressed.
 
-Libraries: `rescuecodec.engine.textmode` (`wants_packed`, `choose_form`) in Python and `TextMode` in the Kotlin engine give the same answers.
+Libraries: `rescuecodec.engine.textmode` (`wants_packed`, `choose_form(..., compact)`, `fit_packed`) in Python and `TextMode` / `TextFit.fitPacked` in the Kotlin engine give the same answers.
 
 ## 3. Wire format
 
@@ -191,11 +193,11 @@ The packing keeps a typical found at 23 bytes. Five separate enum fields would c
 
 **ack** (answer to a message with an id): `ref` = id of the answered message (required), `node` = Meshtastic node number of its sender (`fixed32`, required), `status` (1 accepted, 2 declined, 3 done; required), `eta` minutes (0 = not stated, at most 1440), `team` label (at most 12 bytes UTF-8, for example "Trupp 3", never a personal name). Acks are broadcast, so every team sees who took a task.
 
-**text**: 1 to 180 bytes of UTF-8 for anything the codes cannot say. Or the same words packed (section 3.5).
+**text**: 1 to 180 bytes of UTF-8 for anything the codes cannot say. Or the same words packed (section 3.5), or as compact word tokens (section 3.6).
 
 ### 3.5 Packed text
 
-`Text` has three fields. Exactly one of `text` and `deflate` is set.
+`Text` has five fields. Exactly one of `text`, `deflate` and `words` (section 3.6) is set.
 
 | # | Field | Meaning |
 |---|---|---|
@@ -228,6 +230,97 @@ A phrase that also comes later is left out. `.gitattributes` keeps the file byte
 
 Without a dictionary DEFLATE saves nothing on texts this short. With the 3-byte rule (section 2.3), all 40 held-out messages go packed when the packet has only an id; with a GPS position 31 of 40 do (18 German, 13 English). Example: "We are at the hut, two people with us, waiting for the vehicle on the forest road" is 81 bytes, 34 bytes packed, 42 bytes as a whole packet with an id.
 
+### 3.6 Compact text (word tokens)
+
+Added in 2.1. A third form of `Text`: the words as **2-byte dictionary tokens**. Every word of the shared word dictionary costs 2 bytes, a single space between two such words costs nothing, and anything the dictionary cannot say (names, numbers, coordinates, emoji, other languages) goes as an exact **literal** of UTF-8 bytes. The receiver gets the text back **byte for byte**: `decode(encode(text)) == text` for every text. Nothing is ever replaced by a similar word.
+
+#### 3.6.1 Fields
+
+| # | Field | Meaning |
+|---|---|---|
+| 4 | `words` | The token stream (3.6.2). Decodes to 1 to 1024 bytes of UTF-8. |
+| 5 | `words_dict` | Number of the word dictionary, required with `words`. `1` = `vocab/words-dict-v1.txt`. |
+
+Exactly one of `text`, `deflate` and `words` is set. The **mode** is told by the field that is set (field 4 = word tokens); the **dictionary version** by `words_dict`. The token codes and controls below belong to word dictionary 1: a new token rule or a new control needs a new `words_dict` number. The two fields cost 4 bytes plus the stream, the same as `deflate` with `dict`.
+
+#### 3.6.2 Token stream
+
+A sequence of 16-bit **big-endian** units, read one after another:
+
+| Unit | Meaning |
+|---|---|
+| `0x0000`..`0xEFFF` | Dictionary entry: line number minus 1 of the dictionary file. A number at or past the end of the dictionary is `malformed`. |
+| `0xF001` CAP | The next entry is written with its first character `a`..`z` changed to `A`..`Z`. |
+| `0xF002` UPPER | The next entry is written with every `a`..`z` changed to `A`..`Z`. |
+| `0xF003` GLUE | No space before the next entry (where rule 3.6.3 would put one). |
+| `0xF800 + N` | **Literal**: the next **N bytes** (N = 1..2047, counted in UTF-8 bytes, not characters) are UTF-8 and are copied exactly. Each literal is valid UTF-8 on its own. |
+| `0xF000`, `0xF004`..`0xF7FF`, `0xF800` | Reserved. `malformed`. |
+
+The literal length lives in the unit itself, so a literal costs 2 bytes plus its bytes, whatever its length: there is no length switch at 127 or 255 (vectors `stream-literal-127` to `-256`). A text is at most 1024 bytes, so a literal is never split. Case changes are ASCII only, never locale rules (no "ß" to "SS").
+
+#### 3.6.3 Spaces, punctuation and capitals
+
+The decoder writes the units in order and puts **one space** before a dictionary entry only when all of these hold:
+- the unit before it (controls not counted) is a dictionary entry, not a literal and not the start,
+- no GLUE was given for it,
+- it does not start with one of `.` `,` `;` `:` `!` `?` `)` `]` `}` `…` (they attach to the left),
+- the entry before it does not end with `(` `[` `{` (they attach to the right).
+
+Never next to a literal: **a literal carries its own spaces**, before and after. Examples (token numbers from dictionary 1: `We` = 80, `found` = 248, `is` = 24, `safe` = 862, `meet` = 892, `at` = 61, `50` = 2092):
+
+| Text | Stream | Bytes |
+|---|---|---|
+| `We found Aylin Demir` | `[We] [found] [literal 12 " Aylin Demir"]` = `004f 00f7 f80c 2041796c696e2044656d6972` | 18 instead of 20 |
+| `Aylin Demir is safe` | `[literal 12 "Aylin Demir "] [is] [safe]` = `f80c 41796c696e2044656d697220 0017 035d` | 18 instead of 19 |
+| `Meet at 50.6900, -1.2500` | `CAP [meet] [at] [50] [literal 14 ".6900, -1.2500"]` = `f001 037b 003c 082b f80e 2e36393030...` | 24 instead of 24 |
+| `is safe.` | `[is] [safe] [.]` (`.` attaches left) | 6 instead of 8 |
+
+So a name owns the space in front of it (" Aylin Demir"), and a word after a literal gets no space of its own (the space travels at the end of the literal: "Aylin Demir "). Without that trailing space the same tokens decode to "Aylin Demiris safe": the decoder never invents a space. Line breaks, tabs, two spaces in a row, a space before punctuation: all go into literals, so they come back exactly.
+
+#### 3.6.4 Encoder (identical bytes in every library)
+
+1. **Pieces.** Split the text into `gap0 piece1 gap1 piece2 ... pieceN gapN`. A gap is a run of space, tab, CR and LF (maybe empty). A piece is one of `. , ; : ! ? ( ) [ ] { } " …`, or a run of any other characters. Other Unicode spaces (for example U+00A0) are piece characters.
+2. **Matches.** For pieces i..j (at most as many pieces as the longest entry has), the span text is `piece_i gap_i ... piece_j`. It matches: the entry equal to it (2 bytes); else, if it starts with `A`..`Z`, CAP + the entry equal to it with that letter lowered (4 bytes); else, if lowering every `A`..`Z` changes it and upper-casing the result gives it back, UPPER + that entry (4 bytes). Nothing else matches.
+3. **Shortest stream.** Dynamic programming over positions 0..N with two states, TOK (the last unit is an entry) and LIT (a literal is open). From each position k (k ascending), for each state (TOK, or START at k = 0, before LIT), first every match starting at piece k+1 (shorter spans first), then the literal step:
+   - entry after TOK with an implied space (3.6.3) and gap `" "`: entry cost; gap `""`: GLUE + entry; any other gap: new literal with the gap + entry;
+   - entry otherwise: gap `""`: entry cost; else the gap goes into the open literal (state LIT) or a new one (2 + bytes) + entry;
+   - literal step: gap + piece into the open literal, or a new one (2 bytes more).
+   A step replaces the best way to a (position, state) only when it is **strictly shorter**. At the end the trailing gap goes into the open literal or a new one; on a tie the TOK ending wins.
+4. **Write.** Follow the chosen steps; a literal is written when an entry follows it or at the end. Controls in this order: GLUE, then CAP or UPPER, then the entry.
+
+`rescuecodec/v2/textwords.py` is the reference (`encode_words`, `decode_words`). Kotlin `TextWords` and TypeScript `textwords.ts` give the same bytes on every vector and on thousands of random texts.
+
+#### 3.6.5 Decoder and errors
+
+- A stream of 0 bytes, half a unit at the end, a literal cut off, a literal of 0 bytes, a reserved code, a token past the dictionary's end, a control at the end or before a literal, two case controls or two GLUEs in a row, or a literal that is not UTF-8: `malformed` (field `text.words`).
+- More than 1024 bytes of output: `too_large` (`text.words`); stop decoding there.
+- `words` without `words_dict`: `missing_field` (`text.words_dict`). `words_dict` without `words`: `invalid_value` (`text.words_dict`). `words` with `text` or `deflate`: `invalid_value` (`text.words`). `dict` with `words`: `invalid_value` (`text.dict`).
+- JSON with both `dict` and `words`, or a `words` number the encoder does not have: `invalid_value` (`text.words`).
+- **Dictionary mismatch is visible.** A `words_dict` this library does not have, **or whose bundled copy does not match the SHA-256 in 3.6.8**, is not an error and never shown as words: the body is `unknown` with `{"words": n}`, and the readable line is the head `unknown_dict`: "Message encoded with a dictionary this app does not have (word dictionary n), please update the app". Libraries check the SHA-256 when they load the file, so a damaged copy cannot produce plausible wrong text. A fingerprint on the air is not needed for that and would cost 2 to 4 bytes per message.
+
+#### 3.6.6 Long texts: the cut
+
+A chat that packs takes up to 400 bytes of typed text. `choose_form` first checks whether one form keeps the whole text in one packet (the normal text up to 200 bytes, the DEFLATE packet or, with compact on, the word packet, each at most 200 bytes). If none does, or the text is over 400 bytes, it is cut (`fit_packed` in Python, `TextFit.fitPacked` in Kotlin): the **longest prefix that ends on a whole UTF-8 character**, trailing whitespace removed, plus "…" (U+2026), that is at most 400 bytes and that one form keeps in 200 bytes. Then the forms are chosen as usual. Example: 380 bytes of random letters do not compress; they are cut to about 190 bytes plus "…".
+
+#### 3.6.7 Older readers
+
+A reader before 2.1 does not know fields 4 and 5. It sees a `Text` with an empty `text` and rejects the packet (`missing_field`, `text.text`): the 2.0 app shows "Unreadable message", the 2.0 gateway counts it as rejected. It **never shows wrong words**. The sender cannot see the reader's version, so compact text is off by default. A team with older apps keeps it off or sets the chat to Always normal.
+
+GPS from the report flow stays in `Envelope.pos` (11 bytes), never in the words, so a compact text with a position is still on the map. Coordinates typed into the text are just text: every character comes back (`words-coordinates-prose`).
+
+#### 3.6.8 The word dictionary
+
+`vocab/words-dict-v1.txt`: 8192 entries, one per line, UTF-8, LF, ending with LF, 66607 bytes, SHA-256 `ffe93afb4623fcd364479169281ca745cc263317a4f83ce27f77d8d37b26a0d8`. Entry = line number minus 1. Entries are case-sensitive, have no tabs or line breaks and no leading or trailing space; 738 are two-word phrases ("do you"). It is frozen: a better one becomes word dictionary 2. `tools/words_dict.py` builds it reproducibly from two openly licensed corpora (English disaster-response messages, CC BY 4.0, and Tatoeba English sentences, CC BY 2.0 FR) plus the words of `vocab/sar.yaml`; sources, licences, privacy filter, selection and measurements are in `docs/COMPACT_TEXT.md`. The app and the gateway bundle the same file (the Android build copies it from `spec/vocab`, TypeScript has a generated copy checked by SHA-256 in its tests). In the APK it takes 31.6 KB (zip compressed).
+
+**Measured** on held-out messages (`tools/words_dict.py measure`, complete payloads with an id, chat that packs, compact on):
+
+| Held-out set | Messages | Normal text | Sent (best form) | Saved | Median per message | Sent as words / DEFLATE / normal |
+|---|---|---|---|---|---|---|
+| Conversational (Tatoeba) | 4998 | 199681 B | 137669 B | 31.1 % | 28.6 % | 83.3 % / 3.4 % / 13.2 % |
+| Disaster messages | 2357 | 317307 B | 176659 B | 44.3 % | 43.6 % | 92.1 % / 6.3 % / 1.6 % |
+
+Without compact text (DEFLATE or normal, the 2.0 rule) the same sets save 9.7 % and 25.4 %.
+
 ## 4. Canonical JSON
 
 Every library, the gateway API, MQTT and the test vectors use one JSON shape. Rules:
@@ -241,7 +334,7 @@ Every library, the gateway API, MQTT and the test vectors use one JSON shape. Ru
 - `time` is `"HH:MM"` (UTC, two digits each).
 - `track` is `{"points": [{"lat", "lon", "s"}]}` with absolute positions. `s` is seconds after the `time` minute, cumulative (never goes down). Give `s` on every point or on none.
 - `ack.node` is the Meshtastic id string `"!a1b2c3d4"` (8 lowercase hex digits).
-- `text` is always the unpacked words. A packed text (section 3.5) adds `"dict": 1`: `{"text": {"text": "Bin unterwegs", "dict": 1}}`. Encoders pack when `dict` is given. Example of a decoded packed text: `{"id": 3, "text": {"text": "We are at the hut, ...", "dict": 1}}`.
+- `text` is always the unpacked words. A compact text (section 3.6) adds `"words": 1` (encoders build word tokens when `words` is given); an unknown word dictionary decodes as `{"unknown": {"words": 2}}`. A packed text (section 3.5) adds `"dict": 1`: `{"text": {"text": "Bin unterwegs", "dict": 1}}`. Encoders pack when `dict` is given. Example of a decoded packed text: `{"id": 3, "text": {"text": "We are at the hut, ...", "dict": 1}}`.
 - Decoders of old v1 packets add `"v": 1` (section 7). v2 decoders MAY add `"v": 2`.
 
 Example (the found report from section 3.2):
@@ -261,7 +354,7 @@ Encoders and decoders apply the same value rules. A decoder MUST reject a packet
 | `empty` | Zero bytes. |
 | `too_large` | Encoder output over 200 bytes, decoder input over 233 bytes, or a packed text that unpacks to more than 1024 bytes (`text.deflate`). |
 | `unsupported_version` | First byte 0x00 or 0x02..0x07 (reserved), or 0x01 given to a v2-only decoder. |
-| `malformed` | Not valid protobuf (cut-off varint, length past the end, invalid UTF-8 in a string), or a packed text that is not a complete DEFLATE stream of UTF-8 (`text.deflate`). |
+| `malformed` | Not valid protobuf (cut-off varint, length past the end, invalid UTF-8 in a string), a packed text that is not a complete DEFLATE stream of UTF-8 (`text.deflate`), or a broken word-token stream (`text.words`, section 3.6.5). |
 | `no_body` | No body field at all, and no unknown field that could be a newer body type. |
 | `multiple_bodies` | JSON with more than one body key. (On the wire protobuf keeps the last one.) |
 | `unknown_key` | JSON key that the spec does not define. |
@@ -280,6 +373,9 @@ Forward compatibility comes first: unknown enum numbers, unknown flag bits, rese
 | Track points | 1..16 per packet |
 | Text | 1..180 bytes UTF-8 |
 | Packed text | 1..1024 bytes UTF-8 after unpacking, packet still at most 200 bytes |
+| Compact text (word tokens) | 1..1024 bytes UTF-8 after decoding, packet still at most 200 bytes |
+| Typed text in a chat that packs | 1..400 bytes UTF-8 (`MAX_PACKED_TEXT_BYTES`), cut to fit one packet (3.6.6) |
+| Word dictionary | at most 61440 entries (v1: 8192) |
 | Text dictionary | under 16 KB |
 | Team label | 0..12 bytes UTF-8 |
 | count, responders, persons | 0..255 |
@@ -400,6 +496,9 @@ Rules for extractors:
    - `v1`: if you support v1, `decode_any(hex)` gives `decoded`.
    - `packed_text`: `unpack(deflate, dict)` gives `text` (inflate the reference bytes), `decode(hex)` gives `decoded`, and `decode(encode(decoded))` gives `decoded` again. The bytes of your own packing may differ from `deflate`.
    - `text_dicts`: the SHA-256 of your bundled dictionary matches.
+   - `compact_text`: `encode(input)` gives `hex` exactly, `decode(hex)` gives `decoded`, `encode_words(text, 1)` gives `words` exactly, `decode_words(words, 1)` gives `text`, and `render` gives `render.en` / `render.de`.
+   - `word_streams`: token streams only (no packet), both ways. `word_streams_invalid`: rejected with `error`.
+   - `word_dicts`: the SHA-256 and entry count of your bundled word dictionary match.
 4. Level 2 (optional): `render(decoded, "en")` and `"de"` give the `text` strings exactly.
 5. Level 3 (optional): your extractor passes `vectors/extraction.json`.
 6. State in your README: "Passes RescueCodec 2.0.0 conformance Level 1 (and 2, 3)". That is the proof. Never edit the vectors to make a library pass; report a bug instead.
@@ -469,8 +568,10 @@ Any other move is an `invalid_transition` error. A valid move produces an Ack to
 | `spec/rescuecodec/v2/rescuecodec.proto` | Wire format |
 | `spec/vocab/sar.yaml` | Codes, meanings, German and English words |
 | `spec/i18n/{en,de,uk,tr,ar}.json` | Words for readable text (uk, tr, ar are machine drafts) |
-| `spec/vectors/codec.json` | 143 conformance cases (43 valid, 13 decode-only, 77 invalid, 5 v1, 5 packed texts) and the SHA-256 of each text dictionary |
+| `spec/vectors/codec.json` | 190 conformance cases (43 valid, 15 decode-only, 89 invalid, 5 v1, 5 packed texts, 14 compact texts, 8 word streams, 11 invalid word streams) and the SHA-256 of each text and word dictionary |
 | `spec/vocab/text-dict-v1.txt` | Text dictionary 1 for packed texts (frozen) |
+| `spec/vocab/words-dict-v1.txt` | Word dictionary 1 for compact texts (frozen, section 3.6.8) |
+| `spec/tools/words_dict.py` | Builds, chooses and measures the word dictionary (corpora are downloaded, not in the repo) |
 | `spec/tools/text_dict.py` | Builds and measures the text dictionary (`text-dict-words.txt`, `text-corpus.json`) |
 | `spec/vectors/extraction.json` | 73 extraction sentences |
 | `spec/api/openapi.yaml` | Gateway REST and WebSocket API |

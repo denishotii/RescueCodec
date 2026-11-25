@@ -33,7 +33,7 @@ import org.rescuecodec.v2.proto.Track
  * Use [Json] to turn it into text and back. Every function throws [CodecException] for input that
  * breaks the spec rules, and never for valid input.
  *
- * Passes RescueCodec 2.0.0 conformance Level 1 (codec) and Level 2 (readable text).
+ * Passes RescueCodec 2.1.0 conformance Level 1 (codec) and Level 2 (readable text).
  */
 object RescueCodec {
     /** Meshtastic port used for RescueCodec packets (PRIVATE_APP). */
@@ -376,11 +376,31 @@ object RescueCodec {
     }
 
     private fun buildText(body: Any?): Text {
-        val b = checkKeys(body, setOf("text", "dict"), "text")
+        val b = checkKeys(body, setOf("text", "dict", "words"), "text")
         val t = Text.newBuilder()
         val dict = if (b.containsKey("dict")) intValue(b["dict"], "text.dict", 1, 0xFFFFFFFFL) else null
         if (dict != null && dict !in TextPack.DICTS) {
             throw err("invalid_value", "unknown dictionary, known: ${TextPack.DICTS.keys.sorted()}", "text.dict")
+        }
+        if (b.containsKey("words")) {
+            // Compact text (spec section 3.6): word tokens instead of the words or DEFLATE.
+            if (b.containsKey("dict")) throw err("invalid_value", "give dict or words, not both", "text.words")
+            val version = intValue(b["words"], "text.words", 1, 0xFFFFFFFFL)
+            if (version !in TextWords.DICTS || !TextWords.available(version)) {
+                throw err("invalid_value", "unknown word dictionary, known: ${TextWords.DICTS.keys.sorted()}", "text.words")
+            }
+            if (b.containsKey("text")) {
+                val words = checkedString(b["text"], "text.text")
+                val size = words.toByteArray(Charsets.UTF_8).size
+                if (size > 0) {
+                    if (size > TextWords.MAX_TEXT_BYTES) {
+                        throw err("invalid_value", "a compact text is at most ${TextWords.MAX_TEXT_BYTES} bytes", "text.text")
+                    }
+                    t.words = com.google.protobuf.ByteString.copyFrom(TextWords.encode(words, version))
+                    t.wordsDict = version
+                }
+            }
+            return t.build()
         }
         if (b.containsKey("text")) {
             val words = checkedString(b["text"], "text.text")
@@ -398,9 +418,16 @@ object RescueCodec {
         return t.build()
     }
 
-    /** The words of a Text body: `text`, or `deflate` unpacked. Throws [CodecException]. */
-    private fun unpackedText(t: Text): String =
-        if (t.deflate.isEmpty) t.text else TextPack.unpack(t.deflate.toByteArray(), t.dict)
+    /** The words of a Text body: `text`, `deflate` unpacked or `words` decoded. Throws [CodecException]. */
+    private fun unpackedText(t: Text): String = when {
+        !t.words.isEmpty -> TextWords.decode(t.words.toByteArray(), t.wordsDict)
+        t.deflate.isEmpty -> t.text
+        else -> TextPack.unpack(t.deflate.toByteArray(), t.dict)
+    }
+
+    /** A compact text whose word dictionary this library does not have (or whose copy fails its SHA-256 check). */
+    private fun wordsUnknown(t: Text): Boolean =
+        !t.words.isEmpty && t.wordsDict != 0 && t.text.isEmpty() && t.deflate.isEmpty && !TextWords.available(t.wordsDict)
 
     private fun checkedString(value: Any?, field: String): String {
         if (value !is String) throw err("invalid_value", "must be a string", field)
@@ -423,9 +450,13 @@ object RescueCodec {
         Envelope.BodyCase.HAZARD -> "hazard"
         Envelope.BodyCase.MAYDAY -> "mayday"
         Envelope.BodyCase.ACK -> "ack"
-        // A text packed with a dictionary this library does not know can only be read after an update.
-        Envelope.BodyCase.TEXT ->
-            if (!env.text.deflate.isEmpty && env.text.dict != 0 && env.text.dict !in TextPack.DICTS) "unknown" else "text"
+        // A text packed with a dictionary this library does not know (or a compact text with a word dictionary we do
+        // not have) can only be read after an update.
+        Envelope.BodyCase.TEXT -> when {
+            !env.text.deflate.isEmpty && env.text.dict != 0 && env.text.dict !in TextPack.DICTS -> "unknown"
+            wordsUnknown(env.text) -> "unknown"
+            else -> "text"
+        }
         else -> "unknown"
     }
 
@@ -484,6 +515,14 @@ object RescueCodec {
             }
             "text" -> {
                 val t = env.text
+                if (!t.words.isEmpty) {
+                    if (t.text.isNotEmpty() || !t.deflate.isEmpty) throw err("invalid_value", "give one of text, deflate and words", "text.words")
+                    if (t.dict != 0) throw err("invalid_value", "dict is only allowed with deflate", "text.dict")
+                    if (t.wordsDict == 0) throw err("missing_field", "a compact text needs its word dictionary number", "text.words_dict")
+                    if (unpackedText(t).isEmpty()) throw err("missing_field", "text must not be empty", "text.text")
+                    return
+                }
+                if (t.wordsDict != 0) throw err("invalid_value", "words_dict is only allowed with words", "text.words_dict")
                 if (!t.deflate.isEmpty) {
                     if (t.text.isNotEmpty()) throw err("invalid_value", "give text or deflate, not both", "text.deflate")
                     if (t.dict == 0) throw err("missing_field", "a packed text needs its dictionary number", "text.dict")
@@ -607,12 +646,21 @@ object RescueCodec {
                 if (a.team.isNotEmpty()) b["team"] = a.team
                 out["ack"] = b
             }
-            "text" -> out["text"] = if (env.text.deflate.isEmpty) {
-                linkedMapOf<String, Any?>("text" to env.text.text)
-            } else {
-                linkedMapOf<String, Any?>("text" to unpackedText(env.text), "dict" to env.text.dict)
+            "text" -> {
+                val t = env.text
+                out["text"] = when {
+                    !t.words.isEmpty -> linkedMapOf<String, Any?>("text" to unpackedText(t), "words" to t.wordsDict)
+                    !t.deflate.isEmpty -> linkedMapOf<String, Any?>("text" to unpackedText(t), "dict" to t.dict)
+                    else -> linkedMapOf<String, Any?>("text" to t.text)
+                }
             }
-            else -> out["unknown"] = LinkedHashMap<String, Any?>()
+            else -> out["unknown"] = LinkedHashMap<String, Any?>().also {
+                // Shown as "dictionary this app does not have", never as words.
+                if (env.bodyCase == Envelope.BodyCase.TEXT && wordsUnknown(env.text)) {
+                    val n = u(env.text.wordsDict)
+                    it["words"] = if (n <= Int.MAX_VALUE) n.toInt() else n
+                }
+            }
         }
         return out
     }

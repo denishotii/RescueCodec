@@ -22,12 +22,18 @@ export interface Message {
   hazard?: { kind: string; severity?: "low" | "medium" | "high"; radius?: number };
   mayday?: { reason?: string; persons?: number };
   ack?: { ref: number; node?: string; status: AckStatus; eta?: number; team?: string };
-  text?: { text: string };
-  unknown?: Record<string, never>;
+  /** `dict`: sent packed (DEFLATE); `words`: sent as compact word tokens (spec 3.6). */
+  text?: { text: string; dict?: number; words?: number };
+  /** `words`: a compact text with a word dictionary the gateway does not have. */
+  unknown?: { words?: number };
 }
 export interface Text2 { en: string; de: string }
 /** A Meshtastic channel, known by its name. public = no key or the default key (anyone can read it). */
 export interface Channel { index: number; name: string; public: boolean }
+/** How a text goes out on a channel now: "compressed" = the chat packs (DEFLATE or compact words), up to 400 B typed. */
+export type SendAs = "compressed" | "normal";
+/** A channel in GET /v2/health with its text mode. */
+export interface RadioChannel extends Channel { mode?: "auto" | "compressed" | "normal"; send_as?: SendAs }
 export interface RadioFacts {
   packet_id: number; rssi: number | null; snr: number | null; hops: number | null; channel: number;
   via: "serial" | "tcp" | "ble" | "sim";
@@ -68,9 +74,13 @@ export interface Health {
   status: "ok" | "degraded"; version: string; spec_version: string; uptime_s: number;
   radio: {
     connected: boolean; kind: "serial" | "tcp" | "ble" | "sim" | "none"; node: string | null; port: number;
-    channel?: string | null; channel_index?: number | null; channels?: Channel[]; channel_error?: string | null; other_channel?: number; region?: string | null; preset?: string | null; firmware?: string | null;
+    channel?: string | null; channel_index?: number | null; channels?: RadioChannel[]; channel_error?: string | null; other_channel?: number; region?: string | null; preset?: string | null; firmware?: string | null;
   };
   mqtt: { connected: boolean };
+  /** Compact word texts (spec 3.6) are on: a packing chat may send a text as word tokens when that is smaller. */
+  compact_text?: boolean;
+  /** Most bytes of typed text: `text` for a normal chat, `packed` for a chat that packs. */
+  text_limits?: { text: number; packed: number };
 }
 export interface MessageStatusEvent { seq: number; status: "queued" | "sent" | "delivered" | "failed"; error?: string | null; updated: string }
 export type StreamEvent =
@@ -95,7 +105,17 @@ export interface ExtractResult {
   coded_bytes: number;
   /** Bytes on air for the same words as a plain text. */
   text_bytes: number;
+  /** How a text goes out to the asked channel or person. */
+  send_as?: SendAs;
+  /** Most bytes of typed text there: 400 on a chat that packs, else 180. */
+  max_text_bytes?: number;
+  /** Form of a text: plain, packed (deflate) or compact word tokens (words). */
+  form?: "plain" | "deflate" | "words";
+  /** True when the text will be shortened to fit one radio message. */
+  cut?: boolean;
 }
+/** Body of POST /v2/extract: the sentence, and where it would go (a channel name or a node). */
+export interface ExtractBody { text: string; channel?: string; to?: string }
 /** Body of POST /v2/messages and POST /v2/text: `channel` (a name) or `to` (a node, direct message). */
 export interface SendMessageBody { message: Message; channel?: string; to?: string }
 export interface SendTextBody { text: string; channel?: string; to?: string }
