@@ -101,15 +101,19 @@ for MODE in light dark; do
 
 done
 
-# German pass (light): switch language with the toggle.
+# German pass (light): switch language in Settings (the header toggle is gone).
 MODE=light; adb shell cmd uimode night no >/dev/null; sleep 1
 open_screen REPORT
-tap_id language_toggle || true; sleep 1
+open_screen SETTINGS
+tap_id lang_de || true; sleep 1
+open_screen REPORT
 shot report-de 1
 open_screen ACTIONS; shot actions-de 1
 open_screen FEED; shot feed-de 1
 open_screen STATS; shot stats-de 1
-tap_id language_toggle || true
+open_screen REPORT
+open_screen SETTINGS
+tap_id lang_en || true
 
 echo "Screenshots in $OUT"
 ls "$OUT" | wc -l

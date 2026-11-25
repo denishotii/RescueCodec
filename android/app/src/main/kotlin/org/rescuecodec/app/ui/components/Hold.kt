@@ -8,6 +8,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -29,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -40,6 +42,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.rescuecodec.app.R
@@ -112,39 +115,52 @@ fun SosBar(onConfirm: () -> Unit, modifier: Modifier = Modifier, holdMs: Long = 
     var holding by remember { mutableStateOf(false) }
     val p = progress.floatValue
     val label = stringResource(R.string.sos_hold)
+    // A solid red control with white text, so it reads as a button and not as a warning note.
+    val solid = Color(0xFFC30B1A)
     Box(
         modifier
             .fillMaxWidth()
             .heightIn(min = 56.dp)
-            .background(c.maydaySoft)
+            .background(solid)
             .holdToConfirm(holdMs, progress, onConfirm, { holding = it }, longClickLabel = stringResource(R.string.sos_send))
             .testTag("sos_bar"),
         contentAlignment = Alignment.CenterStart,
     ) {
-        // The fill: grows with the hold.
+        // The fill: a darker red that grows with the hold.
         Box(
             Modifier
                 .fillMaxWidth(p)
                 .heightIn(min = 56.dp)
-                .background(c.mayday),
+                .background(Color(0xFF6E0510)),
         )
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp).heightIn(min = 56.dp),
+            Modifier.fillMaxWidth().padding(start = 16.dp, end = 12.dp).heightIn(min = 56.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Each word turns white once the red fill has reached it.
-            val iconColor = if (p > 0.04f) c.onMayday else c.maydayText
-            val labelColor = if (p > 0.45f) c.onMayday else c.maydayText
-            val sosColor = if (p > 0.93f) c.onMayday else c.maydayText
-            RcIcon(R.drawable.ic_warning, null, tint = iconColor)
+            RcIcon(R.drawable.ic_warning, null, tint = Color.White)
             Text(
                 if (holding && p < 1f) stringResource(R.string.sos_keep_holding) else if (p >= 1f) stringResource(R.string.sos_sent) else label,
                 style = MaterialTheme.typography.titleMedium,
-                color = labelColor,
+                color = Color.White,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            Text("SOS", style = MaterialTheme.typography.headlineSmall, color = sosColor)
+            // The hold ring: fills as you hold.
+            Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+                Canvas(Modifier.size(44.dp)) {
+                    val w = 4.dp.toPx()
+                    val inset = w / 2
+                    drawCircle(Color.White.copy(alpha = 0.45f), radius = size.minDimension / 2 - inset, style = Stroke(width = w))
+                    drawArc(
+                        Color.White, startAngle = -90f, sweepAngle = 360f * p, useCenter = false,
+                        topLeft = Offset(inset, inset), size = androidx.compose.ui.geometry.Size(size.width - w, size.height - w),
+                        style = Stroke(width = w, cap = StrokeCap.Round),
+                    )
+                }
+                Text("SOS", style = MaterialTheme.typography.labelMedium, color = Color.White)
+            }
         }
     }
 }
@@ -162,17 +178,20 @@ fun MicButton(
     onRelease: () -> Unit,
     modifier: Modifier = Modifier,
     contentDescription: String,
+    label: String = contentDescription,
 ) {
     val ink = MaterialTheme.colorScheme.primary
     val onInk = MaterialTheme.colorScheme.onPrimary
     val c = Rc.colors
-    val disc = if (listening) c.mayday else ink
-    val fg = if (listening) c.onMayday else onInk
+    val on = ready || listening
+    val disc = if (listening) c.mayday else if (on) ink else MaterialTheme.colorScheme.surfaceContainerHighest
+    val fg = if (listening) c.onMayday else if (on) onInk else MaterialTheme.colorScheme.onSurfaceVariant
     val press = rememberUpdatedState(onPress)
     val release = rememberUpdatedState(onRelease)
+    // The hero of the Report screen: a 96 dp ink disc in a 112 dp touch area.
     Box(
         modifier
-            .size(96.dp)
+            .size(112.dp)
             .semantics { this.contentDescription = contentDescription }
             .pointerInput(Unit) {
                 awaitEachGesture {
@@ -185,27 +204,25 @@ fun MicButton(
             .testTag("mic_button"),
         contentAlignment = Alignment.Center,
     ) {
-        Canvas(Modifier.size(96.dp)) {
+        Canvas(Modifier.size(112.dp)) {
             val center = Offset(size.width / 2, size.height / 2)
-            val base = 30.dp.toPx()
             val lineColor = if (listening) c.mayday else ink
-            for (i in 1..3) {
-                val grow = if (listening) level * i * 4.dp.toPx() else 0f
-                val r = base + i * 5.dp.toPx() + grow
-                drawCircle(
-                    color = lineColor.copy(alpha = (if (listening) 0.55f else 0.22f) / i),
-                    radius = r.coerceAtMost(size.minDimension / 2),
-                    center = center,
-                    style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round),
-                )
+            // A solid ring around the disc, always visible.
+            drawCircle(lineColor.copy(alpha = 0.5f), radius = 52.dp.toPx(), center = center, style = Stroke(width = 3.dp.toPx()))
+            if (listening) for (i in 1..2) {
+                val r = 52.dp.toPx() + i * 2.dp.toPx() + level * i * 3.dp.toPx()
+                drawCircle(lineColor.copy(alpha = 0.5f / i), radius = r.coerceAtMost(size.minDimension / 2), center = center, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round))
             }
         }
-        Box(Modifier.size(64.dp).clip(CircleShape).background(if (ready || listening) disc else MaterialTheme.colorScheme.surfaceContainerHighest), contentAlignment = Alignment.Center) {
-            RcIcon(
-                if (ready || listening) R.drawable.ic_mic else R.drawable.ic_mic_off,
-                null,
-                tint = if (ready || listening) fg else MaterialTheme.colorScheme.onSurfaceVariant,
-                size = 32.dp,
+        Column(
+            Modifier.size(96.dp).clip(CircleShape).background(disc).padding(horizontal = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            RcIcon(if (on) R.drawable.ic_mic else R.drawable.ic_mic_off, null, tint = fg, size = 34.dp)
+            Text(
+                label, style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp, lineHeight = 15.sp), color = fg,
+                maxLines = 2, textAlign = androidx.compose.ui.text.style.TextAlign.Center, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
         }
     }

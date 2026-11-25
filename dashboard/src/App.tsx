@@ -9,6 +9,7 @@ import { ActionsBoard } from "./components/ActionsBoard";
 import { Feed } from "./components/Feed";
 import { Nodes } from "./components/Nodes";
 import { StatsBand } from "./components/StatsBand";
+import { MobileAction } from "./components/MobileAction";
 import { MapPanel } from "./map/MapPanel";
 import type { Key } from "./lib/i18n";
 
@@ -40,10 +41,11 @@ function Shell() {
       <main className="board">
         <div className="slot slot-actions"><ActionsBoard /></div>
         <div className="slot slot-map"><MapPanel /></div>
-        <div className="slot slot-feed"><Feed /></div>
+        <div className="slot slot-feed"><Feed /><Nodes collapsible /></div>
         <div className="slot slot-nodes"><Nodes /></div>
         <div className="slot slot-stats"><StatsBand /></div>
       </main>
+      <MobileAction />
       <nav className="tabbar" aria-label="Panels">
         {TABS.map(({ id, label, Icon }) => (
           <button key={id} className={ui.tab === id ? "on" : ""} aria-current={ui.tab === id ? "page" : undefined} onClick={() => setUi({ tab: id })}>

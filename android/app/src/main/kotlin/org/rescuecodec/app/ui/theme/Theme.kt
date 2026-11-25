@@ -49,7 +49,7 @@ private val LightRc = RcColors(
     done = Color(0xFF23653A), doneSoft = Color(0xFFD9ECDC), doneSolid = Color(0xFF23653A),
     declined = Color(0xFF5B5F62), declinedSoft = Color(0xFFE4E5E3),
     measured = Color(0xFF23653A), estimated = Color(0xFF8A4B00),
-    ink3 = Color(0xFF566659), surface3 = Color(0xFFDDE3D4), line = Color(0xFFC3CAB8),
+    ink3 = Color(0xFF3A4A40), surface3 = Color(0xFFDDE3D4), line = Color(0xFFC3CAB8),
     onSolid = Color(0xFFFFFFFF),
     dark = false,
 )
@@ -61,7 +61,7 @@ private val DarkRc = RcColors(
     done = Color(0xFF77CF90), doneSoft = Color(0xFF12301D), doneSolid = Color(0xFF2F8A4C),
     declined = Color(0xFFA3ADB0), declinedSoft = Color(0xFF20282A),
     measured = Color(0xFF77CF90), estimated = Color(0xFFF2AD4E),
-    ink3 = Color(0xFF93A69A), surface3 = Color(0xFF21322A), line = Color(0xFF2A3C33),
+    ink3 = Color(0xFFC9D4CC), surface3 = Color(0xFF21322A), line = Color(0xFF2A3C33),
     onSolid = Color(0xFFFFFFFF),
     dark = true,
 )
@@ -76,10 +76,10 @@ private val LightScheme: ColorScheme = lightColorScheme(
     errorContainer = Color(0xFFFBE2E2), onErrorContainer = Color(0xFF7A0710),
     background = Color(0xFFE6EADF), onBackground = Color(0xFF17231C),
     surface = Color(0xFFF6F7F1), onSurface = Color(0xFF17231C),
-    surfaceVariant = Color(0xFFEAEEE3), onSurfaceVariant = Color(0xFF435349),
+    surfaceVariant = Color(0xFFEAEEE3), onSurfaceVariant = Color(0xFF3A4A40),
     surfaceContainerLowest = Color(0xFFFFFFFF), surfaceContainerLow = Color(0xFFF6F7F1),
     surfaceContainer = Color(0xFFEFF2E9), surfaceContainerHigh = Color(0xFFEAEEE3), surfaceContainerHighest = Color(0xFFDDE3D4),
-    outline = Color(0xFF6F7B66), outlineVariant = Color(0xFFC3CAB8),
+    outline = Color(0xFF6B7B70), outlineVariant = Color(0xFFC3CAB8),
     inverseSurface = Color(0xFF17231C), inverseOnSurface = Color(0xFFF6F7F1), inversePrimary = Color(0xFFE5EDE6),
     scrim = Color(0x8017231C),
 )
@@ -94,10 +94,10 @@ private val DarkScheme: ColorScheme = darkColorScheme(
     errorContainer = Color(0xFF3A1417), onErrorContainer = Color(0xFFFFB3B8),
     background = Color(0xFF0B1310), onBackground = Color(0xFFE5EDE6),
     surface = Color(0xFF121C17), onSurface = Color(0xFFE5EDE6),
-    surfaceVariant = Color(0xFF18251F), onSurfaceVariant = Color(0xFFAEBDB3),
+    surfaceVariant = Color(0xFF18251F), onSurfaceVariant = Color(0xFFC9D4CC),
     surfaceContainerLowest = Color(0xFF0B1310), surfaceContainerLow = Color(0xFF121C17),
     surfaceContainer = Color(0xFF15211B), surfaceContainerHigh = Color(0xFF18251F), surfaceContainerHighest = Color(0xFF21322A),
-    outline = Color(0xFF7A9082), outlineVariant = Color(0xFF2A3C33),
+    outline = Color(0xFF8FA196), outlineVariant = Color(0xFF2A3C33),
     inverseSurface = Color(0xFFE5EDE6), inverseOnSurface = Color(0xFF0B1310), inversePrimary = Color(0xFF17231C),
     scrim = Color(0x99000000),
 )
@@ -141,7 +141,7 @@ private val RcTypography = Typography(
     bodySmall = t(Barlow, FontWeight.Normal, 14, 20),
     labelLarge = t(Barlow, FontWeight.SemiBold, 16, 20, 0.2),
     labelMedium = t(Barlow, FontWeight.SemiBold, 14, 18, 0.3),
-    labelSmall = t(Barlow, FontWeight.SemiBold, 13, 16, 0.4),
+    labelSmall = t(Barlow, FontWeight.SemiBold, 12, 16, 0.3),
 )
 
 /** Tight, plain corners, like the dashboard: 6 to 12 dp. */

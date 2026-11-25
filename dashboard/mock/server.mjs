@@ -54,7 +54,7 @@ function render(m, names) {
   if (m.mayday) {
     const r = m.mayday;
     const reason = { injured: ["injured", "verletzt"], lost: ["lost", "verirrt"], trapped: ["trapped", "eingeschlossen"], medical: ["medical emergency", "medizinischer Notfall"] }[r.reason] ?? ["emergency", "Notfall"];
-    return { en: `MAYDAY: ${reason[0]}, ${r.persons ?? 1} person(s).` + posTxt(p), de: `MAYDAY: ${reason[1]}, ${r.persons ?? 1} Person(en).` + posTxtDe(p) };
+    return { en: `MAYDAY: ${reason[0]}, ${(r.persons ?? 1) === 1 ? "1 team member" : (r.persons ?? 1) + " team members"}.` + posTxt(p), de: `MAYDAY: ${reason[1]}, ${(r.persons ?? 1) === 1 ? "1 Einsatzkraft" : (r.persons ?? 1) + " Einsatzkräfte"}.` + posTxtDe(p) };
   }
   if (m.request) {
     const r = m.request;

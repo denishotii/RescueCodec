@@ -59,6 +59,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import org.rescuecodec.app.AppGraph
@@ -194,9 +195,8 @@ private fun RescueScaffold(factory: AppViewModelFactory, settings: SettingsViewM
             TopBar(
                 title = stringResource(current.labelRes),
                 link = link,
-                lang = lang,
+                queued = waiting.size,
                 inSettings = current == Screen.SETTINGS,
-                onLanguage = settings::toggleLanguage,
                 onSettings = { screen = if (current == Screen.SETTINGS) Screen.REPORT.name else Screen.SETTINGS.name },
                 onStatus = { screen = Screen.RADIO.name },
             )
@@ -218,10 +218,10 @@ private fun RescueScaffold(factory: AppViewModelFactory, settings: SettingsViewM
                                     if (s == Screen.ACTIONS && openCount > 0) Badge(containerColor = Rc.colors.openSolid, contentColor = androidx.compose.ui.graphics.Color.Black) { Text(openCount.toString()) }
                                 }) { RcIcon(s.iconRes, null, tint = LocalContentColorFor(current == s)) }
                             },
-                            label = { Text(stringResource(s.labelRes), style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Clip) },
+                            label = { Text(stringResource(s.labelRes), style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                             colors = NavigationBarItemDefaults.colors(
-                                indicatorColor = MaterialTheme.colorScheme.primary,
-                                selectedIconColor = MaterialTheme.colorScheme.onPrimary,
+                                indicatorColor = Rc.colors.acceptedSoft,
+                                selectedIconColor = Rc.colors.accepted,
                                 selectedTextColor = MaterialTheme.colorScheme.onSurface,
                                 unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                 unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -243,8 +243,8 @@ private fun RescueScaffold(factory: AppViewModelFactory, settings: SettingsViewM
                             icon = { RcIcon(s.iconRes, null, tint = LocalContentColorFor(current == s)) },
                             label = { Text(stringResource(s.labelRes), style = MaterialTheme.typography.labelMedium) },
                             colors = NavigationRailItemDefaults.colors(
-                                indicatorColor = MaterialTheme.colorScheme.primary,
-                                selectedIconColor = MaterialTheme.colorScheme.onPrimary,
+                                indicatorColor = Rc.colors.acceptedSoft,
+                                selectedIconColor = Rc.colors.accepted,
                                 selectedTextColor = MaterialTheme.colorScheme.onSurface,
                             ),
                         )
@@ -260,54 +260,45 @@ private fun RescueScaffold(factory: AppViewModelFactory, settings: SettingsViewM
 
 @Composable
 private fun LocalContentColorFor(selected: Boolean) =
-    if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+    if (selected) Rc.colors.accepted else MaterialTheme.colorScheme.onSurfaceVariant
 
 @Composable
 private fun TopBar(
     title: String,
     link: LinkState,
-    lang: String,
+    queued: Int,
     inSettings: Boolean,
-    onLanguage: () -> Unit,
     onSettings: () -> Unit,
     onStatus: () -> Unit,
 ) {
     val c = Rc.colors
-    val (dot, text) = when (link) {
-        is LinkState.Connected -> c.doneSolid to stringResource(R.string.link_connected, link.nodeName ?: link.target.label)
-        is LinkState.Connecting -> c.openSolid to stringResource(R.string.link_connecting)
-        is LinkState.Scanning -> c.openSolid to stringResource(R.string.link_scanning)
-        is LinkState.Error -> c.mayday to stringResource(R.string.link_error)
-        LinkState.Disconnected -> MaterialTheme.colorScheme.outline to stringResource(R.string.link_offline)
+    // The one thing that decides if a message leaves the phone, as a full-width 48 dp chip.
+    val noRadioText = if (queued > 0) stringResource(R.string.link_radio_none_queued, queued) else stringResource(R.string.link_radio_none)
+    val (dot, text, tint) = when (link) {
+        is LinkState.Connected -> Triple(c.doneSolid, stringResource(R.string.link_radio_connected, link.nodeName ?: link.target.label), c.doneSoft)
+        is LinkState.Connecting -> Triple(c.openSolid, stringResource(R.string.link_connecting), c.openSoft)
+        is LinkState.Scanning -> Triple(c.openSolid, stringResource(R.string.link_scanning), c.openSoft)
+        is LinkState.Error -> Triple(c.mayday, stringResource(R.string.link_error), c.maydaySoft)
+        LinkState.Disconnected -> if (queued > 0) Triple(c.mayday, noRadioText, c.maydaySoft) else Triple(MaterialTheme.colorScheme.outline, noRadioText, MaterialTheme.colorScheme.surfaceContainerHigh)
     }
     Surface(color = MaterialTheme.colorScheme.background) {
         Row(
             Modifier.windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
-                .fillMaxWidth().heightIn(min = 64.dp).padding(start = 16.dp, end = 8.dp),
+                .fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onBackground, maxLines = 1, modifier = Modifier.semantics { contentDescription = title })
-                Row(
-                    Modifier.clickable(onClick = onStatus).heightIn(min = 24.dp).testTag("status_pill"),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    StatusDot(dot, size = 10.dp)
-                    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-            }
-            // One tap switches English and German.
             Surface(
-                onClick = onLanguage,
-                modifier = Modifier.heightIn(min = 48.dp).testTag("language_toggle"),
+                onClick = onStatus,
+                modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("status_pill").semantics { contentDescription = "$title. $text" },
                 shape = MaterialTheme.shapes.medium,
-                color = Color0,
+                color = tint,
+                border = androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.outline),
             ) {
-                Row(Modifier.heightIn(min = 48.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                    LangWord("EN", lang == "en")
-                    Text("/", color = MaterialTheme.colorScheme.outline, style = MaterialTheme.typography.titleMedium)
-                    LangWord("DE", lang == "de")
+                Row(Modifier.heightIn(min = 48.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    StatusDot(dot, size = 14.dp)
+                    Text(text, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    Text(title.uppercase(), style = MaterialTheme.typography.titleLarge.copy(fontSize = 18.sp), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                 }
             }
             Surface(
@@ -325,13 +316,3 @@ private fun TopBar(
 }
 
 private val Color0 = androidx.compose.ui.graphics.Color.Transparent
-
-@Composable
-private fun LangWord(code: String, active: Boolean) {
-    Text(
-        code,
-        style = MaterialTheme.typography.titleMedium,
-        color = if (active) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline,
-        modifier = if (active) Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.shapes.small).padding(horizontal = 6.dp, vertical = 2.dp) else Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-    )
-}

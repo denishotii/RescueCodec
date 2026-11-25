@@ -85,6 +85,7 @@ export function MapPanel() {
   const fitted = useRef(false);
   const seenMayday = useRef(new Set<string>());
   const [selected, setSelected] = useState<string | null>(null);
+  const [layersOpen, setLayersOpen] = useState(false);
 
   const colors = ui.theme === "dark" ? TRACK_COLORS_NIGHT : TRACK_COLORS_DAY;
   const nameOf = (id: string) => nodes[id]?.short_name || nodeLabel(id, nodes);
@@ -99,7 +100,7 @@ export function MapPanel() {
     if (!host.current) return;
     ensureProtocol();
     const m = new MlMap({
-      container: host.current, style: buildStyle(ui.theme, ui.lang), center: HOME, zoom: 11.6, maxPitch: 75,
+      container: host.current, style: buildStyle(ui.theme, ui.lang, ui.room), center: HOME, zoom: 11.6, maxPitch: 75,
       attributionControl: false, canvasContextAttributes: { antialias: true },
     });
     m.addControl(new AttributionControl({ compact: true }), "bottom-right");
@@ -119,14 +120,14 @@ export function MapPanel() {
   }, []);
 
   // theme or language changed: swap the style (our sources come with it)
-  const styleKey = useRef(`${ui.theme}/${ui.lang}`);
+  const styleKey = useRef(`${ui.theme}/${ui.lang}/${ui.room}`);
   useEffect(() => {
     if (!map) return;
-    const k = `${ui.theme}/${ui.lang}`;
+    const k = `${ui.theme}/${ui.lang}/${ui.room}`;
     if (k === styleKey.current) return;
     styleKey.current = k;
-    map.setStyle(buildStyle(ui.theme, ui.lang), { diff: false });
-  }, [map, ui.theme, ui.lang]);
+    map.setStyle(buildStyle(ui.theme, ui.lang, ui.room), { diff: false });
+  }, [map, ui.theme, ui.lang, ui.room]);
 
   // data into the GeoJSON source, layer visibility, terrain
   useEffect(() => {
@@ -216,7 +217,7 @@ export function MapPanel() {
   return (
     <Panel id="map" title={t("map")} className="panel-map" actions={
       <div className="map-tools">
-        <div className="seg" role="group" aria-label="View">
+        <div className="seg view-seg" role="group" aria-label="View">
           <button className={!ui.view3d ? "on" : ""} aria-pressed={!ui.view3d} onClick={() => setUi({ view3d: false })}><Square size={14} aria-hidden="true" /> {t("view2d")}</button>
           <button className={ui.view3d ? "on" : ""} aria-pressed={ui.view3d} onClick={() => setUi({ view3d: true })}><Mountain size={14} aria-hidden="true" /> {t("view3d")}</button>
         </div>
@@ -235,9 +236,12 @@ export function MapPanel() {
             </>
           )}
         </div>
-        <div className="layer-chips" role="group" aria-label={t("layerFinds")}>
+        <div className="layer-chips">
+          <button className="layer-btn" aria-expanded={layersOpen} onClick={() => setLayersOpen((o) => !o)}>
+            <Layers size={18} aria-hidden="true" /> {t("layers")}
+          </button>
+          {layersOpen && <div className="layer-pop" role="group" aria-label={t("layers")}>
           <div className="layer-row">
-          <Layers size={16} aria-hidden="true" />
           {(Object.keys(LAYER_LABEL) as (keyof LayerKeys)[]).map((k) => (
             <button key={k} className={`chip-toggle layer-${k} ${ui.layers[k] ? "on" : ""}`} aria-pressed={ui.layers[k]}
               onClick={() => setUi({ layers: { ...ui.layers, [k]: !ui.layers[k] } })}>
@@ -246,6 +250,7 @@ export function MapPanel() {
           ))}
           </div>
           {counts.sectors > 0 && ui.layers.sectors && <p className="chip-note">{t("sectorNote")}</p>}
+          </div>}
         </div>
       </div>
       {map && pinItems.map((m) => { const v = pins.get(m.id); return v ? createPortal(<Badge m={m} selected={selected === m.id} />, v.el, m.id) : null; })}

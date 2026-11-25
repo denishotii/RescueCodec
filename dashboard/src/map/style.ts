@@ -37,7 +37,18 @@ export const absUrl = (rel: string) => new URL(rel, location.href).href;
 /** Names of the sources and layers the app adds on top of the base map. */
 export const SRC = { reports: "rc-reports" } as const;
 
-export function buildStyle(theme: Theme, lang: Lang): StyleSpecification {
+/** Multiplies every size in a MapLibre text-size value (a number, or interpolate/step stops). */
+function scaleSize(v: unknown, k: number): unknown {
+  if (typeof v === "number") return v * k;
+  if (!Array.isArray(v)) return v;
+  if (v[0] === "interpolate" || v[0] === "interpolate-hcl" || v[0] === "interpolate-lab") {
+    return v.map((x, i) => (i >= 4 && i % 2 === 0 ? scaleSize(x, k) : x));
+  }
+  if (v[0] === "step") return v.map((x, i) => (i === 2 || (i >= 4 && i % 2 === 0) ? scaleSize(x, k) : x));
+  return v;
+}
+
+export function buildStyle(theme: Theme, lang: Lang, room = false): StyleSpecification {
   const flavor = theme === "dark" ? nightFlavor : dayFlavor;
   const base = absUrl(config.mapBase + "/");
   // pois, road shields and one-way arrows need a sprite sheet, which we do not ship
@@ -52,6 +63,16 @@ export function buildStyle(theme: Theme, lang: Lang): StyleSpecification {
       "hillshade-accent-color": theme === "dark" ? "#000000" : "#4d5d46",
     },
   };
+  if (room) {
+    // Room view: bigger map labels with a thicker halo, so place names read from the back of the room.
+    for (const l of all) {
+      if (l.type !== "symbol") continue;
+      const lay = (l.layout ?? {}) as Record<string, unknown>;
+      lay["text-size"] = scaleSize(lay["text-size"] ?? 12, 1.4);
+      l.layout = lay as typeof l.layout;
+      if (l.paint) (l.paint as Record<string, unknown>)["text-halo-width"] = 2;
+    }
+  }
   const at = all.findIndex((l) => l.id === "water");
   const layers = [...all.slice(0, at), hill, ...all.slice(at)];
 

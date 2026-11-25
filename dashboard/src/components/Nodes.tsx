@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { BatteryLow, BatteryMedium, BatteryFull, Radio } from "lucide-react";
 import { useData, useNow, useT } from "../state/hooks";
 import { focusOn, useUi } from "../state/ui";
@@ -11,7 +11,8 @@ function Battery({ pct }: { pct: number | null | undefined }) {
   return <span className={`battery num ${pct < 20 ? "low" : ""}`}><Icon size={16} aria-hidden="true" />{pct}%</span>;
 }
 
-export function Nodes() {
+export function Nodes({ collapsible = false }: { collapsible?: boolean }) {
+  const [collapsed, setCollapsed] = useState(true);
   const { nodes } = useData();
   const { lang } = useUi();
   const t = useT();
@@ -21,8 +22,9 @@ export function Nodes() {
     [nodes],
   );
   return (
-    <Panel id="nodes" title={t("nodes")} count={list.length} className="panel-nodes">
-      <div className="panel-body scroll">
+    <Panel id={collapsible ? "nodes-side" : "nodes"} title={t("nodes")} count={list.length} className={`panel-nodes ${collapsible && collapsed ? "collapsed" : ""}`}
+      collapse={collapsible ? { collapsed, onToggle: () => setCollapsed((c) => !c) } : undefined}>
+      {!(collapsible && collapsed) && <div className="panel-body scroll">
         {list.length ? (
           <ul className="node-list">
             {list.map((n) => {
@@ -52,7 +54,7 @@ export function Nodes() {
             })}
           </ul>
         ) : <p className="empty">{t("noNodes")}</p>}
-      </div>
+      </div>}
     </Panel>
   );
 }

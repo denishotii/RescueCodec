@@ -157,8 +157,9 @@ class AppUiTest {
     fun languageToggleSwitchesTheWholeApp() {
         show()
         rule.onNodeWithText("Actions").assertIsDisplayed()
-        rule.onNodeWithTag("language_toggle").performClick()
-        rule.waitUntil(5_000) { rule.onAllNodesWithText("Melden").fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithTag("settings_button").performClick()
+        rule.onNodeWithTag("lang_de").performClick()
+        rule.waitUntil(5_000) { rule.onAllNodesWithText("Senden").fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithText("Aufgaben").assertIsDisplayed()
         assertEquals("de", graph.settings.language)
     }

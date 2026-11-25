@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package org.rescuecodec.app.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -43,7 +46,15 @@ import org.rescuecodec.app.ui.components.StateTag
 import org.rescuecodec.app.ui.components.Tag
 import org.rescuecodec.app.ui.components.agoText
 import org.rescuecodec.app.ui.components.rememberNow
+import org.rescuecodec.app.ui.theme.BarlowCondensed
 import org.rescuecodec.app.ui.theme.Rc
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 
 /** Tasks: Mayday first, then open, accepted and done. Accept and Done are the big buttons. */
 @OptIn(ExperimentalLayoutApi::class)
@@ -94,7 +105,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.section(
 private fun TaskCard(t: TaskItem, lang: String, now: Long, onAnswer: (TaskItem, String) -> Unit) {
     val c = Rc.colors
     val isMayday = t.type == "mayday"
-    val readable = remember(t.json, lang) { Readable.of(t.json, lang) }
+    val readable = remember(t.json, lang) { Readable.withoutPosition(t.json, lang) }
+    val gridRef = remember(t.json) { Readable.gridRef(t.json) }
     RcCard(
         container = if (isMayday) c.maydaySoft else MaterialTheme.colorScheme.surfaceContainerLow,
         outline = if (isMayday) c.mayday else MaterialTheme.colorScheme.outlineVariant,
@@ -113,8 +125,9 @@ private fun TaskCard(t: TaskItem, lang: String, now: Long, onAnswer: (TaskItem, 
             Text(
                 readable ?: stringResource(R.string.task_unknown_report),
                 style = MaterialTheme.typography.bodyLarge.copy(fontSize = 20.sp, lineHeight = 28.sp),
-                color = if (isMayday) c.maydayText else MaterialTheme.colorScheme.onSurface,
+                color = MaterialTheme.colorScheme.onSurface,
             )
+            if (gridRef != null) GridRefChip(gridRef)
             if (t.local && t.state == "open") {
                 Text(
                     stringResource(if (t.meshDelivered) R.string.task_local_delivered else R.string.task_local_waiting),
@@ -126,22 +139,37 @@ private fun TaskCard(t: TaskItem, lang: String, now: Long, onAnswer: (TaskItem, 
             }
             t.answers.forEach { AnswerLine(it) }
             if (t.moves.isNotEmpty()) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                val hasMain = "accepted" in t.moves || "done" in t.moves
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     if ("accepted" in t.moves) BigButton(
-                        stringResource(R.string.action_accept), { onAnswer(t, "accepted") }, Modifier.weight(1f).testTag("accept_${t.key}"),
+                        stringResource(R.string.action_accept), { onAnswer(t, "accepted") }, Modifier.weight(0.6f).testTag("accept_${t.key}"),
                         icon = R.drawable.ic_check, container = c.acceptSolid, content = c.onSolid,
                     )
                     if ("done" in t.moves) BigButton(
-                        stringResource(R.string.action_done), { onAnswer(t, "done") }, Modifier.weight(1f).testTag("done_${t.key}"),
+                        stringResource(R.string.action_done), { onAnswer(t, "done") }, Modifier.weight(0.6f).testTag("done_${t.key}"),
                         icon = R.drawable.ic_check_circle, container = c.doneSolid, content = c.onSolid,
                     )
+                    // Decline is smaller and far from Accept, so a glove does not hit it by mistake.
                     if ("declined" in t.moves) BigButton(
-                        stringResource(R.string.action_decline), { onAnswer(t, "declined") }, Modifier.weight(if ("accepted" in t.moves || "done" in t.moves) 0.8f else 1f).testTag("decline_${t.key}"),
-                        outlined = true, container = MaterialTheme.colorScheme.onSurfaceVariant,
+                        stringResource(R.string.action_decline), { onAnswer(t, "declined") }, Modifier.weight(if (hasMain) 0.4f else 1f).testTag("decline_${t.key}"),
+                        outlined = true, container = MaterialTheme.colorScheme.onSurfaceVariant, height = 48.dp,
                     )
                 }
             }
         }
+    }
+}
+
+/** The UTM grid reference as a chip, in monospace, the same as the dashboard. */
+@Composable
+private fun GridRefChip(ref: String) {
+    Row(
+        Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(6.dp)).padding(horizontal = 10.dp, vertical = 6.dp).testTag("grid_ref"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(stringResource(R.string.task_grid_ref), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(ref, style = MaterialTheme.typography.titleSmall.copy(fontFamily = FontFamily.Monospace), color = MaterialTheme.colorScheme.onSurface)
     }
 }
 
@@ -177,8 +205,9 @@ fun EmptyState(title: Int, body: Int, icon: Int) {
 }
 
 /**
- * The red Mayday banner under the top bar, on every screen. It shows our own Mayday (waiting,
- * sent, answered) or one we received. Received ones have the Accept and Done buttons right here.
+ * The red Mayday banner under the top bar, on every screen: one line, 64 dp. It shows our own
+ * Mayday (waiting, sent, answered) or one we received. Tap it to open the task list. Received
+ * ones have the Accept or Done button right here; the full text is on the card in Actions.
  */
 @Composable
 fun MaydayBanner(
@@ -194,7 +223,8 @@ fun MaydayBanner(
     val queuedOwn = waiting.any { it.type == "mayday" }
     if (active == null && !queuedOwn) return
 
-    val readable = remember(active?.json, lang) { Readable.of(active?.json, lang) }
+    val now by rememberNow()
+    val persons = remember(active?.json) { Readable.maydayPersons(active?.json) }
     val status = when {
         active == null -> stringResource(R.string.banner_queued)
         active.local && active.state == "accepted" -> stringResource(R.string.banner_ours_accepted, active.answers.lastOrNull()?.team ?: stringResource(R.string.answer_other_team))
@@ -202,25 +232,36 @@ fun MaydayBanner(
         active.local && active.meshDelivered -> stringResource(R.string.banner_ours_delivered)
         active.local -> stringResource(R.string.banner_ours_sent)
         active.state == "accepted" -> stringResource(R.string.banner_theirs_accepted)
-        else -> stringResource(R.string.banner_theirs_open)
+        else -> null
     }
-    // Compact on purpose: it sits on every screen. Tap it to open the task list.
-    val headline = if (readable != null && active?.local != true) readable else Labels.head(lang, "mayday")
+    // One short line: persons and age for a Mayday we received, the state for our own.
+    val line = if (status != null) status else buildList {
+        persons?.let { add(stringResource(R.string.banner_persons, it)) }
+        active?.let { add(agoText(it.updatedMs, now)) }
+    }.joinToString(", ")
+    val word = Labels.head(lang, "mayday").uppercase()
     Surface(onClick = onOpen, color = c.mayday, contentColor = c.onMayday, modifier = Modifier.fillMaxWidth().testTag("mayday_banner")) {
-        Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(
+            Modifier.heightIn(min = 64.dp).padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
             RcIcon(R.drawable.ic_warning, null, tint = c.onMayday, size = 28.dp)
-            Column(Modifier.weight(1f)) {
-                Text(headline, style = MaterialTheme.typography.titleMedium, color = c.onMayday, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                Text(status, style = MaterialTheme.typography.bodySmall, color = c.onMayday)
-            }
+            Text(
+                buildAnnotatedString {
+                    withStyle(SpanStyle(fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 24.sp)) { append(word) }
+                    if (line.isNotEmpty()) { append("  "); append(line) }
+                },
+                style = MaterialTheme.typography.titleMedium, color = c.onMayday, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
             if (active != null) {
                 if ("accepted" in active.moves) BigButton(
-                    stringResource(R.string.action_accept), { vm.answer(active.key, "accepted") }, Modifier.testTag("banner_accept"),
-                    container = c.onMayday, content = c.mayday, height = 48.dp,
+                    stringResource(R.string.action_accept), { vm.answer(active.key, "accepted") }, Modifier.width(112.dp).testTag("banner_accept"),
+                    container = c.onMayday, content = c.mayday, height = 56.dp,
                 )
                 else if ("done" in active.moves) BigButton(
-                    stringResource(R.string.action_done), { vm.answer(active.key, "done") }, Modifier.testTag("banner_done"),
-                    container = c.onMayday, content = c.mayday, height = 48.dp,
+                    stringResource(R.string.action_done), { vm.answer(active.key, "done") }, Modifier.width(112.dp).testTag("banner_done"),
+                    container = c.onMayday, content = c.mayday, height = 56.dp,
                 )
             }
         }

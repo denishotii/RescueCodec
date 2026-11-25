@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -144,46 +145,58 @@ fun ReportScreen(vm: ReportViewModel, snackbar: SnackbarHostState, lang: String)
                 },
             )
         }
-        Column(
-            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            // 2. Quick chips
-            val quick = listOf(
-                R.string.quick_child, R.string.quick_adult, R.string.quick_conscious, R.string.quick_not_breathing,
-                R.string.quick_hypothermia, R.string.quick_cannot_walk, R.string.quick_stretcher, R.string.quick_helicopter,
-                R.string.quick_medic, R.string.quick_path_blocked,
-            ).map { stringResource(it) }
+        // 2. Quick chips: one row that scrolls sideways, with a fade at the end so a cut chip reads as "more".
+        val quick = listOf(
+            R.string.quick_child, R.string.quick_adult, R.string.quick_conscious, R.string.quick_not_breathing,
+            R.string.quick_hypothermia, R.string.quick_cannot_walk, R.string.quick_stretcher, R.string.quick_helicopter,
+            R.string.quick_medic, R.string.quick_path_blocked,
+        ).map { stringResource(it) }
+        val fade = MaterialTheme.colorScheme.background
+        Box(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
             Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).testTag("quick_chips"),
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp).testTag("quick_chips"),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 quick.forEach { phrase -> RcChip(phrase, onClick = { vm.append(phrase) }, leading = R.drawable.ic_add) }
             }
+            Box(
+                Modifier.align(Alignment.CenterEnd).width(40.dp).height(48.dp)
+                    .background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(fade.copy(alpha = 0f), fade))),
+            )
+        }
 
-            // 3. What will be sent
+        // 3. What will be sent: the region that scrolls and takes the room that is left.
+        Column(
+            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
             if (msg != null) {
                 WhatWillBeSent(ui.edited, ui.fallback, ui.problem, ui.readable, ui.sentBytes, lang, msg, onEdit = { focus.clearFocus(); editor = it }, onReadAgain = vm::readAgain)
             }
-
             Spacer(Modifier.height(4.dp))
         }
 
-        // Bottom controls
+        // Bottom controls: the size on one line, then the two big controls where a thumb reaches them.
         Surface(color = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 0.dp) {
           Column {
-            // The size, the point of the app: always in view above the two big controls.
-            ByteCounter(ui.textBytes, ui.sentBytes, Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp), compact = imeUp)
+            ByteCounter(ui.textBytes, ui.sentBytes, Modifier.padding(horizontal = 16.dp), compact = true)
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                if (!imeUp) Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                if (!imeUp) {
                     val micLabel = stringResource(R.string.mic_hold)
                     MicButton(
                         listening = listening, level = level, ready = micReady,
                         contentDescription = micLabel,
+                        label = when (voice) {
+                            is VoiceState.Listening -> stringResource(R.string.mic_listening)
+                            is VoiceState.Loading -> stringResource(R.string.mic_loading)
+                            is VoiceState.NoModel -> stringResource(R.string.mic_no_model)
+                            is VoiceState.NoMicrophone, is VoiceState.Failed -> stringResource(R.string.mic_failed)
+                            else -> micLabel
+                        },
                         onPress = {
                             val hasMic = Permissions.granted(context, Manifest.permission.RECORD_AUDIO)
                             when {
@@ -197,29 +210,14 @@ fun ReportScreen(vm: ReportViewModel, snackbar: SnackbarHostState, lang: String)
                         },
                         onRelease = { if (listening) vm.holdEnd() },
                     )
-                    Text(
-                        when (voice) {
-                            is VoiceState.Listening -> stringResource(R.string.mic_listening)
-                            is VoiceState.Loading -> stringResource(R.string.mic_loading)
-                            is VoiceState.NoModel -> stringResource(R.string.mic_no_model)
-                            is VoiceState.NoMicrophone, is VoiceState.Failed -> stringResource(R.string.mic_failed)
-                            else -> micLabel
-                        },
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.width(96.dp),
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                    )
                 }
                 BigButton(
-                    text = stringResource(R.string.action_send),
+                    text = stringResource(if (msg == null) R.string.counter_empty else R.string.action_send),
                     onClick = { keyboard?.hide(); focus.clearFocus(); vm.send() },
-                    icon = R.drawable.ic_send,
+                    icon = if (msg == null) null else R.drawable.ic_send,
                     enabled = msg != null && ui.problem == null && !ui.busy,
                     modifier = Modifier.weight(1f).testTag("send_button"),
-                    height = if (imeUp) 56.dp else 72.dp,
+                    height = if (imeUp) 64.dp else 72.dp,
                 )
             }
           }
@@ -316,36 +314,23 @@ private fun Note(text: String, warn: Boolean) {
 }
 
 /**
- * "47 bytes as text, 12 bytes sent". The whole point of the app in one line, with two bars drawn
- * to the same scale so the saving can be seen.
+ * "51 bytes as text -> 25 bytes sent": the whole point of the app on one 40 dp line.
  */
 @Composable
-fun ByteCounter(textBytes: Int, sentBytes: Int, modifier: Modifier = Modifier, compact: Boolean = false) {
+fun ByteCounter(textBytes: Int, sentBytes: Int, modifier: Modifier = Modifier, compact: Boolean = true) {
     val c = Rc.colors
     val active = textBytes > 0 && sentBytes > 0
     val desc = if (active) stringResource(R.string.counter_desc, textBytes, sentBytes) else stringResource(R.string.counter_empty)
-    if (compact) {
-        Text(desc, modifier.fillMaxWidth().testTag("byte_counter"), style = MaterialTheme.typography.titleMedium, color = if (active) c.done else MaterialTheme.colorScheme.onSurfaceVariant)
-        return
-    }
-    Column(modifier.fillMaxWidth().semantics(mergeDescendants = true) { contentDescription = desc }.testTag("byte_counter"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Column(Modifier.weight(1f)) {
-                Text(if (active) textBytes.toString() else "0", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(stringResource(R.string.counter_as_text), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            RcIcon(R.drawable.ic_arrow_back, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 12.dp).rotate(180f))
-            Column(Modifier.weight(1f)) {
-                Text(if (active) sentBytes.toString() else "0", style = MaterialTheme.typography.headlineLarge, color = if (active) c.done else MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(stringResource(R.string.counter_sent), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-        // Two bars on one scale: text and coded.
-        val scale = maxOf(textBytes, sentBytes, 1).toFloat()
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            MeterBar(if (active) textBytes / scale else 0f, MaterialTheme.colorScheme.outline, height = 8.dp)
-            MeterBar(if (active) sentBytes / scale else 0f, c.done, height = 8.dp)
-        }
+    Row(
+        modifier.fillMaxWidth().heightIn(min = 40.dp).semantics(mergeDescendants = true) { contentDescription = desc }.testTag("byte_counter"),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            if (active) stringResource(R.string.counter_line, textBytes, sentBytes) else stringResource(R.string.counter_empty),
+            style = MaterialTheme.typography.titleSmall,
+            color = if (active) c.done else MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1, overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

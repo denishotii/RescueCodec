@@ -40,6 +40,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import org.rescuecodec.app.R
 import org.rescuecodec.app.ui.theme.Rc
 
@@ -81,9 +82,10 @@ fun BigButton(
     enabled: Boolean = true,
     height: Dp = 56.dp,
 ) {
-    val bg = if (outlined) Color.Transparent else if (enabled) container else MaterialTheme.colorScheme.surfaceContainerHighest
-    val fg = if (!enabled) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f) else if (outlined) container else content
-    val border = if (outlined) BorderStroke(2.dp, if (enabled) container else MaterialTheme.colorScheme.outlineVariant) else null
+    val bg = if (outlined) Color.Transparent else if (enabled) container else MaterialTheme.colorScheme.surfaceContainerLow
+    val fg = if (!enabled) MaterialTheme.colorScheme.onSurfaceVariant else if (outlined) container else content
+    val border = if (outlined) BorderStroke(2.dp, if (enabled) container else MaterialTheme.colorScheme.outline)
+        else if (!enabled) BorderStroke(2.dp, MaterialTheme.colorScheme.outline) else null
     Surface(
         onClick = onClick,
         enabled = enabled,
@@ -94,7 +96,7 @@ fun BigButton(
         border = border,
     ) {
         Row(
-            Modifier.padding(horizontal = 16.dp).heightIn(min = height),
+            Modifier.padding(horizontal = 12.dp).heightIn(min = height),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -168,12 +170,14 @@ fun Tag(text: String, background: Color, content: Color, modifier: Modifier = Mo
 @Composable
 fun StateTag(state: String, modifier: Modifier = Modifier) {
     val c = Rc.colors
+    // Solid tonal fills with ink text: they read in sunlight and in the dark.
+    val ink = Color(0xFF17231C)
     val (bg, fg, label) = when (state) {
-        "open" -> Triple(c.openSoft, c.open, stringResource(R.string.state_open))
-        "accepted" -> Triple(c.acceptedSoft, c.accepted, stringResource(R.string.state_accepted))
-        "done" -> Triple(c.doneSoft, c.done, stringResource(R.string.state_done))
-        "declined" -> Triple(c.declinedSoft, c.declined, stringResource(R.string.state_declined))
-        else -> Triple(c.declinedSoft, c.declined, stringResource(R.string.state_delivery_unknown))
+        "open" -> Triple(Color(0xFFF2C14E), ink, stringResource(R.string.state_open))
+        "accepted" -> Triple(Color(0xFF9CC9EC), ink, stringResource(R.string.state_accepted))
+        "done" -> Triple(Color(0xFFA6D8B2), ink, stringResource(R.string.state_done))
+        "declined" -> Triple(Color(0xFFC9CEC9), ink, stringResource(R.string.state_declined))
+        else -> Triple(Color(0xFFC9CEC9), ink, stringResource(R.string.state_delivery_unknown))
     }
     Tag(label, bg, fg, modifier, icon = if (state == "done") R.drawable.ic_check else null)
 }
@@ -208,9 +212,13 @@ fun SourceTag(measured: Boolean, modifier: Modifier = Modifier) {
 
 @Composable
 fun SectionHeader(text: String, modifier: Modifier = Modifier, count: Int? = null, color: Color = MaterialTheme.colorScheme.onSurface) {
-    Row(modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(text, style = MaterialTheme.typography.headlineSmall, color = color, modifier = Modifier.semantics { contentDescription = text })
-        if (count != null) Text(count.toString(), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    // Same signature as the dashboard: condensed capitals with a 2 dp amber rule underneath.
+    Column(modifier.fillMaxWidth().padding(top = 8.dp)) {
+        Row(Modifier.padding(bottom = 4.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(text.uppercase(), style = MaterialTheme.typography.headlineSmall.copy(letterSpacing = 0.8.sp), color = color, modifier = Modifier.semantics { contentDescription = text })
+            if (count != null) Text(count.toString(), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Box(Modifier.fillMaxWidth().height(2.dp).background(Rc.colors.openSolid))
     }
 }
 

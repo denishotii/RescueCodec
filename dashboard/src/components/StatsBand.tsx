@@ -36,11 +36,14 @@ export function StatsBand() {
     <section className="stats" aria-label={t("stats")}>
       <div className="stat stat-bytes">
         <h3>{t("bytesOnAir")} <SourceTag source={stats?.bytes_in.source ?? "measured"} /></h3>
+        <p className="stat-hero num">
+          {fmtNum(onAir)} B <span className="stat-of">{t("vs")} {fmtNum(asText)} B</span>
+          {stats?.size_ratio.value ? <small><em>{fmtNum(stats.size_ratio.value, 1)}×</em> {t("smaller")}</small> : null}
+        </p>
         <div className="bars" role="img" aria-label={`${onAir} B, ${asText} B`}>
           <div className="bar-row"><span className="bar-label">RescueCodec</span><span className="bar"><i className="bar-fill codec" style={{ width: `${(onAir / max) * 100}%` }} /></span><b className="num">{fmtNum(onAir)} B</b></div>
           <div className="bar-row"><span className="bar-label">{t("asText")}</span><span className="bar"><i className="bar-fill text" style={{ width: `${(asText / max) * 100}%` }} /></span><b className="num">{fmtNum(asText)} B</b></div>
         </div>
-        {stats?.size_ratio.value ? <p className="stat-note num"><b>{fmtNum(stats.size_ratio.value, 1)}×</b> {t("smaller")}</p> : null}
       </div>
 
       <div className="stat">
