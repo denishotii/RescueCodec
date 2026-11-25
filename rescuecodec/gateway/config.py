@@ -29,7 +29,10 @@ class GatewayConfig:
     # readable text line over the air: off | out | in | both
     text_over_air: str = "off"
     text_lang: str = "en"
-    # a message with only a text goes out as a plain Meshtastic text (port 1), so stock apps and radio screens show it
+    # how a chat text goes out when the chat has no mode of its own: auto | compressed | normal (SPEC section 2.3).
+    # auto: packed for RescueCodec when every node in the chat runs RescueCodec, else a normal Meshtastic text.
+    text_mode: str = "auto"
+    # old setting, replaced by text_mode. False (--text-as-meshtastic off) = channels default to "compressed".
     text_as_meshtastic: bool = True
 
     # connectors
@@ -60,6 +63,8 @@ class GatewayConfig:
             raise ValueError(f"--team is longer than {C.MAX_TEAM_BYTES} bytes")
         if self.text_over_air not in ("off", "out", "in", "both"):
             raise ValueError("--text-over-air must be off, out, in or both")
+        if self.text_mode not in ("auto", "compressed", "normal"):
+            raise ValueError("--text-mode must be auto, compressed or normal")
         if self.channel_index is not None and not 0 <= self.channel_index <= 7:
             raise ValueError("--channel must be 0..7")
         if self.tx_per_minute < 0:

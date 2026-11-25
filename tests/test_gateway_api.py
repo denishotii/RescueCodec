@@ -106,9 +106,10 @@ class Sending(unittest.TestCase):
             self.assertEqual(c["key"], "0000e001-2")
 
     def test_the_same_text_twice_is_two_messages(self):
-        with gateway(text_as_meshtastic=False) as gw:                 # RescueCodec texts on port 256
-            first = gw.post("/v2/text", text="Hilfe").json()
-            second = gw.post("/v2/text", text="Hilfe").json()
+        with gateway(text_mode="compressed") as gw:                   # packed RescueCodec texts on port 256
+            first = gw.post("/v2/text", text="Wir brauchen dringend Hilfe am Waldweg hinter der Brücke").json()
+            second = gw.post("/v2/text", text="Wir brauchen dringend Hilfe am Waldweg hinter der Brücke").json()
+            self.assertEqual((first["codec"]["version"], second["codec"]["version"]), (2, 2))
             self.assertNotEqual(first["seq"], second["seq"])
             self.assertNotEqual(first["codec"]["hex"], second["codec"]["hex"])     # different ids, so no dedupe at the receiver
 
@@ -184,7 +185,7 @@ class Sending(unittest.TestCase):
             self.assertEqual(order[0], encode({"id": 3, "mayday": {"reason": "injured"}}))
 
     def test_text_and_also_plain(self):
-        with gateway() as gw:
+        with gateway(text_mode="normal") as gw:
             response = gw.post("/v2/text", text="Treffpunkt jetzt am Gasthaus", also_plain=True)
             self.assertEqual(response.status_code, 202)
             record = response.json()
@@ -217,15 +218,15 @@ class Sending(unittest.TestCase):
             time.sleep(0.3)
             self.assertEqual(gw.radio.plain_texts, [])
 
-    def test_long_text_with_position_is_cut_to_fit(self):
-        with gateway(text_as_meshtastic=False) as gw:                 # as a RescueCodec text on port 256
+    def test_long_text_with_position_goes_packed_and_whole(self):
+        with gateway(text_mode="compressed") as gw:                   # as a packed RescueCodec text on port 256
             text = ("Fußweg über den Bach zerstört, nördlich gehts nicht weiter. " * 4).encode("utf-8")[:180].decode("utf-8", "ignore")
             response = gw.post("/v2/messages", message={"pos": {"lat": 52.52001, "lon": 13.40495, "acc": "estimated"},
                                                         "text": {"text": text}})
             self.assertEqual(response.status_code, 202)
             record = response.json()
-            self.assertLessEqual(record["codec"]["size"], 200)
-            self.assertTrue(record["message"]["text"]["text"].endswith("…"))
+            self.assertLess(record["codec"]["size"], 120)                # 180 bytes of words, packed with position and id
+            self.assertEqual(record["message"]["text"], {"text": text, "dict": 1})     # nothing cut
             self.assertEqual(record["message"]["pos"]["lat"], 52.52001)
 
     def test_without_want_ack_the_status_stays_sent(self):

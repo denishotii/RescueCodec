@@ -41,15 +41,25 @@ info:
     known by its **name**; an empty primary name shows as the modem preset's name ("LongFast"). Every record has
     `channel: {index, name, public}` and `to` (the peer of a direct message, else null). You send on the default
     channel (`--channel-name`, default RescueCodec) unless you name one with `channel`; `to` sends a direct message
-    (a plain text, port 1). Answers (`POST /v2/tasks/{key}/ack`) always go out on the channel of the report they
+    (a text only). Answers (`POST /v2/tasks/{key}/ack`) always go out on the channel of the report they
     answer. `GET /v2/health` lists the channels in `radio.channels`.
 
     **Plain Meshtastic texts** (SPEC section 2.1). The gateway also shows normal Meshtastic texts (port 1,
     TEXT_MESSAGE_APP), for example from the official app: a broadcast on a channel it listens on, or a direct message
     to the gateway's radio. Texts on public channels (the LongFast chat) are not shown without `--show-public`. Such a record is a
-    normal `text` record with `codec.version: 0`; `codec.hex` holds the UTF-8 bytes of the text. A message with only
-    a text that you send goes out the same way (`--text-as-meshtastic on`, the default), so stock apps and radio
-    screens show it.
+    normal `text` record with `codec.version: 0`; `codec.hex` holds the UTF-8 bytes of the text.
+
+    **Packed texts** (SPEC sections 2.3 and 3.5). A text that you send goes out in one of two ways, and the gateway
+    picks per chat (a channel, or a direct chat with one node):
+    - **packed for RescueCodec**: a RescueCodec text on port 256 whose words are compressed with DEFLATE and a shared
+      dictionary, about 40 % smaller, with id and position. Stock Meshtastic apps cannot read it.
+    - **normal Meshtastic text** (port 1): only the words, readable by every app and radio screen.
+    Each chat has a mode: `auto` (default, `--text-mode`), `compressed` or `normal` (`PUT /v2/channels/{name}/mode`,
+    `PUT /v2/nodes/{node}/mode`). Auto packs a channel text when no stock Meshtastic user (a node that sent port 1
+    texts there and no RescueCodec packet) was heard on that channel for 24 h, and a direct text when the peer sent a
+    RescueCodec packet in the last 24 h. Public channels always get normal text. A text is packed only when the packet
+    is at least 3 bytes smaller than the normal text. A received packed text shows its words like any other text, with
+    `codec.packed: true` and `message.text.dict`.
 
     **Other connectors** (not part of this HTTP API, same JSON): MQTT topic `rescuecodec/v2/messages`
     carries `MessageRecord` objects, `rescuecodec/v2/channels/<channel name>` the same records per channel, and
@@ -114,15 +124,15 @@ paths:
         Use `POST /v2/tasks/{key}/ack` to answer a task, not this endpoint.
         A text message that is over 200 bytes only with its position and id is cut to fit and ends with "…",
         like on the phone. The returned record shows the text that goes out.
-        A message with a `text` body goes out as a plain Meshtastic text (port 1, TEXT_MESSAGE_APP) on the team
-        channel while the gateway runs with `--text-as-meshtastic on` (the default): the official app, radio
-        screens and every Meshtastic device show it. Only the words go out (no id, `pos` or `time`), with the same
-        queue, priority, airtime budget and `want_ack`. The record then has `codec.version: 0` and no `key`.
-        With `--text-as-meshtastic off` it goes out as a RescueCodec text on port 256.
+        A message with a `text` body goes out packed for RescueCodec (port 256, with id and `pos`) or as a normal
+        Meshtastic text (port 1, TEXT_MESSAGE_APP, only the words), as the chat's text mode says (see "Packed texts"
+        above and `GET /v2/channels/{name}/mode`). Both use the same queue, priority, airtime budget and `want_ack`.
+        A normal text record has `codec.version: 0` and no `key`; a packed one has `codec.packed: true`. A `dict`
+        in the text body is ignored: the chat's mode decides.
         With `dry_run: true` nothing is sent; you get the record as it would be queued.
         `channel` picks a channel by name (one of `GET /v2/health` -> `radio.channels`); without it the message goes
         out on the default channel. Reports never go out on a public channel. `to` makes a text a direct message to
-        that node: it always goes out as a plain Meshtastic text (port 1).
+        that node: packed when the node runs RescueCodec, else a normal Meshtastic text.
       requestBody:
         required: true
         content:
@@ -232,13 +242,13 @@ paths:
     post:
       tags: [send]
       operationId: sendText
-      summary: Send a short free text (a normal Meshtastic text by default).
+      summary: Send a short free text (packed for RescueCodec or a normal Meshtastic text, per chat).
       description: |
         Shortcut for `POST /v2/messages` with a `text` body. 1 to 180 bytes of UTF-8.
-        With `--text-as-meshtastic on` (the default) it goes out as a plain Meshtastic text (port 1), which stock
-        apps show; `also_plain` then changes nothing. With `--text-as-meshtastic off` it goes out as a RescueCodec
-        text on port 256, which stock apps do not show. To reach them anyway, set `also_plain: true`: the gateway
-        then also posts `[RC] ` plus the text on the normal text port (TEXT_MESSAGE_APP).
+        The chat's text mode decides how it goes out (see "Packed texts" above): packed for RescueCodec (port 256),
+        which stock apps do not show, or a normal Meshtastic text (port 1), which every app shows; `also_plain` then
+        changes nothing. To reach stock apps with a packed text anyway, set `also_plain: true`: the gateway then also
+        posts `[RC] ` plus the text on the normal text port (TEXT_MESSAGE_APP).
       requestBody:
         required: true
         content:
@@ -252,7 +262,7 @@ paths:
                 priority: { $ref: "#/components/schemas/Priority" }
                 also_plain: { type: boolean, default: false }
                 channel: { type: string, description: "Channel name to send on. Default: the default channel." }
-                to: { type: string, pattern: "^![0-9a-f]{8}$", description: "Send as a direct message to this node (always a plain text)." }
+                to: { type: string, pattern: "^![0-9a-f]{8}$", description: "Send as a direct message to this node (packed if it runs RescueCodec)." }
             example: { text: "Treffpunkt jetzt am Gasthaus, nicht am Parkplatz" }
       responses:
         "202":
@@ -407,6 +417,78 @@ paths:
                     battery_pct: 81
                     pos: { lat: 50.69212, lon: 7.21345 }
                     is_gateway: false
+
+  /v2/channels/{name}/mode:
+    get:
+      parameters:
+        - { name: name, in: path, required: true, schema: { type: string }, description: "Channel name, any case, for example RescueCodec." }
+      tags: [send]
+      operationId: getChannelMode
+      summary: How a text on this channel goes out now (packed or normal), and why.
+      responses:
+        "200":
+          description: The text mode of the channel.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChatMode" }
+              example: { channel: RescueCodec, node: null, mode: auto, own_mode: false, send_as: normal, reason: meshtastic_users,
+                         meshtastic_users: ["!0000e003"], rescuecodec_nodes: ["!0000e002"] }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      parameters:
+        - { name: name, in: path, required: true, schema: { type: string }, description: "Channel name, any case, for example RescueCodec." }
+      tags: [send]
+      operationId: setChannelMode
+      summary: Set the text mode of a channel (auto, compressed or normal; null = the gateway default).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ModeRequest" }
+            example: { mode: compressed }
+      responses:
+        "200":
+          description: The new text mode. It is stored and survives a restart.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChatMode" }
+        "400": { $ref: "#/components/responses/InvalidMessage" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v2/nodes/{node}/mode:
+    get:
+      parameters:
+        - { name: node, in: path, required: true, schema: { type: string, pattern: "^![0-9a-f]{8}$" }, description: "Peer of the direct chat." }
+      tags: [send]
+      operationId: getDirectChatMode
+      summary: How a direct text to this node goes out now.
+      responses:
+        "200":
+          description: The text mode of the direct chat.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChatMode" }
+              example: { channel: null, node: "!0000e002", mode: auto, own_mode: false, send_as: compressed, reason: peer_rescuecodec,
+                         meshtastic_users: [], rescuecodec_nodes: ["!0000e002"] }
+        "400": { $ref: "#/components/responses/InvalidMessage" }
+    put:
+      parameters:
+        - { name: node, in: path, required: true, schema: { type: string, pattern: "^![0-9a-f]{8}$" }, description: "Peer of the direct chat." }
+      tags: [send]
+      operationId: setDirectChatMode
+      summary: Set the text mode of a direct chat.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ModeRequest" }
+      responses:
+        "200":
+          description: The new text mode.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChatMode" }
+        "400": { $ref: "#/components/responses/InvalidMessage" }
 
   /v2/export.geojson:
     get:
@@ -732,7 +814,8 @@ components:
       additionalProperties: false
       required: [text]
       properties:
-        text: { type: string, minLength: 1, description: "1..180 bytes of UTF-8. In a record of a plain Meshtastic text (`codec.version: 0`) up to 233 bytes, as the sender typed it." }
+        text: { type: string, minLength: 1, description: "1..180 bytes of UTF-8. In a record of a plain Meshtastic text (`codec.version: 0`) up to 233 bytes, as the sender typed it. In a packed text up to 1024 bytes." }
+        dict: { type: integer, minimum: 1, description: "Set when the words came or went packed (DEFLATE with text dictionary `dict`, SPEC section 3.5). The words are always unpacked here." }
     Text2:
       type: object
       description: The message as one readable line, built from the spec templates.
@@ -763,7 +846,7 @@ components:
         to:
           type: string
           pattern: "^![0-9a-f]{8}$"
-          description: "Send a text as a direct message to this node. It always goes out as a plain Meshtastic text (port 1). Leave it out for the whole channel."
+          description: "Send a text as a direct message to this node: packed when the node runs RescueCodec (port 256 to that node), else a normal Meshtastic text (port 1). Leave it out for the whole channel."
     Channel:
       type: object
       description: |
@@ -810,6 +893,7 @@ components:
               description: "2 = RescueCodec v2, 1 = v1. 0 = a plain Meshtastic text (port 1, TEXT_MESSAGE_APP), not a RescueCodec packet: `hex` is the UTF-8 text, `type` is `text`, there is no id and no task, and a received one can be up to 233 bytes. A UI can show it with a small \"via Meshtastic\" hint."
             size: { type: integer, description: "Payload bytes (measured)." }
             hex: { type: string }
+            packed: { type: boolean, description: "Present and true for a packed text (DEFLATE with the shared dictionary). `message.text.text` holds the unpacked words." }
         radio:
           type: [object, "null"]
           description: Radio facts for received packets (measured). Null for outgoing records.
@@ -913,6 +997,28 @@ components:
         battery_pct: { type: [integer, "null"] }
         pos: { oneOf: [ { $ref: "#/components/schemas/Position" }, { type: "null" } ] }
         is_gateway: { type: boolean }
+        rescuecodec: { type: boolean, description: "The node sent a RescueCodec packet (port 256) in the last 24 h, or is the gateway. Direct texts to it go packed in mode auto." }
+    ChatMode:
+      type: object
+      description: How a text in one chat (a channel or a direct chat) goes out now. SPEC section 2.3.
+      required: [channel, node, mode, own_mode, send_as, reason, meshtastic_users, rescuecodec_nodes]
+      properties:
+        channel: { type: [string, "null"], description: "Channel name, null for a direct chat." }
+        node: { type: [string, "null"], pattern: "^![0-9a-f]{8}$", description: "Peer of a direct chat, else null." }
+        mode: { type: string, enum: [auto, compressed, normal] }
+        own_mode: { type: boolean, description: "false = the chat follows the gateway default (--text-mode)." }
+        send_as: { type: string, enum: [compressed, normal], description: "compressed = packed for RescueCodec when it saves at least 3 bytes; short texts still go normal." }
+        reason:
+          type: string
+          enum: [public_channel, mode_normal, mode_compressed, peer_rescuecodec, peer_unknown, meshtastic_users, rescuecodec_only]
+        meshtastic_users: { type: array, items: { type: string }, description: "Nodes that sent normal texts on this channel and no RescueCodec packet in the last 24 h." }
+        rescuecodec_nodes: { type: array, items: { type: string }, description: "Nodes that sent RescueCodec packets here in the last 24 h." }
+    ModeRequest:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      properties:
+        mode: { type: [string, "null"], enum: [auto, compressed, normal, null], description: "null = follow the gateway default again." }
     Health:
       type: object
       required: [status, version, spec_version, uptime_s, radio, mqtt]
@@ -933,8 +1039,14 @@ components:
             channel_index: { type: [integer, "null"], description: Meshtastic index of that channel. }
             channels:
               type: array
-              description: "Every channel the gateway listens on (all private ones or the ones in --channels, public ones only with --show-public), the default one included. Direct messages to our node are kept on any channel."
-              items: { $ref: "#/components/schemas/Channel" }
+              description: "Every channel the gateway listens on (all private ones or the ones in --channels, public ones only with --show-public), the default one included. Direct messages to our node are kept on any channel. `mode` and `send_as` say how a text goes out there now (see `GET /v2/channels/{name}/mode`)."
+              items:
+                allOf:
+                  - { $ref: "#/components/schemas/Channel" }
+                  - type: object
+                    properties:
+                      mode: { type: string, enum: [auto, compressed, normal] }
+                      send_as: { type: string, enum: [compressed, normal] }
             channel_error: { type: [string, "null"], description: "Why there is no safe default channel (none named RescueCodec, only the public key). Sending without a `channel` is refused while this is set." }
             other_channel: { type: integer, description: Port 256 packets dropped because they came in on a channel we do not listen on. }
             region: { type: [string, "null"] }
