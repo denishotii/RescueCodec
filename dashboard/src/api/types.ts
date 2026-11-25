@@ -109,8 +109,8 @@ export interface ExtractResult {
   send_as?: SendAs;
   /** Most bytes of typed text there: 400 on a chat that packs, else 180. */
   max_text_bytes?: number;
-  /** Form of a text: plain, packed (deflate) or compact word tokens (words). */
-  form?: "plain" | "deflate" | "words";
+  /** Form of a text: plain, packed (deflate), compact word tokens in the Envelope (words) or a compact frame (lean). */
+  form?: "plain" | "deflate" | "words" | "lean";
   /** True when the text will be shortened to fit one radio message. */
   cut?: boolean;
 }
