@@ -123,7 +123,13 @@ internal object Renderer {
                 headText = head.getValue("text")
                 parts.add(body["text"]?.toString() ?: "")
             }
-            else -> headText = head.getValue("unknown")
+            else -> headText = if (body.containsKey("words") && head.containsKey("unknown_dict")) {
+                // A compact text with a word dictionary we do not have.
+                val n = body["words"]
+                fill(head.getValue("unknown_dict"), "n" to ((n as? Number)?.toLong() ?: n))
+            } else {
+                head.getValue("unknown")
+            }
         }
 
         var sentence = headText + if (parts.isNotEmpty()) punct.getValue("head_sep") + parts.joinToString(punct.getValue("part_sep")) else ""
