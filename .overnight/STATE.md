@@ -13,3 +13,7 @@
 
 ## build-dashboard (Wed 02:31)
 - dashboard: done, review: pass, commit 5f1ca03 (contains all dashboard paths; no new commit needed). Open: not tested against the real gateway (rescuecodec/gateway has no cli.py/app yet; re-run with RC_API=http://127.0.0.1:8000 npm run dev once it exists; needs /v2 + WebSocket same origin or apiBase in static/config.json, and Range requests for static/map/*.pmtiles); static/map is gitignored, run build or scripts/fetch-offline-assets.sh on demo laptop; sector marker is a 250 m square (no sector polygon in API), 3D uses z12 terrain only; PRODUCT.md inferred from brief, DESIGN.md hand-written, finish-reviewer not run; not tested on projector from 10 m, room view raises font ~30%, Accepted/Done lanes need scroll at 900 px height; stale team label in localStorage (rescuecodec.dashboard.v2) can survive, default 'Leitstelle'.
+
+## build-python (Wed 02:48)
+- python-engine: partial; review: fixed 1 serious issue, fixer partial; open: shared sar.yaml urgency phrases added; Kotlin Extractor needs DECISIONS rules, person_nouns found-cue, hazard other from avalanche words; Kotlin tests not run; Ollama tested with fake model only (check qwen3:8b); gateway still must call rescuecodec.engine; proto HAZARD_ICE comment stale
+- gateway: done; review: pass; open: USB/Heltec V3 path untested (mocks only); want_ack broadcast ends failed/max_retransmit, word as no relay confirmed; RSSI/SNR null on sim; CoT multicast iface check on LAN; no password on API (127.0.0.1 default); run pip install -e . once for console script
