@@ -1,4 +1,40 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">RescueCodec</string>
+
+    <!-- Permission reasons. Shown before the system dialog. -->
+    <string name="perm_bt_scan">Find your radio. Android calls this "Nearby devices". We never use it to locate you.</string>
+    <string name="perm_bt_connect">Talk to your radio over Bluetooth. Android calls this "Nearby devices".</string>
+    <string name="perm_location_for_bt">Find your radio. On Android 11 and older, Bluetooth scanning needs the location permission. We do not store where you are.</string>
+    <string name="perm_location_for_reports">Add your position to reports. Optional.</string>
+    <string name="perm_notifications">Show that the radio link is running in the background. Optional, but you will not see the status without it.</string>
+    <string name="perm_battery">Keep the radio link alive when the screen is off. Allow "Unrestricted" battery use for this app if your phone offers it.</string>
+
+    <!-- Foreground service notification -->
+    <string name="channel_radio">Radio link</string>
+    <string name="channel_radio_desc">Shows that the app is connected to your radio. Needed to receive messages with the screen off.</string>
+    <string name="notif_title">RescueCodec radio link</string>
+    <string name="notif_disconnect">Disconnect</string>
+    <string name="notif_disconnected">Not connected</string>
+    <string name="notif_scanning">Looking for radios</string>
+    <string name="notif_connecting">Connecting to %1$s</string>
+    <string name="notif_pairing">Pairing with %1$s. Confirm on the phone and enter the PIN shown on the radio.</string>
+    <string name="notif_connected">Connected to %1$s</string>
+    <string name="notif_error_retry">%1$s Trying again in %2$d s.</string>
+    <string name="notif_error">%1$s</string>
+
+    <!-- Minimal screen (the next job replaces it) -->
+    <string name="screen_radio">Radio</string>
+    <string name="screen_tasks">Actions</string>
+    <string name="screen_outbox">Outbox</string>
+    <string name="screen_stats">Stats</string>
+    <string name="action_allow">Allow</string>
+    <string name="action_scan">Scan for radios</string>
+    <string name="action_connect_last">Connect to last radio</string>
+    <string name="action_connect_tcp">Connect over network</string>
+    <string name="action_disconnect">Disconnect</string>
+    <string name="action_accept">Accept</string>
+    <string name="action_decline">Decline</string>
+    <string name="action_done">Done</string>
+    <string name="action_send_test">Send test report</string>
 </resources>

@@ -1,0 +1,62 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+package org.rescuecodec.app
+
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeout
+import okio.ByteString
+import org.meshtastic.proto.Data
+import org.meshtastic.proto.FromRadio
+import org.meshtastic.proto.MeshPacket
+import org.meshtastic.proto.NodeInfo
+import org.meshtastic.proto.PortNum
+import org.meshtastic.proto.User
+import org.meshtastic.sdk.TransportIdentity
+import org.meshtastic.sdk.testing.toFrame
+import org.meshtastic.sdk.testing.FakeRadioTransport
+
+/** Polls [check] until it is true or [timeoutMs] passes. The SDK runs on real threads, so we wait in real time. */
+suspend fun eventually(timeoutMs: Long = 10_000, what: String = "condition", check: suspend () -> Boolean) {
+    try {
+        withTimeout(timeoutMs) {
+            while (!check()) delay(20)
+        }
+    } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+        throw AssertionError("Timed out after $timeoutMs ms waiting for $what")
+    }
+}
+
+/** A mesh packet on port 256 as another radio would deliver it to the phone. */
+fun privateAppPacket(from: Long, id: Int, payload: ByteArray, hopStart: Int = 3, hopLimit: Int = 2): MeshPacket =
+    MeshPacket.Builder().also { b ->
+        b.from = from.toInt()
+        b.to = -1
+        b.id = id
+        b.hop_start = hopStart
+        b.hop_limit = hopLimit
+        b.decoded = Data.Builder().also { d ->
+            d.portnum = PortNum.PRIVATE_APP
+            d.payload = ByteString.of(*payload)
+        }.build()
+    }.build()
+
+/** Packets the app handed to the radio on port 256. */
+fun FakeRadioTransport.sentPrivateApp(): List<MeshPacket> =
+    outboundPackets().filter { it.decoded?.portnum == PortNum.PRIVATE_APP }
+
+/**
+ * A fake radio that answers the handshake and also reports its own node, as a real radio does.
+ * (The SDK's own fake only sends `my_info`.)
+ */
+fun fakeRadio(identity: String, nodeNum: Int): FakeRadioTransport {
+    val me = FromRadio.Builder().also { b ->
+        b.node_info = NodeInfo.Builder().also { n ->
+            n.num = nodeNum
+            n.user = User.Builder().also { u ->
+                u.id = "!%08x".format(nodeNum)
+                u.long_name = "Fake %08x".format(nodeNum)
+                u.short_name = "FK"
+            }.build()
+        }.build()
+    }.build()
+    return FakeRadioTransport(TransportIdentity(identity), frames = listOf(me.toFrame()), autoHandshake = true, nodeNum = nodeNum)
+}
