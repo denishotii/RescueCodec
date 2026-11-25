@@ -138,7 +138,7 @@ Encryption is Meshtastic's (AES-256 on a private channel). RescueCodec adds no c
 
 ## What is not done
 
-- No end-to-end test on real radios yet (Bluetooth, USB, RF).
+- Real radios were tested once, on 25 Nov 2026, at short range (phone over Bluetooth, Heltec V3 on USB). No field test over long distance with many radios yet.
 - No USB link in the Android app (the Mac gateway uses USB, the phone uses Bluetooth or TCP).
 - No registered Meshtastic port. Port 256 is the private range (SPEC section 13).
 - The Ukrainian, Turkish and Arabic words are machine drafts.

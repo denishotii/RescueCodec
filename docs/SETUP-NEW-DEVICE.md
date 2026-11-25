@@ -1,6 +1,6 @@
 # Set up RescueCodec on a new laptop, from zero
 
-Use this when you want RescueCodec on a laptop other than Denis's MacBook. Denis's Mac is already set up: for that one, use `docs/SETUP.md`.
+Use this when you want RescueCodec on a laptop other than Denis's MacBook. Denis's Mac is already set up: for that one, use [SETUP.md](SETUP.md).
 
 At the end this laptop can run the gateway and the dashboard, install the app on phones, and (optional) run the simulator and build the app.
 
@@ -189,7 +189,7 @@ emulator -avd rescue &
 
 ## Next: radios, phones and the test
 
-Now follow `docs/SETUP.md` from step 2. It is written for Denis's Mac, so change two things:
+Now follow [SETUP.md](SETUP.md) from step 2. It is written for Denis's Mac, so change two things:
 
 - Instead of `cd ~/Denis/Hackathons/PMRExpo-2026/RescueCodec`, go to your own `RescueCodec` folder.
 - `. scripts/env.sh` is only for a Mac with the Android SDK from part G. Without part G, skip it: `adb` from part A is already on your path.

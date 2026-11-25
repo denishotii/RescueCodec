@@ -1,9 +1,9 @@
 # Run RescueCodec from Denis's MacBook
 
-Everything runs from this one Mac. Nobody else installs anything. (Another laptop: `docs/SETUP-NEW-DEVICE.md`.) Teammates only need an Android phone (for the app) or a browser (to watch the dashboard).
+Everything runs from this one Mac. Nobody else installs anything. (Another laptop: [SETUP-NEW-DEVICE.md](SETUP-NEW-DEVICE.md).) Teammates only need an Android phone (for the app) or a browser (to watch the dashboard).
 
 ```
-Phone + app --Bluetooth--> field radio (T1000-E / T-Watch) ~~LoRa~~ Heltec V3 --USB--> this Mac: gateway + dashboard
+Phone + app --Bluetooth--> field radio (ThinkNode M5, T1000-E, T-Watch) ~~LoRa~~ Heltec V3 --USB--> this Mac: gateway + dashboard
 ```
 
 Already installed on this Mac: the gateway, the dashboard with the offline map, the app file (`dist/RescueCodec-debug.apk`), adb, the voice models, the Meshtastic simulator (Docker) and the Android emulator.
@@ -37,7 +37,7 @@ You should see PASS on every line. A WARN for "no phone" or "no USB radio" is fi
 .venv/bin/rescuecodec-gateway --emulator --emulator-demo --db :memory:
 ```
 
-Open http://127.0.0.1:8000/. A pretend team sends reports every few seconds (a found person, a hazard, a GPS track), each about 20 to 30 bytes. Click **Accept** on a card, then **Done**.
+Open http://127.0.0.1:8000/. A pretend team sends reports every few seconds (a found person, a hazard, a GPS track), each about 20 to 30 bytes. Click **Accept** on a card, then **Done**. Try the **Send** panel on the right: type a sentence and it shows how many bytes it will send.
 
 Stop it with `Ctrl+C`.
 
@@ -123,14 +123,16 @@ Then set the battery to unrestricted: Android Settings, Apps, RescueCodec, Batte
 2. In RescueCodec open the **Radio** tab and tap **Scan for radios**. Hold the phone next to the radio.
 3. Tap your radio in the list. Android asks to pair:
    - T1000-E: PIN **123456**.
-   - T-Watch S3: the PIN is shown on the watch.
+   - ThinkNode M5, T-Watch S3 and other radios with a screen: the PIN is shown on the screen.
 4. Wait for **Connected**.
 
 You should see: "Connected" within about 30 seconds, and under it `Channel N "RescueCodec"`.
 
-If the radio has no RescueCodec channel yet, tap **Scan channel QR code** on the same screen and scan the team QR from step 3. Like Replace in step 3, this overwrites the radio's main channel and its region and preset.
+If the radio has no RescueCodec channel yet, tap **Join by QR** on the same tab and scan the team QR from step 3. This adds the channel next to the ones the radio already has. It never changes the radio's main channel. It sets region and preset only on a radio that has no region yet.
 
-From now on the app reconnects by itself, also after the screen was off. Do not tap **Disconnect** in the app's notification: that switches auto-reconnect off until you connect again on the Radio screen.
+You can also make a new channel on the phone: Radio tab, **New channel**, type a name (at most 11 bytes). The QR code opens right away, and teammates scan it with **Join by QR**. To show it again, tap the three dots next to the channel and choose **Show QR code**.
+
+From now on the app reconnects by itself, also after the screen was off. Do not tap **Disconnect** in the app's notification: that switches auto-reconnect off until you connect again on the Radio tab.
 
 One phone per radio. Each field radio talks to one phone.
 
@@ -138,23 +140,27 @@ One phone per radio. Each field radio talks to one phone.
 
 ## 7. Test it end to end (3 minutes)
 
-1. **Send a report.** On the phone open the **Report** tab and type:
+1. **Send a report.** On the phone open **Chats**, then the **RescueCodec** chat, and type:
 
    > Kind gefunden, ansprechbar, stark unterkühlt, Knöchel verletzt. Wir brauchen eine Trage und zwei Leute.
 
-   Check the chips (child, conscious, hypothermia, fracture, stretcher, 2 helpers). The app shows about 100 bytes as text and about 23 bytes coded. Tap **Send**.
+   Check the chips (child, conscious, hypothermia, fracture, stretcher, 2 helpers). The app shows 105 bytes as text and about 23 to 27 bytes sent. Tap **Send**.
 
    You should see: a card on the dashboard within about 10 seconds, in English and German, with a pin if the phone had GPS.
 
 2. **Accept and Done.** On the dashboard click **Accept** on that card, then **Done**.
 
-   You should see: on the phone (Actions tab) the task turns **accepted**, then **done**.
+   You should see: on the phone (Tasks tab) the task turns **accepted**, then **done**.
 
 3. **SOS.** On the phone hold the red **SOS** strip for 2 seconds. Tell people nearby it is a test.
 
    You should see: a red Mayday banner on the dashboard.
 
-If all three work, the system works. The longer checklist (reconnect, battery saver, what to write down) is `docs/HARDWARE_CHECK.md`.
+4. **Send from the command post.** In the dashboard's **Send** panel keep **#RescueCodec**, type `Status check, all teams report`, and press **Send**.
+
+   You should see: the message in the phone's RescueCodec chat within about 10 seconds.
+
+If all four work, the system works. The longer checklist (reconnect, battery saver, what to write down) is `docs/HARDWARE_CHECK.md`.
 
 ---
 
@@ -226,7 +232,7 @@ A real phone cannot reach the simulator. It only listens on this Mac.
 | `adb devices` shows "unauthorized" | Unlock the phone and tap Allow on the USB debugging prompt |
 | App: radio list stays empty | Radio on and close? Official Meshtastic app force-stopped (on every phone)? Switch the radio off and on. Android 11 or older: Location switched on? |
 | App: stuck on "Connecting" or the handshake hangs | The official app or another phone still holds the radio. Force-stop it, switch the radio off and on, try again |
-| App: link stopped after a permission pop-up | Grant Nearby devices, then tap **Reconnect to ...** on the Radio screen |
+| App: link stopped after a permission pop-up | Grant Nearby devices, then tap **Reconnect to ...** on the Radio tab |
 | App: "Pairing failed" or "no longer trust each other" | Android Bluetooth settings, forget the radio, then **Scan for radios** again |
 | App: message stays "queued" | That radio has no RescueCodec channel. Read the line under the message, then step 3 |
 | App shows "No radio" after start and does not reconnect | With the phone on USB, save `adb logcat -s RescueCodec` (the `link:` lines). Then Radio tab, tap **Reconnect to ...**. Still stuck: `adb shell am force-stop org.rescuecodec.app` and open the app again |
@@ -256,9 +262,9 @@ Tests: `.venv/bin/python -m pytest -q`
 
 ## More
 
-- `docs/HARDWARE_CHECK.md`: the full real-radio checklist.
-- `README.md`: what is in the repo.
-- `docs/INTEGRATE.md`: use RescueCodec from other apps (REST, MQTT, TAK, Python, Kotlin, TypeScript, Android Intent).
-- `docs/VOICE.md`: offline speech.
-- `docs/SETUP-NEW-DEVICE.md`: set up another laptop from zero.
-- `docs/OFFLINE.md`: every download and its licence.
+- [HARDWARE_CHECK.md](HARDWARE_CHECK.md): the full real-radio checklist.
+- [README.md](../README.md): what is in the repo.
+- [INTEGRATE.md](INTEGRATE.md): use RescueCodec from other apps (REST, MQTT, TAK, Python, Kotlin, TypeScript, Android Intent).
+- [VOICE.md](VOICE.md): offline speech.
+- [SETUP-NEW-DEVICE.md](SETUP-NEW-DEVICE.md): set up another laptop from zero.
+- [OFFLINE.md](OFFLINE.md): every download and its licence.
