@@ -67,9 +67,9 @@ class AppUiTest {
     fun reportThenSendQueuesTheCodedMessage() {
         show()
         rule.onNodeWithTag("report_text").performTextInput("Child found, conscious, hypothermia, need stretcher")
-        // The preview strip above the field shows the fields as chips and the size.
+        // "What will be sent" above the field shows the fields as chips and the green byte line.
         rule.waitUntil(8_000) { rule.onAllNodesWithTag("chip_type").fetchSemanticsNodes().isNotEmpty() }
-        // The chips sit in one row that scrolls sideways, so scroll to each before checking it.
+        // The chips sit in a panel that scrolls, so scroll to each before checking it.
         rule.onNodeWithTag("chip_type").performScrollTo().assertIsDisplayed()
         rule.onNodeWithTag("chip_age").performScrollTo().assertIsDisplayed()
         rule.onNodeWithTag("chip_injuries_hypothermia").performScrollTo().assertIsDisplayed()
@@ -95,7 +95,7 @@ class AppUiTest {
         assertEquals(row.bytes.size.toLong(), stats()["report_coded_bytes"])
 
         // The chat shows it on the right, as waiting for the radio.
-        rule.waitUntil(8_000) { rule.onAllNodesWithText("Waiting for radio").fetchSemanticsNodes().isNotEmpty() }
+        rule.waitUntil(8_000) { rule.onAllNodesWithText("Waiting").fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithTag("msg_${row.id}").assertIsDisplayed()
     }
 
@@ -156,15 +156,13 @@ class AppUiTest {
     @Test
     fun languageToggleSwitchesTheWholeApp() {
         show()
+        // EN / DE is in Settings, behind the gear: it switches the whole app.
+        rule.onNodeWithTag("chat_back").performClick()
         rule.onNodeWithText("Tasks").assertIsDisplayed()
-        // EN / DE in the top bar switches the whole app.
-        rule.onNodeWithTag("lang_toggle").performClick()
+        rule.onNodeWithTag("settings_button").performClick()
+        rule.onNodeWithTag("lang_de").performClick()
         rule.waitUntil(5_000) { rule.onAllNodesWithText("Aufgaben").fetchSemanticsNodes().isNotEmpty() }
-        rule.onNodeWithText("Nachricht oder Meldung").assertIsDisplayed()
         assertEquals("de", graph.settings.language)
-        // Settings is in the menu and can switch it back.
-        rule.onNodeWithTag("menu_button").performClick()
-        rule.onNodeWithTag("menu_settings").performClick()
         rule.onNodeWithTag("lang_en").performClick()
         rule.waitUntil(5_000) { rule.onAllNodesWithText("Settings").fetchSemanticsNodes().isNotEmpty() }
         assertEquals("en", graph.settings.language)
