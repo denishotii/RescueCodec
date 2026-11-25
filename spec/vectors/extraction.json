@@ -1,0 +1,762 @@
+{
+ "spec_version": "2.0.0",
+ "about": "Shared test sentences for rule-based extraction (spec/SPEC.md, 'Extraction'). expect holds only what the sentence states: no id, no device GPS (the app adds both). priority is set only when the sentence asks for a priority different from the type default. Lists are in bit order. unsupported=true means the extractor must not invent fields and should offer the text fallback (expect = the text message, cut to 180 bytes).",
+ "cases": [
+  {
+   "name": "de-pitch",
+   "lang": "de",
+   "text": "Kind gefunden, ansprechbar, stark unterkühlt, Knöchel verletzt. Wir brauchen eine Trage und zwei Leute.",
+   "unsupported": false,
+   "expect": {
+    "found": {
+     "age": "child",
+     "consciousness": "conscious",
+     "injuries": [
+      "hypothermia",
+      "fracture"
+     ],
+     "needs": [
+      "stretcher"
+     ],
+     "responders": 2
+    }
+   },
+   "notes": "The demo sentence. 'Knöchel verletzt' counts as fracture (suspected)."
+  },
+  {
+   "name": "de-unconscious-breathing",
+   "lang": "de",
+   "text": "Person gefunden, bewusstlos, atmet aber. Brauchen Sauerstoff und 2 Helfer.",
+   "unsupported": false,
+   "expect": {
+    "found": {
+     "consciousness": "unconscious",
+     "breathing": "normal",
+     "needs": [
+      "oxygen"
+     ],
+     "responders": 2
+    }
+   }
+  },
+  {
+   "name": "de-awake-but-confused",
+   "lang": "de",
+   "text": "Vermisste Frau gefunden, wach aber verwirrt, kann nicht laufen",
+   "unsupported": false,
+   "expect": {
+    "found": {
+     "age": "adult",
+     "consciousness": "confused",
+     "mobility": "cannot_walk"
+    }
+   },
+   "notes": "'verwirrt' is more specific than 'wach' and wins. 'kann nicht laufen' must not also give 'walks'."
+  },
+  {
+   "name": "de-not-breathing-critical",
+   "lang": "de",
+   "text": "Mann gefunden, nicht ansprechbar, atmet nicht! Sofort Notarzt und Defi!",
+   "unsupported": false,
+   "expect": {
+    "priority": "critical",
+    "found": {
+     "age": "adult",
+     "consciousness": "unconscious",
+     "breathing": "none",
+     "needs": [
+      "medic",
+      "aed"
+     ]
+    }
+   },
+   "notes": "'nicht ansprechbar' is unconscious, not conscious. 'atmet nicht' is none, not normal."
+  },
+  {
+   "name": "de-typos-walks",
+   "lang": "de",
+   "text": "habe den jungen gefunen, gehts ihm gut, kann selbst laufen",
+   "unsupported": false,
+   "expect": {
+    "found": {
+     "age": "child",
+     "mobility": "walks"
+    }
+   },
+   "notes": "Typo 'gefunen'. 'gehts ihm gut' sets nothing."
+  },
+  {
+   "name": "de-two-hikers",
+   "lang": "de",
+   "text": "Zwei Wanderer gefunden, beide erschöpft, brauchen Wasser und Decken",
+   "unsupported": false,
+   "expect": {
+    "found": {
+     "count": 2,
+     "age": "adult",
+     "injuries": [
+      "exhaustion"
+     ],
+     "needs": [
+      "warmth",
+      "water"
+     ]
+    }
+   },
+   "notes": "Same state for both, so one found message with count 2 is fine."
+  },
+  {
+   "name": "de-senior-heli",
+   "lang": "de",
+   "text": "Ältere Frau gefunden, unterkühlt, nicht gehfähig, Hubschrauber anfordern",
+   "unsupported": false,
+   "expect": {
+    "found": {
+     "age": "senior",
+     "mobility": "cannot_walk",
+     "injuries": [
+      "hypothermia"
+     ],
+     "needs": [
+      "helicopter"
+     ]
+    }
+   }
+  },
+  {
+   "name": "de-no-injuries",
+   "lang": "de",
+   "text": "Person gefunden, keine Verletzungen, ansprechbar",
+   "unsupported": false,
+   "expect": {
+    "found": {
+     "consciousness": "conscious"
+    }
+   },
+   "notes": "'keine Verletzungen' must not set injury 'other'."
+  },
+  {
+   "name": "de-breathing-unclear",
+   "lang": "de",
+   "text": "Kind gefunden. Atmung unklar, bewusstlos.",
+   "unsupported": false,
+   "expect": {
+    "found": {
+     "age": "child",
+     "consciousness": "unconscious"
+    }
+   },
+   "notes": "Uncertain breathing stays unknown (not set)."
+  },
+  {
+   "name": "de-head-bleeding",
+   "lang": "de",
+   "text": "Frau gefunden, Platzwunde am Kopf, blutet stark, ansprechbar",
+   "unsupported": false,
+   "expect": {
+    "found": {
+     "age": "adult",
+     "consciousness": "conscious",
+     "injuries": [
+      "bleeding",
+      "head"
+     ]
+    }
+   }
+  },
+  {
+   "name": "de-negated-hypothermia",
+   "lang": "de",
+   "text": "Person aufgefunden, nicht unterkühlt, aber Bein gebrochen, Trage + 4 Träger",
+   "unsupported": false,
+   "expect": {
+    "found": {
+     "injuries": [
+      "fracture"
+     ],
+     "needs": [
+      "stretcher"
+     ],
+     "responders": 4
+    }
+   },
+   "notes": "Negation: 'nicht unterkühlt'."
+  },
+  {
+   "name": "de-teen-allergy",
+   "lang": "de",
+   "text": "Jugendlicher gefunden, Atemnot, Allergie nach Wespenstich, brauchen Notarzt dringend",
+   "unsupported": false,
+   "expect": {
+    "found": {
+     "age": "teen",
+     "breathing": "difficult",
+     "injuries": [
+      "allergy"
+     ],
+     "needs": [
+      "medic"
+     ]
+    }
+   },
+   "notes": "'dringend' equals the found default (urgent), so priority is not set."
+  },
+  {
+   "name": "de-trapped-child",
+   "lang": "de",
+   "text": "Kind eingeklemmt in der Schlucht, ansprechbar, Höhenrettung nötig",
+   "unsupported": false,
+   "expect": {
+    "found": {
+     "age": "child",
+     "consciousness": "conscious",
+     "mobility": "trapped",
+     "needs": [
+      "rope"
+     ]
+    }
+   },
+   "notes": "No 'gefunden', but a described person with a state means found."
+  },
+  {
+   "name": "de-coordinates",
+   "lang": "de",
+   "text": "Person gefunden bei 50.69212, 7.21345, ansprechbar",
+   "unsupported": false,
+   "expect": {
+    "pos": {
+     "lat": 50.69212,
+     "lon": 7.21345,
+     "acc": "estimated"
+    },
+    "found": {
+     "consciousness": "conscious"
+    }
+   },
+   "notes": "Spoken coordinates get accuracy 'estimated'. Without spoken coordinates the app adds the device GPS."
+  },
+  {
+   "name": "de-typo-hypothermia",
+   "lang": "de",
+   "text": "kind gefundn unterkült",
+   "unsupported": false,
+   "expect": {
+    "found": {
+     "age": "child",
+     "injuries": [
+      "hypothermia"
+     ]
+    }
+   },
+   "notes": "Speech-to-text typos."
+  },
+  {
+   "name": "de-chest-pain",
+   "lang": "de",
+   "text": "Person gefunden, Brustschmerzen, Rettungswagen zum Forstweg",
+   "unsupported": false,
+   "expect": {
+    "found": {
+     "injuries": [
+      "cardiac"
+     ],
+     "needs": [
+      "vehicle"
+     ]
+    }
+   }
+  },
+  {
+   "name": "de-sector-cleared",
+   "lang": "de",
+   "text": "Sektor 12 abgesucht, nichts gefunden",
+   "unsupported": false,
+   "expect": {
+    "sector": {
+     "sector": 12,
+     "status": "cleared"
+    }
+   },
+   "notes": "'nichts gefunden' must not make a found message."
+  },
+  {
+   "name": "de-sector-half",
+   "lang": "de",
+   "text": "Abschnitt 4 zur Hälfte abgesucht",
+   "unsupported": false,
+   "expect": {
+    "sector": {
+     "sector": 4,
+     "status": "partial",
+     "coverage": 50
+    }
+   }
+  },
+  {
+   "name": "de-sector-blocked",
+   "lang": "de",
+   "text": "Sektor 7 nicht begehbar wegen Hochwasser",
+   "unsupported": false,
+   "expect": {
+    "sector": {
+     "sector": 7,
+     "status": "blocked"
+    }
+   },
+   "notes": "One message per report: the sector status wins over the hazard."
+  },
+  {
+   "name": "de-request-dogs",
+   "lang": "de",
+   "text": "Wir brauchen sofort eine Hundestaffel am Parkplatz Margarethenhöhe",
+   "unsupported": false,
+   "expect": {
+    "request": {
+     "resource": "dog_team",
+     "urgency": "now"
+    }
+   },
+   "notes": "Place names are not encoded. The app adds the device GPS."
+  },
+  {
+   "name": "de-request-searchers",
+   "lang": "de",
+   "text": "Bitte 10 weitere Suchkräfte zum Sektor 3 schicken",
+   "unsupported": false,
+   "expect": {
+    "request": {
+     "resource": "searchers",
+     "count": 10
+    }
+   }
+  },
+  {
+   "name": "de-request-zwo",
+   "lang": "de",
+   "text": "Brauchen zwo Tragen",
+   "unsupported": false,
+   "expect": {
+    "request": {
+     "resource": "stretcher",
+     "count": 2
+    }
+   },
+   "notes": "'zwo' is radio German for 2."
+  },
+  {
+   "name": "de-request-light",
+   "lang": "de",
+   "text": "Brauchen Licht, Akkus sind leer",
+   "unsupported": false,
+   "expect": {
+    "request": {
+     "resource": "light"
+    }
+   },
+   "notes": "One resource per request. 'Akkus sind leer' is not a request."
+  },
+  {
+   "name": "de-hazard-rockfall",
+   "lang": "de",
+   "text": "Achtung Steinschlag am Drachenfels Nordhang, nicht betreten",
+   "unsupported": false,
+   "expect": {
+    "hazard": {
+     "kind": "rockfall",
+     "severity": "high"
+    }
+   }
+  },
+  {
+   "name": "de-hazard-hunting",
+   "lang": "de",
+   "text": "Vorsicht, Treibjagd im Bereich Löwenburg, ca. 1 km Umkreis",
+   "unsupported": false,
+   "expect": {
+    "hazard": {
+     "kind": "hunting",
+     "radius": 1000
+    }
+   }
+  },
+  {
+   "name": "de-hazard-windthrow",
+   "lang": "de",
+   "text": "Windbruch, Weg komplett blockiert",
+   "unsupported": false,
+   "expect": {
+    "hazard": {
+     "kind": "blocked_path"
+    }
+   }
+  },
+  {
+   "name": "de-hazard-flood",
+   "lang": "de",
+   "text": "Weg am Rhein überflutet, nicht passierbar",
+   "unsupported": false,
+   "expect": {
+    "hazard": {
+     "kind": "water"
+    }
+   }
+  },
+  {
+   "name": "de-mayday-injured",
+   "lang": "de",
+   "text": "MAYDAY Kollege verletzt, Sturz im Steilhang",
+   "unsupported": false,
+   "expect": {
+    "mayday": {
+     "reason": "injured"
+    }
+   },
+   "notes": "Mayday wins over the hazard word 'Steilhang'."
+  },
+  {
+   "name": "de-mayday-lost",
+   "lang": "de",
+   "text": "Mayday, wir haben uns verlaufen, 3 Leute",
+   "unsupported": false,
+   "expect": {
+    "mayday": {
+     "reason": "lost",
+     "persons": 3
+    }
+   }
+  },
+  {
+   "name": "de-mayday-contact",
+   "lang": "de",
+   "text": "Kontakt zu Truppmitglied verloren seit 20 Minuten",
+   "unsupported": false,
+   "expect": {
+    "mayday": {
+     "reason": "missing_member"
+    }
+   },
+   "notes": "A missing team member is a mayday even without the word."
+  },
+  {
+   "name": "de-two-states",
+   "lang": "de",
+   "text": "Zwei Personen gefunden, eine bewusstlos, die andere ansprechbar",
+   "unsupported": true,
+   "reason": "Two persons with different states do not fit one found message.",
+   "expect": {
+    "text": {
+     "text": "Zwei Personen gefunden, eine bewusstlos, die andere ansprechbar"
+    }
+   }
+  },
+  {
+   "name": "de-dog-alert",
+   "lang": "de",
+   "text": "Der Hund hat angeschlagen, wir schauen uns das genauer an",
+   "unsupported": true,
+   "reason": "No codable fact yet.",
+   "expect": {
+    "text": {
+     "text": "Der Hund hat angeschlagen, wir schauen uns das genauer an"
+    }
+   }
+  },
+  {
+   "name": "de-meeting-point",
+   "lang": "de",
+   "text": "Treffpunkt ist jetzt am Gasthaus statt am Parkplatz",
+   "unsupported": true,
+   "reason": "Logistics, no code for it.",
+   "expect": {
+    "text": {
+     "text": "Treffpunkt ist jetzt am Gasthaus statt am Parkplatz"
+    }
+   }
+  },
+  {
+   "name": "de-not-found-yet",
+   "lang": "de",
+   "text": "Person noch nicht gefunden, suchen weiter im Tal",
+   "unsupported": true,
+   "reason": "Negated 'gefunden' must not make a found message.",
+   "expect": {
+    "text": {
+     "text": "Person noch nicht gefunden, suchen weiter im Tal"
+    }
+   }
+  },
+  {
+   "name": "en-pitch",
+   "lang": "en",
+   "text": "Found the missing boy, conscious, very cold, possible broken ankle, need a stretcher and two more people",
+   "unsupported": false,
+   "expect": {
+    "found": {
+     "age": "child",
+     "consciousness": "conscious",
+     "injuries": [
+      "hypothermia",
+      "fracture"
+     ],
+     "needs": [
+      "stretcher"
+     ],
+     "responders": 2
+    }
+   }
+  },
+  {
+   "name": "en-typo-unconscious",
+   "lang": "en",
+   "text": "found an elderly man unconcious but breathing, send medic asap",
+   "unsupported": false,
+   "expect": {
+    "found": {
+     "age": "senior",
+     "consciousness": "unconscious",
+     "breathing": "normal",
+     "needs": [
+      "medic"
+     ]
+    }
+   },
+   "notes": "Typo 'unconcious'. 'asap' equals the found default, so no priority."
+  },
+  {
+   "name": "en-hiker-walks",
+   "lang": "en",
+   "text": "Hiker located, she can walk on her own, just exhausted and dehydrated, bring water",
+   "unsupported": false,
+   "expect": {
+    "found": {
+     "age": "adult",
+     "mobility": "walks",
+     "injuries": [
+      "exhaustion"
+     ],
+     "needs": [
+      "water"
+     ]
+    }
+   }
+  },
+  {
+   "name": "en-not-breathing",
+   "lang": "en",
+   "text": "Person found not breathing!! start CPR, need AED and helicopter NOW",
+   "unsupported": false,
+   "expect": {
+    "priority": "critical",
+    "found": {
+     "breathing": "none",
+     "needs": [
+      "helicopter",
+      "aed"
+     ]
+    }
+   },
+   "notes": "'not breathing' must not give breathing normal. Needs are listed in bit order."
+  },
+  {
+   "name": "en-three-kids",
+   "lang": "en",
+   "text": "We found 3 kids, all fine, can walk, need light to get out",
+   "unsupported": false,
+   "expect": {
+    "found": {
+     "count": 3,
+     "age": "child",
+     "mobility": "walks",
+     "needs": [
+      "light"
+     ]
+    }
+   }
+  },
+  {
+   "name": "en-negations",
+   "lang": "en",
+   "text": "Woman found, no injuries, not hypothermic, conscious",
+   "unsupported": false,
+   "expect": {
+    "found": {
+     "age": "adult",
+     "consciousness": "conscious"
+    }
+   }
+  },
+  {
+   "name": "en-coords",
+   "lang": "en",
+   "text": "Found her at 50.70001 7.19876, awake, cannot walk, need 4 carriers",
+   "unsupported": false,
+   "expect": {
+    "pos": {
+     "lat": 50.70001,
+     "lon": 7.19876,
+     "acc": "estimated"
+    },
+    "found": {
+     "consciousness": "conscious",
+     "mobility": "cannot_walk",
+     "responders": 4
+    }
+   }
+  },
+  {
+   "name": "en-sector-cleared",
+   "lang": "en",
+   "text": "Sector 9 cleared",
+   "unsupported": false,
+   "expect": {
+    "sector": {
+     "sector": 9,
+     "status": "cleared"
+    }
+   }
+  },
+  {
+   "name": "en-sector-partial",
+   "lang": "en",
+   "text": "Sector 15 partially searched, about 70 percent, stopping because of darkness",
+   "unsupported": false,
+   "expect": {
+    "sector": {
+     "sector": 15,
+     "status": "partial",
+     "coverage": 70
+    }
+   }
+  },
+  {
+   "name": "en-request-drone",
+   "lang": "en",
+   "text": "Need a drone with thermal camera over sector 4 within half an hour",
+   "unsupported": false,
+   "expect": {
+    "request": {
+     "resource": "drone",
+     "urgency": "soon"
+    }
+   },
+   "notes": "The sector number here is a place, not a sector report."
+  },
+  {
+   "name": "en-request-stretchers",
+   "lang": "en",
+   "text": "Please send 2 stretchers to the north trailhead",
+   "unsupported": false,
+   "expect": {
+    "request": {
+     "resource": "stretcher",
+     "count": 2
+    }
+   }
+  },
+  {
+   "name": "en-hazard-boar",
+   "lang": "en",
+   "text": "Careful, wild boar with piglets near the creek",
+   "unsupported": false,
+   "expect": {
+    "hazard": {
+     "kind": "animal"
+    }
+   }
+  },
+  {
+   "name": "en-hazard-power",
+   "lang": "en",
+   "text": "Power line down across the trail, keep out, 50 m around",
+   "unsupported": false,
+   "expect": {
+    "hazard": {
+     "kind": "power_line",
+     "severity": "high",
+     "radius": 50
+    }
+   }
+  },
+  {
+   "name": "en-mayday-fall",
+   "lang": "en",
+   "text": "Mayday mayday, team member fell, possible leg fracture, we are at the cliff edge",
+   "unsupported": false,
+   "expect": {
+    "mayday": {
+     "reason": "injured"
+    }
+   }
+  },
+  {
+   "name": "en-sos",
+   "lang": "en",
+   "text": "SOS",
+   "unsupported": false,
+   "expect": {
+    "mayday": {}
+   },
+   "notes": "Bare SOS: empty mayday, the app adds GPS."
+  },
+  {
+   "name": "en-mayday-lost",
+   "lang": "en",
+   "text": "We are lost, GPS not working, 2 of us",
+   "unsupported": false,
+   "expect": {
+    "mayday": {
+     "reason": "lost",
+     "persons": 2
+    }
+   }
+  },
+  {
+   "name": "en-found-item",
+   "lang": "en",
+   "text": "Found a backpack and a jacket, might belong to the missing person",
+   "unsupported": true,
+   "reason": "An object was found, not a person.",
+   "expect": {
+    "text": {
+     "text": "Found a backpack and a jacket, might belong to the missing person"
+    }
+   }
+  },
+  {
+   "name": "en-two-states",
+   "lang": "en",
+   "text": "Two people found, one unconscious and one walking",
+   "unsupported": true,
+   "reason": "Two persons with different states do not fit one found message.",
+   "expect": {
+    "text": {
+     "text": "Two people found, one unconscious and one walking"
+    }
+   }
+  },
+  {
+   "name": "en-question",
+   "lang": "en",
+   "text": "Is anyone near the old quarry? Need a second opinion",
+   "unsupported": true,
+   "reason": "A question, no code for it.",
+   "expect": {
+    "text": {
+     "text": "Is anyone near the old quarry? Need a second opinion"
+    }
+   }
+  },
+  {
+   "name": "en-no-sign",
+   "lang": "en",
+   "text": "No sign of the missing person in sector 2, moving to sector 3",
+   "unsupported": true,
+   "reason": "Not clearly 'cleared'. Never guess a sector status.",
+   "expect": {
+    "text": {
+     "text": "No sign of the missing person in sector 2, moving to sector 3"
+    }
+   }
+  }
+ ]
+}

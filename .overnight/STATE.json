@@ -1,0 +1,15 @@
+{
+  "scriptPath": "/Users/denishoti/.claude/projects/-Users-denishoti-Denis-Hackathons-PMRExpo-2026/42dfbc78-ba86-44c4-939c-bb5a68f17c2e/workflows/scripts/rescuecodec-overnight-wf_0f827823-a59.js",
+  "stages": {
+    "setup": { "status": "running", "args": { "stage": "setup" }, "runId": "wf_0f827823-a59", "taskId": "w7kfnhe3f", "transcriptDir": "/Users/denishoti/.claude/projects/-Users-denishoti-Denis-Hackathons-PMRExpo-2026/42dfbc78-ba86-44c4-939c-bb5a68f17c2e/subagents/workflows/wf_0f827823-a59", "attempts": 1, "started": "Wed 00:38" },
+    "spec": { "status": "running", "args": { "stage": "spec" }, "runId": "wf_53d25b79-1a4", "taskId": "whhex7l77", "transcriptDir": "/Users/denishoti/.claude/projects/-Users-denishoti-Denis-Hackathons-PMRExpo-2026/42dfbc78-ba86-44c4-939c-bb5a68f17c2e/subagents/workflows/wf_53d25b79-1a4", "attempts": 1, "started": "Wed 01:36", "note": "started early: needs only .venv/protoc from setup-sim, which is done" },
+    "build-android": { "status": "pending", "args": { "stage": "build", "chain": "android" }, "attempts": 0 },
+    "build-python": { "status": "pending", "args": { "stage": "build", "chain": "python" }, "attempts": 0 },
+    "build-ts": { "status": "pending", "args": { "stage": "build", "chain": "ts" }, "attempts": 0 },
+    "build-dashboard": { "status": "pending", "args": { "stage": "build", "chain": "dashboard" }, "attempts": 0 },
+    "integrate": { "status": "pending", "args": { "stage": "integrate" }, "attempts": 0 },
+    "design": { "status": "pending", "args": { "stage": "design" }, "attempts": 0 },
+    "final": { "status": "pending", "args": { "stage": "final" }, "attempts": 0 },
+    "handover": { "status": "pending", "args": { "stage": "handover" }, "attempts": 0 }
+  }
+}
