@@ -306,12 +306,11 @@ class ConnectionManager(
     private suspend fun attemptOnce(gen: Int, target: RadioTarget, attempt: Int, onConnected: () -> Unit) {
         val opened = transports.open(target)
         val transport = opened.transport
-        // Bluetooth only: skipNodeDb. The phone does not need the radio's list of other nodes, our own number comes
-        // from myInfo. It keeps the handshake short in a hall where the radio has heard many nodes. The cost is that
-        // the radio's own name is not known, so the screen shows the Bluetooth name. TCP radios (simulator, Wi-Fi)
-        // have short node lists and keep the full handshake and the radio name.
+        // Full handshake on every link, Bluetooth included: the radio's node list gives the names of the other radios
+        // (senders, direct messages, notifications) and of the connected radio itself. Without it a sender shows as
+        // "Node 7928" until that radio happens to send its NodeInfo again. In a full hall this adds a few seconds;
+        // the Radio screen shows "Loading nodes N %" meanwhile.
         val builder = RadioClient.Builder().transport(transport).storage(storage)
-        if (target is RadioTarget.Ble) builder.skipNodeDb(true)
         clientContext?.let { builder.coroutineContext(it) }
         val client = builder.build()
         _attached.value = client
