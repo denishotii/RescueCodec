@@ -45,9 +45,10 @@ function rng(seed: number) {
 }
 
 describe("word dictionary", () => {
-  it("is available for version 1 only", () => {
+  it("is available for versions 1 and 2 only", () => {
     expect(wordDictAvailable(1)).toBe(true);
-    expect(wordDictAvailable(2)).toBe(false);
+    expect(wordDictAvailable(2)).toBe(true);
+    expect(wordDictAvailable(9)).toBe(false);
     expect(wordDictAvailable(0)).toBe(false);
   });
 
@@ -66,13 +67,13 @@ describe("word dictionary", () => {
 
 describe("spacing rules (spec section 3.6.3)", () => {
   it("a literal owns its leading space", () => {
-    const data = encodeWords("We found Aylin Demir");
+    const data = encodeWords("We found Aylin Demir", 1);
     expect(data).toEqual(cat(tok("We"), tok("found"), lit(" Aylin Demir")));
     expect(decodeWords(data, 1)).toBe("We found Aylin Demir");
   });
 
   it("a token after a literal gets no implied space", () => {
-    const data = encodeWords("Aylin Demir is safe");
+    const data = encodeWords("Aylin Demir is safe", 1);
     expect(data).toEqual(cat(lit("Aylin Demir "), tok("is"), tok("safe")));
     expect(decodeWords(data, 1)).toBe("Aylin Demir is safe");
     expect(decodeWords(cat(lit("Aylin Demir"), tok("is"), tok("safe")), 1)).toBe("Aylin Demiris safe");
@@ -88,25 +89,25 @@ describe("spacing rules (spec section 3.6.3)", () => {
   it("case controls", () => {
     expect(decodeWords(cat(ctl(CAP), tok("safe")), 1)).toBe("Safe");
     expect(decodeWords(cat(ctl(UPPER), tok("safe")), 1)).toBe("SAFE");
-    expect(encodeWords("SAFE")).toEqual(cat(ctl(UPPER), tok("safe")));
+    expect(encodeWords("SAFE", 1)).toEqual(cat(ctl(UPPER), tok("safe")));
   });
 
   it("coordinates typed as prose keep every character", () => {
     const text = "Meet at 50.6900, -1.2500";
-    const data = encodeWords(text);
+    const data = encodeWords(text, 1);
     expect(decodeWords(data, 1)).toBe(text);
     expect(data).toEqual(cat(ctl(CAP), tok("meet"), tok("at"), tok("50"), lit(".6900, -1.2500")));
   });
 
   it("never a near match", () => {
     for (const text of ["recieve the hepl", "Teh flod", "Aylin", "Müller", "DL1ABC", "Apt 4B"]) {
-      expect(decodeWords(encodeWords(text), 1)).toBe(text);
+      expect(decodeWords(encodeWords(text, 1), 1)).toBe(text);
     }
-    expect(decodeWords(encodeWords("hepl"), 1)).not.toContain("help");
+    expect(decodeWords(encodeWords("hepl", 1), 1)).not.toContain("help");
   });
 
   it("takes the shortest stream", () => {
-    expect(encodeWords("x and y")).toEqual(lit("x and y"));
+    expect(encodeWords("x and y", 1)).toEqual(lit("x and y"));
   });
 });
 
@@ -127,7 +128,7 @@ describe("round trip", () => {
   ];
 
   it.each(CASES)("%j", (text) => {
-    expect(decodeWords(encodeWords(text), 1)).toBe(text);
+    expect(decodeWords(encodeWords(text, 1), 1)).toBe(text);
   });
 
   it("random UTF-8 strings (astral emoji, CRLF, repeated spaces)", () => {
@@ -146,7 +147,7 @@ describe("round trip", () => {
         }
       }
       if (new TextEncoder().encode(text).length > 1024) continue;
-      expect(decodeWords(encodeWords(text), 1)).toBe(text);
+      expect(decodeWords(encodeWords(text, 1), 1)).toBe(text);
     }
   });
 
@@ -157,7 +158,7 @@ describe("round trip", () => {
       let text = "";
       for (let i = r.int(1, 20); i > 0; i--) text += r.pick(parts) + r.pick(["", " ", " ", " "]);
       if (r.next() < 0.3) text = r.next() < 0.5 ? text.toUpperCase() : text.replace(/\b\w/g, (c) => c.toUpperCase());
-      if (text) expect(decodeWords(encodeWords(text), 1)).toBe(text);
+      if (text) expect(decodeWords(encodeWords(text, 1), 1)).toBe(text);
     }
   });
 });
@@ -191,7 +192,7 @@ describe("errors", () => {
 
   it("too large", () => {
     check(cat(lit("x".repeat(1000)), lit("x".repeat(25))), "too_large");
-    expect(() => encodeWords("x".repeat(1025))).toThrow(WordsError);
+    expect(() => encodeWords("x".repeat(1025), 1)).toThrow(WordsError);
   });
 });
 
@@ -227,13 +228,13 @@ describe("codec", () => {
   it("encode rules", () => {
     rejected(() => encode({ text: { text: "", words: 1 } }), "missing_field", "text.text");
     rejected(() => encode({ text: { text: "x", words: 1, dict: 1 } }), "invalid_value", "text.words");
-    rejected(() => encode({ text: { text: "x", words: 2 } }), "invalid_value", "text.words");
+    rejected(() => encode({ text: { text: "x", words: 9 } }), "invalid_value", "text.words");
     rejected(() => encode({ text: { text: "x".repeat(1025), words: 1 } }), "invalid_value", "text.text");
     rejected(() => encode({ text: { text: "x", words: "1" } } as never), "invalid_value", "text.words");
   });
 
   it("wire rules", () => {
-    const words = encodeWords("is safe");
+    const words = encodeWords("is safe", 1);
     rejected(() => decode(wire({ words })), "missing_field", "text.words_dict");
     rejected(() => decode(wire({ wordsDict: 1, text: "x" })), "invalid_value", "text.words_dict");
     rejected(() => decode(wire({ words, wordsDict: 1, text: "x" })), "invalid_value", "text.words");
@@ -242,8 +243,8 @@ describe("codec", () => {
   });
 
   it("shows an unknown word dictionary, never guessed words", () => {
-    const msg = decode(wire({ words: encodeWords("is safe"), wordsDict: 2 }));
-    expect(msg).toEqual({ id: 7, unknown: { words: 2 } });
+    const msg = decode(wire({ words: encodeWords("is safe", 1), wordsDict: 9 }));
+    expect(msg).toEqual({ id: 7, unknown: { words: 9 } });
     expect(render(msg, "en")).toContain("dictionary this app does not have");
     expect(render(msg, "de")).toContain("Wörterbuch");
     expect(render(msg, "en")).not.toContain("safe");

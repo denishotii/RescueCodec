@@ -1,7 +1,7 @@
 // Code tables: JSON names <-> wire numbers. Mirrors spec/rescuecodec/v2/rescuecodec.proto.
 // test/codes.test.ts checks that these agree with the generated protobuf code.
 
-export const SPEC_VERSION = "2.1.0";
+export const SPEC_VERSION = "2.2.0";
 /** Meshtastic port number used for RescueCodec packets (PRIVATE_APP). */
 export const PORTNUM = 256;
 
