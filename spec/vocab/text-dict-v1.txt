@@ -1,0 +1,166 @@
+we have her we have him got the missing found the missing aufgefunden haben die person
+haben das kind vermisste person lokalisiert suchgebiet planquadrat please send bitte schicken
+watch out help us officer down we are in trouble notfall im trupp brauchen selbst hilfe
+kollege verletzt eigenunfall no rush low priority keine eile nicht eilig life threatening
+immediately lebensbedrohlich lebensgefahr weak gps bad gps schwaches gps schlechtes gps
+approximately in der nähe im bereich responsive talks to us bei bewusstsein disoriented
+not making sense desorientiert nicht orientiert unresponsive not responding passed out knocked out
+nicht ansprechbar reagiert nicht ohnmächtig breathing fine atmung normal atmung ok short of breath
+struggling to breathe breathing hard difficulty breathing schwer atmen atmet schwer
+bekommt schlecht luft no breathing stopped breathing keine atmung atmung fehlt atemstillstand
+walks on her own walks on his own kann laufen kann gehen läuft selbst unable to walk can't walk
+kann nicht gehen in the ravine feststeckt steckt fest in der schlucht jugendlicher jugendliche
+erwachsener erwachsene old man old woman älterer mann ältere frau alter mann alte frau hypothermic
+very cold unterkühlung stark unterkühlt schnittwunde broken leg broken arm broken ankle ankle injury
+leg injury knochenbruch bein gebrochen knöchel verletzt bein verletzt hit her head hit his head
+head wound concussion kopfverletzung platzwunde am kopf verletzt gehirnerschütterung kopf verletzt
+back injury hurt back rückenverletzung wirbelsäule nacken verletzt rücken verletzt worn out
+too tired völlig fertig entkräftet heart attack heart problem brustschmerzen herzinfarkt
+probleme mit dem herz herzprobleme heat stroke overheated heat exhaustion hitzschlag sonnenstich
+verbrennung brandwunde bee sting wasp sting wespenstich bienenstich carry out schleifkorb raustragen
+medical help rettungsdienst medizinische hilfe hubschrauber dry clothes rescue blanket rettungsdecke
+trockene kleidung geländewagen rettungswagen defibrillator oxygen mask sauerstoff sauerstoffmaske
+med kit erste hilfe erste-hilfe-set verbandskasten sanitätstasche technical rescue höhenrettung
+technische rettung flashlight taschenlampe stirnlampe verpflegung searched completely
+komplett abgesucht partially searched zur hälfte impassable can't get in no access unpassierbar
+kein durchkommen volunteers suchkräfte mehr leute einsatzkräfte hundestaffel rettungshund mantrailer
+thermal drone wärmebilddrohne floodlight beleuchtung scheinwerfer krankenwagen firefighters
+so schnell wie möglich in half an hour within half an hour within 30 minutes in einer halben stunde
+innerhalb einer halben stunde innerhalb 30 minuten in 30 minuten fallen tree fallen trees
+trail blocked baum über dem weg weg versperrt weg blockiert umgestürzter baum falling rocks
+steinschlag hangrutsch fast water hochwasser überflutet überschwemmung reißender bach forest fire
+unstable ground absturzgefahr steile kante wild boar aggressive dog wildschwein wildschweine
+aggressiver hund live wire stromleitung leitung am boden oberleitung hunt in progress lawinengefahr
+geringe gefahr very dangerous do not enter hohe gefahr sehr gefährlich colleague injured
+one of us is hurt i am injured i fell colleague fell team member fell one of us fell
+kollegin verletzt einsatzkraft verletzt bin verletzt truppmitglied verletzt kollege abgestürzt
+kollegin abgestürzt kollege gestürzt kollegin gestürzt bin gestürzt bin abgestürzt
+truppmitglied abgestürzt we are lost lost our way don't know where we are haben uns verlaufen
+wissen nicht wo wir sind orientierung verloren lost contact can't reach kontakt verloren
+kontakt zu truppmitglied verloren kollege vermisst kollegin vermisst nicht erreichbar
+zusammengebrochen medizinischer notfall krampfanfall kollabiert we are stuck we are trapped cut off
+sitzen fest kommen nicht weiter abgeschnitten aggressive person angegriffen we take it angenommen
+verstanden cannot take können nicht nicht möglich abgeschlossen not sure can't tell don't know
+weiß nicht vielleicht nicht sicher a couple responders extra people weitere leute
+personen zum tragen verletzter m around metres around meters around im umkreis von rund um
+Person found persons found Track Sector Request Hazard MAYDAY Accepted Declined Done Answer to
+Message Message of a newer type, please update the app needs more helpers needed points 1 point
+last at % searched radius m team members 1 team member ETA min Position Time UTC unknown code
+routine URGENT CRITICAL weak GPS estimated rough area breathing normally breathing with difficulty
+not breathing teenager adult senior hypothermia fracture head injury back or neck injury
+other injury chest pain heat illness burns allergic reaction helicopter warmth other help AED oxygen
+rope team light cleared partly searched searchers dog team drone blankets batteries ambulance
+fire brigade needed now within 30 min when possible path blocked rockfall high water fire or smoke
+steep drop ice or snow dangerous animal power line down storm or lightning other danger low risk
+medium risk high risk, keep out team member injured team lost team member missing
+medical emergency in team team trapped team threatened other emergency Person gefunden
+Personen gefunden Anforderung Gefahr Angenommen Abgelehnt Erledigt Antwort auf Nachricht
+Nachricht eines neueren Typs, bitte App aktualisieren weitere Helfer benötigt Punkte 1 Punkt Min.
+zuletzt bei % abgesucht Radius m Einsatzkräfte 1 Einsatzkraft Ankunft in Min. Zeit UTC
+unbekannter Code Routine DRINGEND KRITISCH schwaches GPS geschätzt grober Bereich Atemnot
+atmet nicht gehfähig nicht gehfähig Jugendliche Person Erwachsene Person ältere Person Unterkühlung
+Blutung Knochenbruch Kopfverletzung Rücken- oder Nackenverletzung andere Verletzung Brustschmerzen
+Hitzeschaden Verbrennung allergische Reaktion Hubschrauber Fahrzeug andere Hilfe Sauerstoff
+Erste-Hilfe-Set Höhenrettung Essen teilweise abgesucht nicht begehbar Suchkräfte Hundestaffel Drohne
+Decken Akkus Rettungswagen Sonstiges innerhalb 30 Min. wenn möglich Weg versperrt Steinschlag
+Hochwasser Feuer oder Rauch Absturzgefahr Eis oder Schnee gefährliches Tier Stromleitung am Boden
+Jagd Sturm oder Gewitter andere Gefahr geringes Risiko mittleres Risiko hohes Risiko, nicht betreten
+Einsatzkraft verletzt Trupp hat sich verirrt Einsatzkraft vermisst medizinischer Notfall im Trupp
+Trupp eingeschlossen Trupp bedroht anderer Notfall
+Lichtung Schonung Dickicht Unterholz Graben Senke Mulde Felsen Geröll Steinbruch Kiesgrube
+Hochsitz Jägerstand Wanderparkplatz Wanderweg Rundweg Trampelpfad Pfad Schotterweg Feldweg Wirtschaftsweg
+Bundesstraße Landstraße Autobahn Bahnlinie Gleise Tunnel Schranke Tor Zaun Weide Wiese Acker Feld Maisfeld
+Teich See Weiher Stausee Kanal Steg Schleuse Wehr Mühle Hof Scheune Stall Ruine Turm Aussichtsturm Kapelle Kirche
+Sendemast Strommast Funkmast Hochspannungsleitung Schutzhütte Grillhütte Berghütte Skihütte Alm Gipfelkreuz Sattel Grat
+clearing thicket undergrowth ditch hollow boulders scree quarry gravel pit hunting stand hiking trail loop trail
+footpath gravel road field track dirt road highway motorway railway tracks tunnel gate fence pasture meadow field
+cornfield pond lake reservoir canal footbridge weir old mill farm barn ruin tower lookout tower chapel church
+cell tower power pole mountain hut shelter ridge saddle summit cross
+Suchkette Suchtrupp Suchmannschaft Flächensuche Mantrailer Bergwacht Wasserwacht DLRG THW Polizei Feuerwehr
+Notarzt Rettungsdienst Leitstelle Einsatzleiter Gruppenführer Zugführer Truppführer Melder Funker Sanitäter
+Einsatzfahrzeug Mannschaftswagen Geländewagen Quad Boot Schlauchboot Wärmebildkamera Wärmebild Fernglas Karte
+Kompass Stirnlampe Powerbank Ladekabel Ersatzakku Funkgerät Handfunkgerät Kanal Rettungsdecke Verbandskasten
+search line search party grid search dog handler mountain rescue fire department police paramedic dispatch
+incident commander team leader radio operator off-road vehicle boat thermal camera binoculars map compass
+headlamp power bank charging cable spare battery handheld radio channel space blanket first aid kit
+Jacke Mütze Schuh Schuhe Handschuh Brille Handy Rucksack Trinkflasche Hund Leine Fahrrad Auto Kennzeichen
+jacket hat shoe shoes glove glasses phone backpack water bottle dog leash bike car license plate
+die vermisste Person die vermisste Frau der vermisste Mann das vermisste Kind der Wanderer die Wanderin
+the missing person the missing woman the missing man the missing child the hiker
+ist ansprechbar ist bewusstlos atmet normal hat Schmerzen hat Angst ist unverletzt ist verletzt kann nicht laufen
+blutet friert zittert ist erschöpft ist unterkühlt ist dehydriert ist orientiert ist verwirrt
+is conscious is unconscious is breathing in pain is scared is unhurt is injured cannot walk can walk
+bleeding shivering exhausted dehydrated confused cold and wet warm and dry
+Nebel Regen Starkregen Schnee Eis Glätte Wind Sturm Gewitter Hitze Kälte Dunkelheit Sicht rutschig matschig nass steil
+fog rain heavy rain snow ice wind storm thunderstorm heat cold darkness visibility slippery muddy wet steep
+es regnet es schneit es wird dunkel es ist dunkel es wird hell keine Sicht schlechte Sicht
+it is raining it is snowing it is getting dark it is dark no visibility poor visibility
+Funkcheck Funkspruch Funkstille Funkloch Empfang Netz kein Netz kein Empfang Handyempfang schlechter Empfang
+radio check no signal no reception bad signal phone signal weak signal dead zone
+loud and clear can't hear you say again repeat please repeat over out roger copy that wilco
+Akku leer Akku fast leer Batterie leer schalte das Handy aus lade gerade
+battery dead battery low battery almost dead switching off the phone charging now
+um Uhr Minuten Stunden Sekunden halbe Stunde Viertelstunde heute morgen gestern Mitternacht Mittag Abend Nacht
+o'clock minutes hours seconds half an hour quarter of an hour today tomorrow yesterday midnight noon evening night
+in 5 Minuten in 10 Minuten in 15 Minuten in 20 Minuten in 30 Minuten in einer Stunde ca. etwa ungefähr knapp
+in 5 minutes in 10 minutes in 15 minutes in 20 minutes in 30 minutes in an hour about around roughly
+links rechts geradeaus oberhalb unterhalb hinter vor neben gegenüber entlang bergauf bergab talwärts
+left right straight ahead above below behind in front of next to opposite along uphill downhill
+nördlich südlich östlich westlich im Norden im Süden im Osten im Westen Richtung Norden Richtung Süden
+north of south of east of west of to the north to the south to the east to the west heading north heading south
+Richtung Osten Richtung Westen Nordosten Nordwesten Südosten Südwesten
+northeast northwest southeast southwest towards along the
+Suche Suchgebiet Suchabschnitt Abschnitt Sektor Planquadrat Bereich Gebiet Waldstück Hang Ufer Bach Fluss Brücke
+search search area sector area zone woods slope bank stream creek river bridge
+abgesucht nichts gefunden keine Spuren Spuren gefunden Spur verloren Spur aufgenommen Hinweis Fund Fundstelle
+searched nothing found no trace no tracks tracks found lost the trail picked up the trail clue found item
+zur Hälfte fertig teilweise komplett erledigt angefangen abgebrochen unterbrochen machen morgen weiter
+half done partly fully done started stopped paused will continue tomorrow
+Trupp 1 Trupp 2 Trupp 3 Trupp 4 Team 1 Team 2 Team 3 Team 4 alle Trupps alle Teams
+Einsatzleitung Einsatzabschnitt Bereitstellungsraum Sammelplatz Treffpunkt Basis Einsatzzentrale Leitung
+command incident command staging area assembly point meeting point base command post
+Lagemeldung Rückmeldung Statusmeldung Zwischenstand Lage Auftrag Ablösung Pause Verpflegung
+status update sitrep report back update task relief break food
+sind unterwegs bin unterwegs auf dem Weg kommen gleich gleich da sind da bin da angekommen eingetroffen
+gehen weiter gehen zurück brechen ab warten hier warten auf bleiben hier suchen weiter suchen den Hang ab
+folgen der Spur folgen ihnen haben gefunden habe gefunden sehen nichts sehen euch hören euch hören nichts
+bringen schicken brauchen benötigen holen tragen transportieren übergeben abholen absichern sperren
+übernehmen übernehmen den Bereich wir übernehmen ist übernommen bitte übernehmen wer kann
+gestartet gelandet abgestürzt gestürzt verlaufen verirrt eingeklemmt festgesteckt blockiert gesperrt
+on our way on my way coming be there soon almost there we are here I am here arrived
+moving on heading back stopping waiting here waiting for staying here keep searching searching the slope
+following the tracks following them we found I found we can see we can't see I can hear can't hear anything
+bring send need get carry transport hand over pick up secure close off
+we take we take the area I take it can someone who can taking over
+started landed fell lost trapped stuck blocked closed
+Hat jemand Hat jemand noch Wer hat Wer ist Wer kann Wo seid ihr Wo bist du Wo genau Wo ist Was ist Wie lange
+Wie weit Wie viele Wann kommt Wann seid ihr Seid ihr Bist du Gibt es Braucht ihr Brauchst du Könnt ihr Kannst du
+hört mich jemand hört ihr mich Hört mich jemand? Verstanden Alles klar Alles ok Alles gut Okay danke Danke
+Ja Nein Moment Kurz warten Sorry Achtung Vorsicht Bitte Gerne Super Gut OK Stimmt Genau Negativ Positiv
+Melde mich Melde mich, wenn melde mich gleich meldet euch Bitte melden bitte bestätigen Bestätigt
+Does anyone Does anyone have Who has Who is Who can Where are you Where exactly Where is What is How long
+How far How many When will When are you Are you Is there Do you need Can you Could you
+does anyone copy can anyone hear me Copy that All clear All good All ok Okay thanks Thanks Thank you
+Yes No Wait Stand by Sorry Careful Watch out Please Sure Great Good OK Right Exactly Negative Affirmative
+Will report Will report when report back Please confirm Confirmed Understood
+nicht mehr noch nicht schon da gerade jetzt sofort gleich bald später hier oben hier unten da drüben dort
+sehr fast ganz etwas viel wenig mehr weniger zu viel noch eine noch ein noch einen
+wird gebraucht werden gebraucht ist gebrochen ist blockiert ist gesperrt ist frei ist sicher
+für die für den für das mit dem mit der mit einer von der von dem vom zum zur über die über den
+in der in den im am an der an den auf dem auf der auf den bei der bei dem bei uns bei euch nach dem
+hinter dem vor dem neben dem unter dem durch den durch die um die um den bis zur bis zum zurück zur zurück zum
+ist es sind wir haben wir sind ihr seid wir haben wir brauchen ich bin ich habe ich brauche
+Wir sind Wir haben Wir brauchen Wir gehen Ich bin Ich habe Bin am Bin an der Bin bei Habe die Habe den
+Brauchen Brauchen dringend Bitte schicken Bitte bringen Bitte um Die Person Der Weg Das Kind Der Hund
+eine Trage zwei Helfer zwei Personen eine Person ein Kind mehr Leute
+und oder aber auch nur noch nicht kein keine einen eine ein der die das den dem des mit von zu im
+ist sind hat haben wird kann können muss sollen wir ihr sie es er ich du uns euch
+not yet no longer already right now soon later up here down here over there there
+very almost quite a bit a lot more less too much another one more
+is needed are needed is broken is blocked is closed is clear is safe
+for the with the with a from the to the of the on the at the in the by the near the
+behind the in front of next to under the through the around the back to back to the
+it is we are we have you are we need I am I have I need
+We are We have We need We found I am I have I'm at the Need a Need more Please send Please bring
+The person The path The child The dog a stretcher two helpers two people one person a child more people
+and or but also only still not no a an the with from to in on at of for is are has have will can need

@@ -17,6 +17,7 @@ from google.protobuf.message import DecodeError
 
 from rescuecodec.v2 import codes as C
 from rescuecodec.v2 import rescuecodec_pb2 as pb
+from rescuecodec.v2 import textpack
 
 
 class CodecError(ValueError):
@@ -287,17 +288,25 @@ def _build_ack(env: pb.Envelope, body: Any) -> None:
 
 
 def _build_text(env: pb.Envelope, body: Any) -> None:
-    b = _check_keys(body, {"text"}, "text")
+    b = _check_keys(body, {"text", "dict"}, "text")
     t = env.text
     t.SetInParent()
+    if "dict" in b and _int(b["dict"], "text.dict", 1, 0xFFFFFFFF) not in textpack.DICTS:
+        raise _err("invalid_value", f"unknown dictionary, known: {sorted(textpack.DICTS)}", "text.dict")
     if "text" in b:
         if not isinstance(b["text"], str):
             raise _err("invalid_value", "must be a string", "text.text")
         try:
-            b["text"].encode("utf-8")
+            raw = b["text"].encode("utf-8")
         except UnicodeEncodeError as exc:
             raise _err("invalid_value", "must be valid Unicode", "text.text") from exc
-        t.text = b["text"]
+        if "dict" not in b:
+            t.text = b["text"]
+        elif raw:
+            if len(raw) > textpack.MAX_UNPACKED_BYTES:
+                raise _err("invalid_value", f"a packed text is at most {textpack.MAX_UNPACKED_BYTES} bytes", "text.text")
+            t.deflate = textpack.pack(b["text"], b["dict"])
+            t.dict = b["dict"]
 
 
 _BUILDERS = {"found": _build_found, "track": _build_track, "sector": _build_sector, "request": _build_request,
@@ -307,8 +316,22 @@ _BUILDERS = {"found": _build_found, "track": _build_track, "sector": _build_sect
 # -------------------------------------------------- validation (both ways)
 
 def body_type(env: pb.Envelope) -> str:
-    """Return the body type name, or "unknown" for a body from a newer spec version."""
-    return env.WhichOneof("body") or "unknown"
+    """Return the body type name, or "unknown" for a body from a newer spec version. A text packed with a dictionary
+    this library does not know is "unknown" too: it can only be read after an update."""
+    kind = env.WhichOneof("body") or "unknown"
+    if kind == "text" and env.text.deflate and env.text.dict and env.text.dict not in textpack.DICTS:
+        return "unknown"
+    return kind
+
+
+def unpacked_text(t: pb.Text) -> str:
+    """The words of a Text body: `text`, or `deflate` unpacked. Raises CodecError."""
+    if not t.deflate:
+        return t.text
+    try:
+        return textpack.unpack(t.deflate, t.dict)
+    except textpack.PackError as exc:
+        raise _err(exc.code, str(exc), "text.deflate") from exc
 
 
 def validate(env: pb.Envelope) -> None:
@@ -383,7 +406,18 @@ def validate(env: pb.Envelope) -> None:
         if len(a.team.encode("utf-8")) > C.MAX_TEAM_BYTES:
             raise _err("invalid_value", f"team label is at most {C.MAX_TEAM_BYTES} bytes", "ack.team")
     elif kind == "text":
-        size = len(env.text.text.encode("utf-8"))
+        t = env.text
+        if t.deflate:
+            if t.text:
+                raise _err("invalid_value", "give text or deflate, not both", "text.deflate")
+            if t.dict == 0:
+                raise _err("missing_field", "a packed text needs its dictionary number", "text.dict")
+            if not unpacked_text(t):
+                raise _err("missing_field", "text must not be empty", "text.text")
+            return
+        if t.dict:
+            raise _err("invalid_value", "dict is only allowed with deflate", "text.dict")
+        size = len(t.text.encode("utf-8"))
         if size == 0:
             raise _err("missing_field", "text must not be empty", "text.text")
         if size > C.MAX_TEXT_BYTES:
@@ -475,7 +509,7 @@ def from_proto(env: pb.Envelope) -> dict:
             b["team"] = a.team
         out["ack"] = b
     elif kind == "text":
-        out["text"] = {"text": env.text.text}
+        out["text"] = {"text": unpacked_text(env.text), "dict": env.text.dict} if env.text.deflate else {"text": env.text.text}
     else:
         out["unknown"] = {}
     return out

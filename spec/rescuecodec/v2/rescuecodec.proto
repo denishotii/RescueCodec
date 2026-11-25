@@ -296,7 +296,17 @@ enum AckStatus {
 
 // ----------------------------------------------------------------- Text ----
 
-// Fallback for anything the codes cannot say. 1..180 bytes of UTF-8.
+// Fallback for anything the codes cannot say. Exactly one of `text` and
+// `deflate` is set (SPEC.md section 3.5).
 message Text {
+  // The words, 1..180 bytes of UTF-8.
   string text = 1;
+  // The same words packed: raw DEFLATE (RFC 1951, no zlib header) of the UTF-8
+  // text with the preset dictionary `dict`. Unpacked 1..1024 bytes of UTF-8.
+  // A sender uses it only when the packet is at least 3 bytes smaller than the
+  // words as a normal Meshtastic text.
+  bytes deflate = 2;
+  // Dictionary of `deflate`, required with it. 1 = spec/vocab/text-dict-v1.txt.
+  // A receiver that does not know the number shows "message of a newer type".
+  uint32 dict = 3;
 }
