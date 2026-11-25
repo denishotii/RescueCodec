@@ -63,3 +63,29 @@ export function fmtNum(n: number | null | undefined, digits = 0): string {
 export function isNoRelay(rec: Pick<MessageRecord, "direction" | "status" | "error">): boolean {
   return rec.direction === "out" && rec.status === "failed" && rec.error === "max_retransmit";
 }
+
+/**
+ * The gateway writes the position into the sentence ("… Position 50.94891, 6.98153 (estimated).").
+ * The dashboard shows a map pin for it, so the words drop it.
+ */
+export function stripPosition(text: string): string {
+  return text.replace(/\s*Position -?\d+(?:\.\d+)?, -?\d+(?:\.\d+)?(?: \([^)]*\))?\.?/g, "").trim();
+}
+
+/** Raw node ids ("!9ea67594") in a sentence become the radio's name when the dashboard knows it. */
+export function nameIds(text: string, nodes: Record<string, MeshNode>): string {
+  return text.replace(/!([0-9a-f]{8})\b/g, (id) => nodeLabel(id, nodes));
+}
+
+/** Words for a card: no "Message:" in front of a plain text, no position (a pin shows it), names for node ids. */
+export function cardText(raw: string, type: MessageType, lang: Lang, nodes: Record<string, MeshNode>): string {
+  const prefix = `${typeName(lang, type)}: `;
+  const body = type === "text" && raw.startsWith(prefix) ? raw.slice(prefix.length) : raw;
+  return nameIds(stripPosition(body), nodes);
+}
+
+/** How it went on air: "compact" (word tokens), "packed" (DEFLATE or a RescueCodec report), or null for a plain text. */
+export function codecForm(rec: Pick<MessageRecord, "codec" | "message">): "compact" | "packed" | null {
+  if (rec.codec.version === 0) return null;
+  return rec.message.text?.words ? "compact" : "packed";
+}

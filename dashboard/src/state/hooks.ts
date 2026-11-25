@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState, useSyncExterna
 import type { DataStore, DataState } from "./store";
 import { useUi } from "./ui";
 import { t as tr, type Key } from "../lib/i18n";
-import { channelOptions, channelsInUse, showChannels } from "../lib/channels";
+import { channelOptions, channelsInUse, chipFor, showChannels } from "../lib/channels";
 
 export const StoreContext = createContext<DataStore | null>(null);
 
@@ -24,7 +24,7 @@ export function useT() {
 }
 
 /**
- * Channels for the UI. `options`: filter choices. `chips`: show a channel chip on cards (more than one channel in use).
+ * Channels for the UI. `options`: filter choices. `chips`: more than one channel in use. `chipOn(name)`: a card shows its channel chip.
  * `pick`: the channel to show, "all" when the chosen one is gone or there is nothing to choose.
  */
 export function useChannels() {
@@ -35,7 +35,11 @@ export function useChannels() {
     const options = channelOptions(health, messages, list);
     const filter = showChannels(options);
     const known = options.some((o) => o.toLowerCase() === channel.toLowerCase());
-    return { options, filter, chips: showChannels(channelsInUse(messages, list)), pick: filter && known ? channel : "all" };
+    const many = showChannels(channelsInUse(messages, list));
+    const home = health?.radio.channel ?? null;
+    /** Show the channel chip on a card for this channel name. */
+    const chipOn = (name: string | null | undefined) => chipFor(many, name, home);
+    return { options, filter, chips: many, chipOn, pick: filter && known ? channel : "all" };
   }, [health, messages, tasks, channel]);
 }
 
