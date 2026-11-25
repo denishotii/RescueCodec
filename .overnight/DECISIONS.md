@@ -21,3 +21,4 @@
 - Wed 02:02, spec: readable text is a fixed algorithm + per-language word files (spec/i18n), so all libraries render identical lines (Level 2 conformance); uk/tr/ar are marked machine-draft.
 - Wed 02:02, spec: error codes are a small stable set (empty, too_large, unsupported_version, malformed, no_body, multiple_bodies, unknown_key, invalid_value, missing_field) with a field path; vectors check both.
 - Wed 02:02, spec: note the setup commit a818c2c swept in early, unfinished spec files; the spec commit carries the finished versions.
+Wed 02:15, ts-lib: TypeScript lib uses @bufbuild/protobuf 2.2.5 + protoc-gen-es (pinned), i18n JSON is bundled into src/i18n-data.ts by scripts/gen-i18n.mjs, why: no files or network at runtime, works in browsers; strict UTF-8 is checked by a small raw-byte scan because protobuf-es silently replaces bad bytes.
