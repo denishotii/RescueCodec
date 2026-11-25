@@ -48,3 +48,8 @@ dashboard/node_modules/
 
 # Gateway database
 rescuecodec-gateway.db*
+
+# Gateway databases from test runs (SETUP.md uses demo.db, hardware tests hwtest.db)
+*.db
+*.db-shm
+*.db-wal

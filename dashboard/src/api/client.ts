@@ -8,6 +8,8 @@ export interface RuntimeConfig {
   apiBase: string;
   /** Folder with the offline map files, relative to the page or absolute. */
   mapBase: string;
+  /** Where the map starts when there is nothing to show yet, for example the event site. */
+  home?: { lon: number; lat: number; zoom?: number };
 }
 
 export const config: RuntimeConfig = { apiBase: "", mapBase: "map" };
@@ -20,6 +22,10 @@ export async function loadConfig(): Promise<RuntimeConfig> {
       const j = (await r.json()) as Partial<RuntimeConfig>;
       if (typeof j.apiBase === "string") config.apiBase = j.apiBase.replace(/\/$/, "");
       if (typeof j.mapBase === "string") config.mapBase = j.mapBase.replace(/\/$/, "");
+      const h = j.home;
+      if (h && Number.isFinite(h.lon) && Number.isFinite(h.lat)) {
+        config.home = { lon: h.lon, lat: h.lat, zoom: Number.isFinite(h.zoom) ? h.zoom : undefined };
+      }
     }
   } catch { /* no config file: defaults */ }
   const q = new URLSearchParams(location.search).get("api");

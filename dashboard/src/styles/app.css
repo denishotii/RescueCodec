@@ -300,6 +300,9 @@
 .pin-pulse { position: absolute; inset: -6px; border-radius: 50%; border: 3px solid var(--mayday); animation: ring 1.6s ease-out infinite; }
 @keyframes ring { from { transform: scale(0.8); opacity: 0.9; } to { transform: scale(1.7); opacity: 0; } }
 .pin-hazard { background: var(--surface); color: var(--mayday); border: 2px dashed var(--mayday); border-radius: 8px; }
+.pin-text { width: 1.7rem; height: 1.7rem; background: var(--surface); color: var(--ink); border-color: var(--ink); }
+.end-dot { position: absolute; left: 50%; top: 50%; width: 0.8rem; height: 0.8rem; transform: translate(-50%, -50%); border-radius: 50%; background: var(--c); border: 2px solid #fff; box-shadow: 0 1px 3px rgb(0 0 0 / 0.5); }
+:root[data-theme="dark"] .end-dot { border-color: #0b1310; }
 .end-tag { display: inline-block; transform: translate(0, -1.4rem); background: var(--c); color: #fff; font-size: var(--fs-xs); font-weight: 700; padding: 1px 7px; border-radius: 4px; border: 1px solid #fff; white-space: nowrap; text-shadow: 0 1px 1px rgb(0 0 0 / 0.5); }
 :root[data-theme="dark"] .end-tag { color: #0b1310; text-shadow: none; border-color: #0b1310; }
 .sector-tag { display: inline-grid; place-items: center; min-width: 1.5rem; height: 1.5rem; background: var(--surface); color: var(--ink); border: 2px solid var(--ink); font-family: var(--font-cond); font-weight: 700; font-size: var(--fs-md); border-radius: 3px; padding: 0 3px; }
