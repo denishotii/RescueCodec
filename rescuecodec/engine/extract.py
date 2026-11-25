@@ -489,7 +489,8 @@ def _build_request(run: _Run) -> tuple[dict | None, str | None]:
 
 
 def _build_hazard(run: _Run) -> tuple[dict | None, str | None]:
-    kinds = [m for m in run.effective("hazard.kind") if m.code != "other"]
+    kinds = run.effective("hazard.kind")
+    kinds = [m for m in kinds if m.code != "other"] or kinds
     if not kinds:
         return None, R_MISSING
     body: dict[str, Any] = {"kind": kinds[0].code}
@@ -580,7 +581,11 @@ def extract(text: str, lang: str | None = None, vocab: Vocab | None = None) -> E
         sector_problem = _build_sector(run)[1] if run.cue("sector") else None
         has_age = bool(run.effective("age"))
         implied_found = has_age and any(run.effective(f) for f in ("consciousness", "breathing", "mobility", "injuries"))
-        if run.cue("found") or implied_found:
+        generic = (not run.cue("request") and not run.cue("hazard") and not run.effective("hazard.kind")
+                   and any(run.effective(f) for f in ("consciousness", "breathing", "mobility", "injuries"))
+                   and any(_match_at(run.tokens, run.clauses, i, pt, fuzzy=False)
+                           for i in range(len(run.tokens)) for pt in run.voc.person_nouns))
+        if run.cue("found") or implied_found or generic:
             if run.cue("found") and _object_found(run):
                 return _fallback(run, text, R_OBJECT, cues)
             body_type = "found"

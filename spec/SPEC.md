@@ -321,6 +321,38 @@ The Python reference is `rescuecodec/v2/` (`encode`, `decode`, `decode_any`, `re
 
 Receivers that show tasks (the gateway, the app) treat every `found`, `request`, `hazard` and `mayday` as a task with key `<sender node hex>-<id>`, for example `a1b2c3d4-7`. The task state follows the newest `ack` with that `ref` and `node`: `accepted`, `declined` (another team may still accept) or `done`. Mayday always goes to the top. The API in `api/openapi.yaml` describes the gateway side.
 
+### 15.1 Send queue and task rules (informative)
+
+These rules come from the Python engine. The Kotlin and TypeScript engines SHOULD copy them so all three behave the same.
+
+**Send order.** Mayday first. Then Found, Request and Ack. Then Hazard, Sector, Track, Text. Inside one rank the higher priority (critical, urgent, normal, routine) goes first, then first in, first out.
+
+**Airtime budget.** Sliding window of 3600 s, 10 percent duty cycle = 360 s. All airtime numbers are estimates (16 preamble symbols, about 23 B Meshtastic overhead). An item is held when sending it would push the used share above its limit. Held items stay queued and go out when the window frees up.
+
+| Type | Held above |
+|---|---|
+| mayday, ack | never held (airtime still counts) |
+| found, request, hazard | 100 % |
+| sector | 90 % |
+| text, track | 70 % |
+
+**Task states.** `open`, `accepted`, `declined`, `done`, `unknown`. `unknown` is a placeholder: an Ack arrived for a task we have not seen. It resolves when the task message arrives.
+
+**Own moves** (the user taps Accept, Decline or Done):
+
+| From | Allowed to |
+|---|---|
+| open | accepted, declined |
+| accepted | done, declined |
+| declined | accepted |
+| done | nothing (final) |
+
+Any other move is an `invalid_transition` error. A valid move produces an Ack to send.
+
+**Incoming Acks.** The newest Ack sets the state, except that `done` is final. Every Ack is also kept in the task history.
+
+**Dedupe.** Same as section 14: (sender node, id) for 24 hours, (sender node, payload bytes) for 10 minutes when there is no id.
+
 ## 16. Files
 
 | File | What |

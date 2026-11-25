@@ -105,3 +105,31 @@ class Behaviour(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+import pytest as _pytest
+
+
+@_pytest.mark.parametrize("text", [
+    "Person bewusstlos, atmet nicht", "person unconscious, not breathing",
+    "Verletzter bewusstlos, atmet nicht", "Person bewusstlos",
+])
+def test_generic_person_noun_with_state_is_found(text):
+    r = extract(text)
+    assert not r.unsupported
+    assert "found" in r.message
+
+
+def test_generic_person_not_breathing_is_critical():
+    r = extract("Person bewusstlos, atmet nicht")
+    assert r.message["found"]["breathing"] == "none"
+    assert r.message.get("priority") == "critical"
+
+
+def test_generic_person_without_state_stays_text():
+    assert extract("Person gesehen").unsupported
+
+
+def test_avalanche_is_other_hazard():
+    r = extract("Achtung Lawine")
+    assert r.message["hazard"]["kind"] == "other"

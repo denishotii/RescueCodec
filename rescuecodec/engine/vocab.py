@@ -43,6 +43,7 @@ class Vocab:
     persons: tuple[tuple[str, ...], ...]
     coverage_fixed: dict[tuple[str, ...], int]
     version: str
+    person_nouns: tuple[tuple[str, ...], ...] = ()
 
 
 def vocab_path() -> Path:
@@ -84,7 +85,7 @@ def _load(path: str) -> Vocab:
         return tuple(t for t in res if t)
 
     fixed = {tuple(tokenize(str(k))): int(v) for k, v in mods["coverage"].get("fixed", {}).items()}
-    return Vocab(tuple(out), numbers, _plain("helpers"), _plain("persons"), fixed, str(data.get("spec_version", "")))
+    return Vocab(tuple(out), numbers, _plain("helpers"), _plain("persons"), fixed, str(data.get("spec_version", "")), _plain("person_nouns"))
 
 
 def load_vocab(path: str | os.PathLike | None = None) -> Vocab:

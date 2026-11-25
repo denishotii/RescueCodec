@@ -187,12 +187,12 @@ fields:
       - {id: 3, code: water, meaning: "Flooding or fast water.", en: [flood, flooding, "high water", "fast water", "river"], de: [hochwasser, überflutet, überschwemmung, "reißender bach", "reissender bach", strömung]}
       - {id: 4, code: fire, meaning: "Fire or smoke.", en: [fire, smoke, "forest fire"], de: [feuer, rauch, waldbrand, brand]}
       - {id: 5, code: cliff, meaning: "Steep drop or unstable ground.", en: [cliff, "steep drop", "unstable ground", ravine, edge], de: [abgrund, steilhang, absturzgefahr, "steile kante", schlucht]}
-      - {id: 6, code: ice, meaning: "Ice, snow or avalanche.", en: [ice, icy, snow, avalanche], de: [eis, glatteis, schnee, lawine, vereist]}
+      - {id: 6, code: ice, meaning: "Ice or snow.", en: [ice, icy, snow], de: [eis, glatteis, schnee, vereist]}
       - {id: 7, code: animal, meaning: "Dangerous animal.", en: ["wild boar", boar, "aggressive dog", wasps, hornets], de: [wildschwein, wildschweine, "aggressiver hund", wespen, hornissen]}
       - {id: 8, code: power_line, meaning: "Power line down.", en: ["power line", "power line down", "live wire"], de: [stromleitung, "leitung am boden", oberleitung]}
       - {id: 9, code: hunting, meaning: "Hunting in progress.", en: [hunting, hunters, "hunt in progress"], de: [jagd, jäger, jaeger, treibjagd, drückjagd]}
       - {id: 10, code: weather, meaning: "Storm or lightning.", en: [storm, lightning, thunderstorm], de: [sturm, gewitter, blitz, unwetter]}
-      - {id: 11, code: other, meaning: "Other danger.", en: [], de: []}
+      - {id: 11, code: other, meaning: "Other danger, for example an avalanche.", en: [avalanche, landslide, rockfall], de: [lawine, lawinengefahr, erdrutsch, steinschlag]}
 
   hazard.severity:
     kind: enum
@@ -243,6 +243,10 @@ modifiers:
     meaning: Words that mark the number of persons found.
     en: [persons, people, hikers, kids, children]
     de: [personen, wanderer, kinder, leute]
+  person_nouns:
+    meaning: Generic nouns for one casualty. With a state code (consciousness, breathing, mobility, injury) and no request or hazard cue they count as a found cue.
+    en: [person, patient, casualty, victim]
+    de: [person, verletzter, verletzte, patient, patientin, opfer]
   radius:
     meaning: Words before or after a distance that make it a hazard radius. "1 km" = 1000 m.
     en: [radius, around, "m around", "metres around", "meters around", within]
