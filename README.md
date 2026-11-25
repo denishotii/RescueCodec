@@ -54,7 +54,7 @@ Third-party parts are listed in `OFFLINE.md` with their licences (map data ODbL,
 
 ## Quick start
 
-Step by step for the team, from a fresh laptop to a phone talking to the dashboard over real radios: **`SETUP.md`**.
+Run everything from Denis's MacBook (gateway, dashboard, app on the phones, radios), step by step: **`SETUP.md`**. The steps below are for setting up another machine.
 
 You need Python 3.10 or newer. For the simulator also Docker. All steps work with no internet once the downloads in `OFFLINE.md` are done.
 
