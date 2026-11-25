@@ -67,7 +67,7 @@ Example `RESULT_JSON` for an accepted report (the id is different every time):
 
 `status` meanings:
 
-- `queued`: in the send queue. It goes out when the radio is connected and the airtime budget allows. If the radio is off, it waits. Nothing is lost when the app restarts.
+- `queued`: in the send queue. It goes out when the radio is connected, has a private channel (see "Good to know") and the airtime budget allows. If the radio is off, it waits. Nothing is lost when the app restarts.
 - `sent`: handed to the radio.
 - `delivered`: another radio repeated it, so the mesh took it. This is **not** the same as "a person accepted it". The Accept arrives later as an Ack.
 - `not_confirmed`: the radio sent it, but nobody repeated it. It may or may not have arrived.
@@ -135,4 +135,6 @@ adb logcat -d | grep RescueCodec     # "sent found id=... 21 B" once the radio t
 - The first call starts the radio service if a radio is remembered. The RescueCodec app must have been opened and connected once, so Bluetooth permissions and pairing are done.
 - Ids count up from a random start and wrap at 16383. Receivers ignore the same (sender, id) for 24 hours.
 - The sender of the report on the mesh is the phone's radio. Your app's name is only kept in the local log.
+- **The radio needs a private channel.** Reports go out only on a channel that has its own key. The app uses the channel named `RescueCodec`. If there is none, it uses the only channel with its own key. If there are several, or none, nothing is sent: the message stays `queued` and `detail` says "No private RescueCodec channel on this radio" (or similar). The app never falls back to channel 0 or to the public default key (LongFast). The person can pick a channel on the main screen.
+- The Intent API is on by default and any installed app can call it. The person can switch it off on the main screen ("Allow other apps to send reports"). The calling package is kept in the local message log.
 - Everything stays on the phone and on the radio channel. The app never uses the internet.

@@ -15,6 +15,8 @@ import kotlinx.coroutines.launch
 import org.rescuecodec.app.AppGraph
 import org.rescuecodec.app.core.AirtimeStatus
 import org.rescuecodec.app.core.AnswerResult
+import org.rescuecodec.app.core.ChannelChoice
+import org.rescuecodec.app.core.ChannelOption
 import org.rescuecodec.app.core.Messenger
 import org.rescuecodec.app.data.MessageEntity
 import org.rescuecodec.app.data.StatNames
@@ -41,6 +43,25 @@ class ConnectionViewModel(app: Application, private val graph: AppGraph) : Andro
     fun connectLast() = RadioService.start(getApplication(), null)
 
     fun disconnect() = RadioService.stop(getApplication())
+
+    /** The radio channel reports go out on, or the reason there is none. */
+    val channel: StateFlow<ChannelChoice> = graph.messenger.channel
+
+    /** Channels of the connected radio the person can pick from. */
+    val channelOptions: StateFlow<List<ChannelOption>> = graph.messenger.channelOptions
+
+    /** Picks a channel by index, or -1 for automatic. */
+    fun pickChannel(index: Int) {
+        graph.settings.channelIndex = index
+        graph.messenger.refreshChannel()
+    }
+
+    /** The channel the person picked, or -1 for automatic. */
+    fun pickedChannel(): Int = graph.settings.channelIndex
+
+    /** Whether other apps may send reports through the Intent API. */
+    fun allowIntentApi(): Boolean = graph.settings.allowIntentApi
+    fun setAllowIntentApi(on: Boolean) { graph.settings.allowIntentApi = on }
 }
 
 /** One task as the screen shows it. */

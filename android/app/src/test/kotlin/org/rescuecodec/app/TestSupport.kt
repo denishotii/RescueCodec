@@ -4,6 +4,8 @@ package org.rescuecodec.app
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
 import okio.ByteString
+import org.meshtastic.proto.Channel
+import org.meshtastic.proto.ChannelSettings
 import org.meshtastic.proto.Data
 import org.meshtastic.proto.FromRadio
 import org.meshtastic.proto.MeshPacket
@@ -40,14 +42,23 @@ fun privateAppPacket(from: Long, id: Int, payload: ByteArray, hopStart: Int = 3,
     }.build()
 
 /** Packets the app handed to the radio on port 256. */
-fun FakeRadioTransport.sentPrivateApp(): List<MeshPacket> =
-    outboundPackets().filter { it.decoded?.portnum == PortNum.PRIVATE_APP }
+fun FakeRadioTransport.sentPrivateApp(): List<MeshPacket> {
+    // The fake's list is not thread safe and the SDK writes to it from its own thread: try again on a clash.
+    repeat(20) {
+        try {
+            return outboundPackets().filter { it.decoded?.portnum == PortNum.PRIVATE_APP }
+        } catch (e: ConcurrentModificationException) {
+            Thread.sleep(5)
+        }
+    }
+    return outboundPackets().filter { it.decoded?.portnum == PortNum.PRIVATE_APP }
+}
 
 /**
  * A fake radio that answers the handshake and also reports its own node, as a real radio does.
  * (The SDK's own fake only sends `my_info`.)
  */
-fun fakeRadio(identity: String, nodeNum: Int): FakeRadioTransport {
+fun fakeRadio(identity: String, nodeNum: Int, channels: List<Channel> = listOf(teamChannel(0))): FakeRadioTransport {
     val me = FromRadio.Builder().also { b ->
         b.node_info = NodeInfo.Builder().also { n ->
             n.num = nodeNum
@@ -58,5 +69,21 @@ fun fakeRadio(identity: String, nodeNum: Int): FakeRadioTransport {
             }.build()
         }.build()
     }.build()
-    return FakeRadioTransport(TransportIdentity(identity), frames = listOf(me.toFrame()), autoHandshake = true, nodeNum = nodeNum)
+    val frames = listOf(me.toFrame()) + channels.map { FromRadio.Builder().also { b -> b.channel = it }.build().toFrame() }
+    return FakeRadioTransport(TransportIdentity(identity), frames = frames, autoHandshake = true, nodeNum = nodeNum)
 }
+
+/** A channel as the radio reports it. [psk] empty means no key, one byte means the public default key. */
+fun teamChannel(
+    index: Int,
+    name: String = "RescueCodec",
+    psk: ByteArray = ByteArray(32) { (it + 1).toByte() },
+    role: Channel.Role = if (index == 0) Channel.Role.PRIMARY else Channel.Role.SECONDARY,
+): Channel = Channel.Builder().also { c ->
+    c.index = index
+    c.role = role
+    c.settings = ChannelSettings.Builder().also { s ->
+        s.name = name
+        s.psk = ByteString.of(*psk)
+    }.build()
+}.build()

@@ -27,6 +27,17 @@ This module holds the radio and data layer. The screens are minimal on purpose. 
 
 Everything is in the database, so a restart loses nothing: the queue, the tasks, the duplicate memory and the used airtime are rebuilt.
 
+## Which radio channel
+
+Reports go out on one private channel, never on the public default channel. `core/ChannelChoice.kt` decides:
+
+1. The person picked a channel on the main screen: that one, if it exists on the radio and has its own key.
+2. Else the enabled channel named `RescueCodec`, if it has its own key.
+3. Else the only enabled channel with its own key.
+4. Else nothing is sent. Messages stay `queued` and their `detail` says why, for example "No private RescueCodec channel on this radio. Add a channel named RescueCodec with its own key, or pick a channel in the settings." The main screen shows the same text.
+
+So name the team channel `RescueCodec` on every radio (same name, same key). A channel with no key or the one-byte default key (LongFast) counts as public. `Messenger.channel` is a `StateFlow<ChannelChoice>` and `ConnectionViewModel.pickChannel(index)` sets the choice (-1 = automatic).
+
 ## Permissions
 
 | Android | Needed for Bluetooth | Also |

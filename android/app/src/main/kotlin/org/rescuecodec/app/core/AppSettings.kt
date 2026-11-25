@@ -13,7 +13,10 @@ class AppSettings(private val store: KeyValueStore) {
         get() = store.getString("team_label").orEmpty()
         set(v) = store.putString("team_label", v.trim().ifEmpty { null })
 
-    /** Meshtastic channel index used for reports. -1 means: find the channel named [CHANNEL_NAME], else use 0. */
+    /**
+     * Meshtastic channel index used for reports. -1 means automatic: the channel named [CHANNEL_NAME],
+     * else the only channel with its own key, else wait (never channel 0 by default, see [ChannelChoice]).
+     */
     var channelIndex: Int
         get() = store.getLong("channel_index", -1).toInt()
         set(v) = store.putLong("channel_index", v.toLong())

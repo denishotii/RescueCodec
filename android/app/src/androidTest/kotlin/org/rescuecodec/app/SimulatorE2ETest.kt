@@ -113,9 +113,10 @@ class SimulatorE2ETest {
         assertTrue(RadioService.running)
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         eventually(10_000, "foreground notification") { nm.activeNotifications.isNotEmpty() }
-        val n = nm.activeNotifications.first()
-        assertNotNull(n.notification.extras.getCharSequence("android.text"))
-        assertTrue(n.notification.extras.getCharSequence("android.text")!!.contains("Connected"), "text says connected")
+        // The notification text follows the link state a moment later, so wait for it.
+        eventually(10_000, "notification says connected") {
+            nm.activeNotifications.firstOrNull()?.notification?.extras?.getCharSequence("android.text")?.contains("Connected") == true
+        }
         RadioService.stop(context)
         eventually(15_000, "disconnected after stop") { real.link.state.value is LinkState.Disconnected }
         eventually(10_000, "service stopped") { !RadioService.running }

@@ -18,18 +18,21 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.rescuecodec.app.R
+import org.rescuecodec.app.core.ChannelChoice
 import org.rescuecodec.app.radio.ConnectPhase
 import org.rescuecodec.app.radio.LinkState
 import org.rescuecodec.app.radio.RadioTarget
@@ -51,6 +54,10 @@ fun MinimalScreen(
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         missing = Permissions.missing(context)
     }
+    val channel by connection.channel.collectAsStateWithLifecycle()
+    val channelOptions by connection.channelOptions.collectAsStateWithLifecycle()
+    var picked by remember { mutableStateOf(connection.pickedChannel()) }
+    var allowApi by remember { mutableStateOf(connection.allowIntentApi()) }
     var host by remember { mutableStateOf("10.0.2.2") }
     var port by remember { mutableStateOf("4403") }
 
@@ -100,6 +107,26 @@ fun MinimalScreen(
                                 }
                                 OutlinedButton(onClick = connection::disconnect) { Text(stringResource(R.string.action_disconnect)) }
                             }
+                            Text("Report channel: " + channel.text(), style = MaterialTheme.typography.bodyMedium)
+                            if (channel is ChannelChoice.Problem) {
+                                Text("Messages wait until this is fixed. They are never sent on the public channel.", style = MaterialTheme.typography.bodySmall)
+                            }
+                            if (channelOptions.isNotEmpty()) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedButton(onClick = { connection.pickChannel(-1); picked = -1 }) {
+                                        Text(if (picked < 0) "Automatic (set)" else "Automatic")
+                                    }
+                                    channelOptions.filter { it.isPrivate }.forEach { o ->
+                                        OutlinedButton(onClick = { connection.pickChannel(o.index); picked = o.index }) {
+                                            Text("${o.index} ${o.name.ifEmpty { "(no name)" }}" + if (picked == o.index) " (set)" else "")
+                                        }
+                                    }
+                                }
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Switch(checked = allowApi, onCheckedChange = { allowApi = it; connection.setAllowIntentApi(it) })
+                                Text("Allow other apps to send reports", style = MaterialTheme.typography.bodySmall)
+                            }
                             if (Build.VERSION.SDK_INT >= 23) Text(stringResource(R.string.perm_battery), style = MaterialTheme.typography.bodySmall)
                         }
                     }
@@ -125,7 +152,7 @@ fun MinimalScreen(
 
                 item { Text(stringResource(R.string.screen_outbox) + " (${waiting.size})", style = MaterialTheme.typography.titleMedium) }
                 items(waiting, key = { it.id }) { m ->
-                    Text("${m.type} ${m.state} ${m.detail.orEmpty()}", style = MaterialTheme.typography.bodySmall)
+                    Text("${m.type} ${m.state}${if (m.source != "app") " (from ${m.source})" else ""} ${m.detail.orEmpty()}", style = MaterialTheme.typography.bodySmall)
                 }
 
                 item {

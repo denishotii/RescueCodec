@@ -2,6 +2,7 @@
 package org.rescuecodec.app.core
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
@@ -136,6 +137,16 @@ class Messenger(
     /** Airtime used in the last hour and the legal limit (estimated). */
     val airtime: StateFlow<AirtimeStatus> = _airtime.asStateFlow()
 
+    private val _channel = MutableStateFlow<ChannelChoice>(ChannelChoice.Waiting("No radio connected."))
+
+    /** The radio channel reports go out on, or why there is none yet. */
+    val channel: StateFlow<ChannelChoice> = _channel.asStateFlow()
+
+    private val _channelOptions = MutableStateFlow<List<ChannelOption>>(emptyList())
+
+    /** Enabled channels of the connected radio, for the channel picker. */
+    val channelOptions: StateFlow<List<ChannelOption>> = _channelOptions.asStateFlow()
+
     /** Starts the loops. Safe to call twice. Restores tracker and queue from the database first. */
     suspend fun start() {
         if (started) return
@@ -242,10 +253,22 @@ class Messenger(
     private suspend fun radioLoop() {
         scope.launch { receiveLoop() }
         clientFlow.collectLatest { client ->
-            if (client == null) return@collectLatest
+            if (client == null) {
+                evaluateChannel(null)
+                return@collectLatest
+            }
             val self = nodeOf(client)
             if (self != 0L) settings.lastOwnNode = self
-            sendLoop(client, self)
+            // Channels can change while connected (the person edits them in the Meshtastic app).
+            coroutineScope {
+                launch {
+                    client.channels.collect {
+                        evaluateChannel(client)
+                        wake.trySend(Unit)
+                    }
+                }
+                sendLoop(client, self)
+            }
         }
     }
 
@@ -276,12 +299,20 @@ class Messenger(
             try {
                 var item: Pair<QueuedMessage, Long>? = null
                 var waitMs: Long? = null
+                var channelIdx = -1
+                var blocked = false
                 mutex.withLock {
                     reconcile()
-                    val q = queue.poll()
+                    val choice = evaluateChannel(client)
+                    if (choice is ChannelChoice.Ready) channelIdx = choice.index
+                    else {
+                        blocked = true
+                        markChannelProblem(choice)
+                    }
+                    val q = if (blocked) null else queue.poll()
                     if (q != null) {
                         item = q to (rowBySeq.remove(q.seq) ?: -1L)
-                    } else {
+                    } else if (!blocked) {
                         waitMs = queue.waitMs()
                         if (waitMs != null && waitMs!! > 0) markHeld(waitMs!!)
                     }
@@ -290,11 +321,11 @@ class Messenger(
                 val next = item
                 if (next == null) {
                     val w = waitMs
-                    val sleep = if (w == null || w == Long.MAX_VALUE) 30_000L else w.coerceIn(100L, 5_000L)
+                    val sleep = if (blocked) 5_000L else if (w == null || w == Long.MAX_VALUE) 30_000L else w.coerceIn(100L, 5_000L)
                     withTimeoutOrNull(sleep) { wake.receive() }
                     continue
                 }
-                if (next.second >= 0) withContext(NonCancellable) { dispatch(client, self, next.first, next.second) }
+                if (next.second >= 0) withContext(NonCancellable) { dispatch(client, self, next.first, next.second, channelIdx) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -322,14 +353,14 @@ class Messenger(
 
     // ------------------------------------------------------------ sending, inner
 
-    private suspend fun dispatch(client: RadioClient, self: Long, q: QueuedMessage, rowId: Long) {
+    private suspend fun dispatch(client: RadioClient, self: Long, q: QueuedMessage, rowId: Long, channelIdx: Int) {
         val row = messages.get(rowId) ?: return
         val canonical = q.message
         val type = row.type
         val prio = meshPriority(RescueCodec.effectivePriority(canonical))
         val packet = MeshPacket.Builder().also { b ->
             b.to = NodeId.BROADCAST.raw
-            b.channel = channelIndex(client)
+            b.channel = channelIdx
             b.want_ack = true
             b.priority = prio
             b.decoded = Data.Builder().also { d ->
@@ -633,11 +664,30 @@ class Messenger(
         return if (n != 0L) n else settings.lastOwnNode
     }
 
-    private fun channelIndex(client: RadioClient): Int {
-        val fixed = settings.channelIndex
-        if (fixed >= 0) return fixed
-        val byName = client.channels.value?.firstOrNull { it.settings?.name == AppSettings.CHANNEL_NAME }
-        return byName?.index ?: 0
+    /** Works out the channel again from the radio's channel list and the setting, and publishes it. */
+    private fun evaluateChannel(client: RadioClient?): ChannelChoice {
+        val choice = if (client == null) {
+            ChannelChoice.Waiting("No radio connected.")
+        } else {
+            ChannelChoice.resolve(client.channels.value, settings.channelIndex)
+        }
+        _channel.value = choice
+        _channelOptions.value = ChannelChoice.options(client?.channels?.value)
+        return choice
+    }
+
+    /** Call after the person changed the channel setting. */
+    fun refreshChannel() {
+        evaluateChannel(clientFlow.value)
+        wake.trySend(Unit)
+    }
+
+    /** Puts the reason on every waiting message, once, so the outbox says why nothing leaves. */
+    private suspend fun markChannelProblem(choice: ChannelChoice) {
+        val text = choice.text()
+        for (row in messages.waiting()) {
+            if (row.state == MessageState.QUEUED && row.detail != text) messages.update(row.copy(detail = text))
+        }
     }
 
     companion object {

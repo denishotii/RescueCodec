@@ -60,8 +60,8 @@ class MessengerTest {
         refusalDelaysMs = refusalDelays, taskTimeoutMs = timeoutMs, log = { println("[messenger] $it") }, budget = budget,
     )
 
-    private suspend fun connectRadio() {
-        radio = fakeRadio("fake:me", me.toInt())
+    private suspend fun connectRadio(channels: List<org.meshtastic.proto.Channel> = listOf(teamChannel(0))) {
+        radio = fakeRadio("fake:me", me.toInt(), channels)
         val client = RadioClient.Builder().transport(radio).storage(InMemoryStorageProvider()).build()
         attachedFlow.value = client // as ConnectionManager does: listen before connecting
         delay(200)
@@ -379,6 +379,61 @@ class MessengerTest {
         second.start()
         kotlinx.coroutines.delay(1_300) // tick loop publishes once a second
         assertTrue(second.airtime.value.usedMs >= first.airtime.value.usedMs * 0.99, "second ${second.airtime.value} first ${first.airtime.value} used=$used")
+    }
+
+    private val publicDefault = teamChannel(0, name = "", psk = byteArrayOf(1))
+
+    @Test
+    fun reportsGoOnTheNamedChannelNotOnChannelZero() = runUnit {
+        val m = messenger()
+        m.start()
+        connectRadio(listOf(publicDefault, teamChannel(2, name = "RescueCodec")))
+        m.submit(found)
+        eventually(10_000, "packet sent") { radio.sentPrivateApp().size == 1 }
+        assertEquals(2, radio.sentPrivateApp().single().channel)
+        assertEquals(2, (m.channel.value as org.rescuecodec.app.core.ChannelChoice.Ready).index)
+    }
+
+    @Test
+    fun theOnlyPrivateChannelIsUsedEvenWithAnotherName() = runUnit {
+        val m = messenger()
+        m.start()
+        connectRadio(listOf(publicDefault, teamChannel(1, name = "Bergwacht")))
+        m.submit(found)
+        eventually(10_000, "packet sent") { radio.sentPrivateApp().size == 1 }
+        assertEquals(1, radio.sentPrivateApp().single().channel)
+        assertTrue((m.channel.value as org.rescuecodec.app.core.ChannelChoice.Ready).auto)
+    }
+
+    @Test
+    fun noPrivateChannelMeansNothingIsSentAndTheOutboxSaysWhy() = runUnit {
+        val m = messenger()
+        m.start()
+        connectRadio(listOf(publicDefault))
+        val r = m.submit(mapOf("pos" to mapOf("lat" to 50.7, "lon" to 7.2), "mayday" to mapOf("reason" to "lost")))
+        assertIs<SubmitResult.Queued>(r)
+        eventually(5_000, "problem shown") { messages.all.single().detail?.contains("No private RescueCodec channel") == true }
+        assertIs<org.rescuecodec.app.core.ChannelChoice.Problem>(m.channel.value)
+        delay(700)
+        assertEquals(0, radio.sentPrivateApp().size, "nothing may go out on the public channel")
+        assertEquals(MessageState.QUEUED, messages.all.single().state)
+    }
+
+    @Test
+    fun aChannelPickedInTheSettingsIsUsedAndAPublicOneIsRefused() = runUnit {
+        val m = messenger()
+        m.start()
+        connectRadio(listOf(teamChannel(0, name = "A"), teamChannel(1, name = "B", psk = ByteArray(16) { 9 })))
+        m.submit(found)
+        eventually(5_000, "ambiguous shown") { messages.all.single().detail?.contains("Several private channels") == true }
+        assertEquals(0, radio.sentPrivateApp().size)
+        settings.channelIndex = 1
+        m.refreshChannel()
+        eventually(10_000, "packet sent") { radio.sentPrivateApp().size == 1 }
+        assertEquals(1, radio.sentPrivateApp().single().channel)
+        settings.channelIndex = 0
+        m.refreshChannel()
+        assertEquals(org.rescuecodec.app.core.ChannelChoice.Ready(0, "A", false), m.channel.value)
     }
 
     @Test
