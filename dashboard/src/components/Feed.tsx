@@ -21,7 +21,7 @@ function matches(f: Filter, r: MessageRecord): boolean {
   return r.type === f;
 }
 
-const STATUS_KEY: Record<MessageRecord["status"], Key> = {
+export const STATUS_KEY: Record<MessageRecord["status"], Key> = {
   received: "statusReceived", queued: "statusQueued", sent: "statusSent", delivered: "statusDelivered", failed: "statusFailed", dry_run: "statusQueued",
 };
 

@@ -46,6 +46,13 @@ const en = {
   mapOffline: "Offline map",
   tabActions: "Actions", tabFeed: "Reports", tabMap: "Map", tabStats: "Traffic", tabNodes: "Radios",
   channel: "Channel", allChannels: "All channels", direct: "Direct", directTip: "Direct message, not on the whole channel",
+  composeTitle: "Send", to: "To", channelsGroup: "Channels", peopleGroup: "Direct to a person",
+  composePlaceholder: "Type a message or a report. Enter sends.", composeLabel: "Message",
+  sendsAs: "Sends as", asTextShort: "as text", textKind: "Text", reading: "reading…",
+  plainText: "Send as plain text", plainDirect: "Direct messages go as plain text.", plainPublic: "Public channel: plain text only.",
+  quickRecall: "Recall all", quickStatus: "Status check", quickMeet: "Meet at …", quickRequest: "+ Request", quickHazard: "+ Hazard",
+  quickGroup: "Quick messages", rateLimited: "Too many messages, send again in", noTarget: "No channel to send on yet.",
+  sendShortcut: "Enter sends, Shift+Enter new line",
 } as const;
 
 export type Key = keyof typeof en;
@@ -96,6 +103,13 @@ const de: Record<Key, string> = {
   mapOffline: "Offline-Karte",
   tabActions: "Aufgaben", tabFeed: "Meldungen", tabMap: "Karte", tabStats: "Funkverkehr", tabNodes: "Funkgeräte",
   channel: "Kanal", allChannels: "Alle Kanäle", direct: "Direkt", directTip: "Direktnachricht, nicht an den ganzen Kanal",
+  composeTitle: "Senden", to: "An", channelsGroup: "Kanäle", peopleGroup: "Direkt an eine Person",
+  composePlaceholder: "Nachricht oder Meldung tippen. Enter sendet.", composeLabel: "Nachricht",
+  sendsAs: "Geht raus als", asTextShort: "als Text", textKind: "Text", reading: "lese…",
+  plainText: "Als Klartext senden", plainDirect: "Direktnachrichten gehen als Klartext.", plainPublic: "Öffentlicher Kanal: nur Klartext.",
+  quickRecall: "Alle zurück", quickStatus: "Statusabfrage", quickMeet: "Treffpunkt …", quickRequest: "+ Anforderung", quickHazard: "+ Gefahr",
+  quickGroup: "Schnellnachrichten", rateLimited: "Zu viele Nachrichten, nochmal senden in", noTarget: "Noch kein Kanal zum Senden.",
+  sendShortcut: "Enter sendet, Umschalt+Enter neue Zeile",
 };
 
 export const dict: Record<Lang, Record<Key, string>> = { en, de };

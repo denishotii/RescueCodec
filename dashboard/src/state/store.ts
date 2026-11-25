@@ -177,6 +177,13 @@ export class DataStore {
     this.set({ tasks: { ...this.state.tasks, [task.key]: task }, messages: upsertMessage(this.state.messages, record) });
   }
 
+  /** Called after our own send, so the record shows at once. The WebSocket repeats it, upserts are idempotent. */
+  applyRecord(record: MessageRecord) {
+    const s = this.state;
+    const known = s.messages.some((m) => m.seq === record.seq);
+    this.set({ messages: upsertMessage(s.messages, record), fresh: known ? s.fresh : { ...s.fresh, [record.seq]: Date.now() } });
+  }
+
   /** Refresh stats on demand (for example after a send). */
   async refreshStats() { try { this.set({ stats: await api.stats() }); } catch { /* keep the old numbers */ } }
 }

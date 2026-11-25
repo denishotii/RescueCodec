@@ -490,6 +490,59 @@ paths:
                 text_airtime_s: { value: 1.34, unit: s, source: estimated, note: "Same report as plain English text" }
         "400": { $ref: "#/components/responses/InvalidMessage" }
 
+  /v2/extract:
+    post:
+      tags: [tools]
+      operationId: extractMessage
+      summary: Read one typed sentence and show the report it would send. Nothing is sent (live preview).
+      description: |
+        The rule-based extractor (German and English, spec/SPEC.md section 11) turns a sentence into a report.
+        When no report fits, the result is a `text` with the same words (`unsupported: true`, `reason` says why).
+        To send the result, post `message` to `POST /v2/messages` (the gateway adds the id), or the words to
+        `POST /v2/text` for a plain text. The dashboard composer calls this while the operator types.
+
+        - `coded_bytes`: bytes on air for `message` as it would go out, the id the gateway adds counted. A `text`
+          counts like `POST /v2/text` (its UTF-8 bytes with `--text-as-meshtastic on`, the default).
+        - `text_bytes`: bytes on air for the same words sent as a plain text.
+        - `fields`: the facts of the report as short labels in English and German (chips in a UI). Empty for a text.
+
+        Input is at most 1000 characters. Not limited by `--tx-per-minute`: nothing goes on air.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              additionalProperties: false
+              properties:
+                text: { type: string, minLength: 1, maxLength: 1000, description: "One sentence, German or English." }
+                lang: { type: string, enum: [en, de], description: "Language of the sentence. Leave it out to detect it." }
+            example: { text: "Kind gefunden, ansprechbar, unterkühlt. Wir brauchen eine Trage." }
+      responses:
+        "200":
+          description: The report (or text) the sentence gives.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExtractResult" }
+              example:
+                type: found
+                message: { found: { age: child, consciousness: conscious, injuries: [hypothermia], needs: [stretcher] } }
+                unsupported: false
+                reason: null
+                lang: de
+                fields:
+                  - { field: found.age, code: child, text: { en: child, de: Kind } }
+                  - { field: found.consciousness, code: conscious, text: { en: conscious, de: ansprechbar } }
+                  - { field: found.injuries, code: hypothermia, text: { en: hypothermia, de: Unterkühlung } }
+                  - { field: found.needs, code: stretcher, text: { en: needs stretcher, de: braucht Trage } }
+                text:
+                  en: "Person found: child, conscious, hypothermia, needs stretcher."
+                  de: "Person gefunden: Kind, ansprechbar, Unterkühlung, braucht Trage."
+                coded_bytes: 10
+                text_bytes: 65
+        "400": { $ref: "#/components/responses/InvalidMessage" }
+
   /v2/decode:
     post:
       tags: [tools]
@@ -956,6 +1009,27 @@ components:
         text_size: { type: integer, description: "UTF-8 bytes of text.en." }
         airtime_s: { $ref: "#/components/schemas/Metric" }
         text_airtime_s: { $ref: "#/components/schemas/Metric" }
+    ExtractResult:
+      type: object
+      required: [type, message, unsupported, reason, lang, fields, text, coded_bytes, text_bytes]
+      properties:
+        type: { type: string, enum: [found, sector, request, hazard, mayday, text] }
+        message: { $ref: "#/components/schemas/Message", description: "Canonical message without an id. Post it to /v2/messages to send it." }
+        unsupported: { type: boolean, description: "true = no report fits the sentence; message is a text with the same words." }
+        reason: { type: [string, "null"], description: "Why no report fits: empty, no_supported_type, conflicting_states, object_found, missing_field, ambiguous, invalid." }
+        lang: { type: string, enum: [en, de, unknown] }
+        fields:
+          type: array
+          items:
+            type: object
+            required: [field, code, text]
+            properties:
+              field: { type: string, description: "For example found.age, request.resource, priority, pos." }
+              code: { type: [string, integer] }
+              text: { $ref: "#/components/schemas/Text2" }
+        text: { $ref: "#/components/schemas/Text2" }
+        coded_bytes: { type: integer, description: "Bytes on air for message (measured by encoding it)." }
+        text_bytes: { type: integer, description: "Bytes on air for the same words as a plain text." }
     StreamEvent:
       type: object
       required: [event, data]
