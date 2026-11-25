@@ -168,12 +168,22 @@ class TasksViewModel(app: Application, private val graph: AppGraph) : AndroidVie
         return TaskItem(
             key = t.key, type = t.type, json = t.json, state = t.state, local = t.local,
             meshDelivered = t.meshDelivered, ownStatus = t.ownStatus, answers = answers, updatedMs = t.updatedMs,
-            moves = if (t.local || t.type == "unknown") emptySet() else Messenger.ALLOWED_MOVES[t.ownStatus ?: "open"].orEmpty(),
+            moves = movesFor(t),
         )
     }
 
     fun answer(key: String, status: String, onResult: (AnswerResult) -> Unit = {}) {
         viewModelScope.launch { onResult(graph.messenger.answer(key, status)) }
+    }
+
+    companion object {
+        /**
+         * Moves the person may make on [t] now. None on our own tasks and on answers without a report. None once the
+         * task is done: a Done from any team is final, so Accept and Decline would change nothing.
+         */
+        fun movesFor(t: TaskEntity): Set<String> =
+            if (t.local || t.type == "unknown" || t.state == "done") emptySet()
+            else Messenger.ALLOWED_MOVES[t.ownStatus ?: "open"].orEmpty()
     }
 }
 
