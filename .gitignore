@@ -53,3 +53,6 @@ rescuecodec-gateway.db*
 *.db
 *.db-shm
 *.db-wal
+
+# v1 benchmark output (rescuecodec-benchmark). The old results are in legacy/v1/results/
+/results/
