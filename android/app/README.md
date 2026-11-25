@@ -13,7 +13,7 @@ This module holds the radio and data layer, and the screens and voice on top of 
 | `data/` | Room database (version 2): `messages` (every packet with its state, channel and DM peer), `tasks` (with the channel of the report), `stats`. `Migrations` holds the SQL of each schema change. |
 | `service/` | `RadioService`: foreground service, type `connectedDevice`, keeps the link alive with the screen off. `MaydayNotifier` (loud Mayday channel). `TeamWatcher` and `TeamNotifier`: read new rows from the database and post Messages, Tasks and Answers notifications, or an in-app tone when the app is in front. |
 | `intent/` | Public Intent API `org.rescuecodec.action.SEND_REPORT`. See `docs/INTEGRATE.md`, section "Android Intent". |
-| `ui/` | `RescueRoot` (theme, language, top bar, two tabs, menu screens), `chat/` (Team chat: bubbles, report cards, answer lines, composer with preview strip), `screens/` (Tasks, Stats, Connect, Settings, QR scanner, report editor sheets), `components/` (cards, chips, SOS and mic hold controls, tags), `theme/`, view models (`StateFlow`; `ChatViewModel` takes a `ChatId`, `ChatListViewModel` builds the chat list), permission plan. |
+| `ui/` | `RescueRoot` (theme, language, top bar, three tabs, Settings), `chat/` (Team chat: bubbles, report cards, answer lines, composer with preview strip), `screens/` (Tasks, Stats, Connect, Settings, QR scanner, report editor sheets), `components/` (cards, chips, SOS and mic hold controls, tags), `theme/`, view models (`StateFlow`; `ChatViewModel` takes a `ChatId`, `ChatListViewModel` builds the chat list), permission plan. |
 | `voice/` | `SpeechInput` (Vosk, hold to talk), `VoskModels` and `ModelImporter` (where the models are, import from a zip), `Speaker` (Android TextToSpeech). |
 
 `AppGraph` creates and holds all of it. `RescueApp` owns one.
@@ -32,7 +32,7 @@ Everything is in the database, so a restart loses nothing: the queue, the tasks,
 
 ## Channels and direct messages
 
-The Team tab is a chat list, like Telegram: the team channel pinned on top, then every other private channel of the radio, then direct messages (one per node, with the name from the radio's node list), then the public channel only when Settings "Show public channel" is on. The app opens straight into the last chat; back goes to the list.
+The Chats tab is a chat list, like Telegram: the team channel pinned on top, then every other private channel of the radio, then direct messages (one per node, with the name from the radio's node list), then the public channel only when Settings "Show public channel" is on. The app opens straight into the last chat; back goes to the list.
 
 - A channel is identified by its **name** (shared with the gateway). An unnamed primary channel is the modem preset's name, for example `LongFast`. A channel with no key or the one-byte default key is **public**.
 - Receive: port 256 and port 1 on every private channel; the public channel only with the setting on (else counted as `rx_other_channel` and dropped); direct messages to our node on any channel, always.
@@ -65,12 +65,12 @@ A radio over the network (TCP) needs none of these. `ui/Permissions.kt` has the 
 
 Build and run: `cd android && . ../scripts/env.sh && ./gradlew :app:assembleDebug`, then `adb install -r app/build/outputs/apk/debug/app-debug.apk`.
 
-- English is the default. One tap on EN / DE in the top bar switches the app and the decoded text. Strings are in `res/values` and `res/values-de`.
-- The app has two tabs, Team (the chat) and Tasks. Radio, Airtime and savings, and Settings are in the top bar menu. See `DESIGN.md`.
-- `adb shell am start -n org.rescuecodec.app/.MainActivity --es screen TASKS` opens a screen directly (TEAM, TASKS, STATS, RADIO, SETTINGS; the old names REPORT and FEED open Team, ACTIONS opens Tasks). Debug builds also take `--es connect 10.0.2.2:4403` to connect to the simulator, and `--es report_text_b64 <base64>` to type into the composer.
+- English is the default. Settings, Language switches the app and the decoded text to German. Strings are in `res/values` and `res/values-de`.
+- The app has three tabs: Chats, Tasks and Radio (the link, the channels with New channel and Join by QR, and the airtime numbers). Settings opens from the gear in the top bar. See `DESIGN.md`. Screenshots: `docs/screenshots/app/`.
+- `adb shell am start -n org.rescuecodec.app/.MainActivity --es screen TASKS` opens a screen directly (CHATS, TASKS, RADIO, SETTINGS; the old names TEAM, REPORT and FEED open Chats, ACTIONS opens Tasks, STATS opens Radio). Debug builds also take `--es connect 10.0.2.2:4403` to connect to the simulator, and `--es report_text_b64 <base64>` to type into the composer.
 - Notifications: "Messages" (texts from the team), "Tasks" (found, request, hazard), "Mayday" (loud), "Answers" (Accept or Done on your own report). Only when the app is not in front; in front a short tone and a haptic tick (Settings, Sounds).
 - Speech models: see `docs/VOICE.md`. Install with `scripts/install-vosk-models.sh`, or import a zip in Settings, or build the full APK with `-PbundleVosk=true`.
-- Screenshots of every screen, light and dark, English and German: `scripts/app-screenshots.sh` (starts the simulator and the emulator, writes `.overnight/gallery/app/`, stops them again; `--keep` leaves them running).
+- Screenshots of every screen, light and dark, English and German: `scripts/app-screenshots.sh` (starts the simulator and the emulator, writes `docs/screenshots/app/`, stops them again; `--keep` leaves them running). It still uses the old screen names of the first app layout (Report, Actions, Feed), so check its output before you commit it.
 
 ## Tests
 

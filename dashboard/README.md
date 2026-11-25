@@ -45,7 +45,7 @@ The mock is demo data only. It is checked against the OpenAPI schemas in `tests/
 `?theme=dark|light`, `?lang=de|en`, `?room=1`, `?view=3d`, `?api=<gateway url>`.
 
 ## Screenshots
-`scripts/gallery.sh [base-url]` writes 1920x1080 and 1440x900 shots, dark and light, to `.overnight/gallery/dashboard/` (needs `playwright-cli`).
+`scripts/gallery.sh [base-url]` writes 1920x1080 and 1440x900 shots, dark and light, to `docs/screenshots/dashboard/` (needs `playwright-cli`).
 
 ## Files
 - `src/api/` types written from the OpenAPI file, REST client.

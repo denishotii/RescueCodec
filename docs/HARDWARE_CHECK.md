@@ -1,15 +1,15 @@
-# Hardware check: Wednesday morning, about 10 minutes
+# Hardware check: real radios, about 10 minutes
 
-Goal: prove the real path works with real radios. Everything so far ran on the simulator and the Android emulator. Nothing here is tested on real Bluetooth or USB yet. This is the same scenario as the simulator end-to-end test (`.overnight/E2E_REPORT.md`), done by hand.
+Goal: prove the real path works with real radios. This is the same scenario as the simulator end-to-end test (`scripts/e2e-full.sh`, 3 of 3 runs passed on 25 Nov 2026), done by hand. The first real-radio run was on 25 Nov 2026 with a realme phone, a ThinkNode M5 and a Heltec V3.
 
 ```
-Phone + RescueCodec app --Bluetooth--> T1000-E (or T-Watch) ~~ LoRa ~~ Heltec V3 --USB--> Mac: gateway + dashboard
+Phone + RescueCodec app --Bluetooth--> field radio (ThinkNode M5, T1000-E, T-Watch) ~~ LoRa ~~ Heltec V3 --USB--> Mac: gateway + dashboard
 ```
 
 You need:
 - Heltec V3 and a USB data cable (not a charge-only cable), a Mac with this repo.
 - An Android phone (Android 8 to 15) with USB debugging on, and a USB cable for it.
-- A SenseCAP T1000-E and/or a LilyGO T-Watch S3. All radios on stock Meshtastic firmware 2.7 or 2.8.
+- A field radio: ThinkNode M5, SenseCAP T1000-E or LilyGO T-Watch S3. All radios on stock Meshtastic firmware 2.7 or 2.8.
 - The debug APK: `dist/RescueCodec-debug.apk` (51 MB, gitignored, built from `android/`).
 - The official Meshtastic app on the phone, for the one-time channel setup.
 
@@ -65,16 +65,16 @@ adb shell am start -n org.rescuecodec.app/.MainActivity --es screen RADIO
 ```
 
 1. Grant **Nearby devices** (Android 12 and newer) and **Notifications** (Android 13 and newer). On Android 11 and older, grant Location instead and switch **Location** on in the system settings. The app shows a hint with a button when it is off.
-2. The Radio screen says: close the Meshtastic app first. You did that in step 1.
+2. The Radio tab says: close the Meshtastic app first. You did that in step 1.
 
-Pass: no red banner on the Radio screen.
+Pass: no red banner on the Radio tab.
 
 ## 4. Pair the radio over Bluetooth (2 minutes)
 
-1. Radio screen, tap **Search**. Hold the phone next to the T1000-E (or the T-Watch).
+1. Radio tab, tap **Scan for radios**. Hold the phone next to the field radio.
 2. Tap the radio in the list. Android asks to pair.
    - T1000-E: PIN **123456**.
-   - T-Watch S3: the PIN is shown on the watch screen.
+   - T-Watch S3 and other radios with a screen: the PIN is shown on the screen.
 3. Wait for "Connected". Under it the app shows `Channel N "RescueCodec"`.
 
 Pass: connected within about 30 seconds, and the channel line shows the private channel. In terminal A: `link: connected to ...`.
@@ -85,13 +85,13 @@ If the list stays empty: is the radio on and close? On Android 11 and older, is 
 
 This is the pitch scenario from the simulator test.
 
-**5a. Found.** In the app, Report screen, type or say the pitch sentence:
+**5a. Found.** In the app open **Chats**, then the **RescueCodec** chat. Type or say the pitch sentence:
 
 > Kind gefunden, ansprechbar, stark unterkühlt, Knöchel verletzt. Wir brauchen eine Trage und zwei Leute.
 
-Check the chips (child, conscious, hypothermia, fracture, stretcher, 2 more helpers). The app shows the live count: about 100 bytes as text, about 23 bytes sent. Tap **Send**.
+Check the chips (child, conscious, hypothermia, fracture, stretcher, 2 more helpers). The app shows the live count: 105 bytes as text, about 23 to 27 bytes sent. Tap **Send**.
 
-Pass: within about 10 seconds a card appears on the dashboard in English and German. A pin shows if the phone had a GPS fix. The record shows the coded size (20 to 25 bytes, not 100).
+Pass: within about 10 seconds a card appears on the dashboard in English and German. A pin shows if the phone had a GPS fix. The record shows the coded size (about 23 to 27 bytes, not 105).
 
 The app row says "Sent". "Relayed by a neighbour" shows only if another radio repeated the packet. With two radios of yours side by side this may stay missing. That is fine. The Accept in step 5b is the real proof.
 
@@ -112,7 +112,7 @@ Pass: the dashboard shows it as a readable text message.
 
 ## 6. Auto-reconnect (2 minutes)
 
-1. Phone: switch Bluetooth **off**. The Radio screen says Bluetooth is off. No retry countdown.
+1. Phone: switch Bluetooth **off**. The Radio tab says Bluetooth is off. No retry countdown.
 2. Switch it **on**. Within about 15 seconds the app is connected again, without a tap.
 3. Switch the T1000-E off for 30 seconds, then on. The app reconnects. A message typed in between waits, then goes out (a Mayday goes first).
 4. Swipe the app away from recents. The notification stays. Open the app: it is connected.

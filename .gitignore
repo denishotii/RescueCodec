@@ -8,10 +8,11 @@ __pycache__/
 build/
 dist/
 
-# OS / editors
+# OS / editors / design tools
 .DS_Store
 .idea/
 .vscode/
+.impeccable/
 
 # Android / Gradle
 .gradle/

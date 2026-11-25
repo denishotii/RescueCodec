@@ -147,7 +147,6 @@ All three libraries run the same vectors in `spec/vectors/` and must give the sa
 | `docs/HARDWARE_CHECK.md` | Real-device checklist |
 | `docs/OFFLINE.md` | Every download, its size and licence |
 | `docs/VOICE.md` | Offline speech models |
-| `docs/PLAN.md` | The team plan |
 
 ## Known limits
 
