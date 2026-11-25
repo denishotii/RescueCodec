@@ -7,6 +7,7 @@ import tempfile
 
 from gateway_fixtures import FOUND, PEER, gateway, wait_for
 from rescuecodec.engine.sendqueue import AirtimeBudget
+from rescuecodec.gateway.radio.base import RadioPacket
 from rescuecodec.v2 import encode
 
 HEX_FOUND_ID7 = "08071a0908b8e6ea041082875832080841100518012802"
@@ -105,9 +106,10 @@ class Sending(unittest.TestCase):
             self.assertEqual(c["key"], "0000e001-2")
 
     def test_the_same_text_twice_is_two_messages(self):
-        with gateway() as gw:
-            first = gw.post("/v2/text", text="Hilfe").json()
-            second = gw.post("/v2/text", text="Hilfe").json()
+        with gateway(text_mode="compressed") as gw:                   # packed RescueCodec texts on port 256
+            first = gw.post("/v2/text", text="Wir brauchen dringend Hilfe am Waldweg hinter der Brücke").json()
+            second = gw.post("/v2/text", text="Wir brauchen dringend Hilfe am Waldweg hinter der Brücke").json()
+            self.assertEqual((first["codec"]["version"], second["codec"]["version"]), (2, 2))
             self.assertNotEqual(first["seq"], second["seq"])
             self.assertNotEqual(first["codec"]["hex"], second["codec"]["hex"])     # different ids, so no dedupe at the receiver
 
@@ -183,7 +185,7 @@ class Sending(unittest.TestCase):
             self.assertEqual(order[0], encode({"id": 3, "mayday": {"reason": "injured"}}))
 
     def test_text_and_also_plain(self):
-        with gateway() as gw:
+        with gateway(text_mode="normal") as gw:
             response = gw.post("/v2/text", text="Treffpunkt jetzt am Gasthaus", also_plain=True)
             self.assertEqual(response.status_code, 202)
             record = response.json()
@@ -199,14 +201,14 @@ class Sending(unittest.TestCase):
         with gateway(text_over_air="out") as gw:
             gw.post("/v2/messages", message=FOUND)
             line = wait_for(lambda: gw.radio.plain_texts)
-            self.assertTrue(line[0].startswith("Person found: child"))
+            self.assertTrue(line[0].startswith("[RC] Person found: child"))     # marked as a copy (SPEC section 2.1)
 
 
     def test_text_over_air_in_relays_what_we_hear_for_stock_apps(self):
         with gateway(text_over_air="in", text_lang="de") as gw:
             gw.hear({"id": 7, **FOUND})
             line = wait_for(lambda: gw.radio.plain_texts)
-            self.assertTrue(line[0].startswith("Person gefunden: Kind"))
+            self.assertTrue(line[0].startswith("[RC] Person gefunden: Kind"))
 
     def test_text_over_air_is_off_by_default(self):
         with gateway() as gw:
@@ -215,6 +217,17 @@ class Sending(unittest.TestCase):
             wait_for(lambda: gw.client.get("/v2/messages/2").json()["status"] == "delivered")
             time.sleep(0.3)
             self.assertEqual(gw.radio.plain_texts, [])
+
+    def test_long_text_with_position_goes_packed_and_whole(self):
+        with gateway(text_mode="compressed") as gw:                   # as a packed RescueCodec text on port 256
+            text = ("Fußweg über den Bach zerstört, nördlich gehts nicht weiter. " * 4).encode("utf-8")[:180].decode("utf-8", "ignore")
+            response = gw.post("/v2/messages", message={"pos": {"lat": 52.52001, "lon": 13.40495, "acc": "estimated"},
+                                                        "text": {"text": text}})
+            self.assertEqual(response.status_code, 202)
+            record = response.json()
+            self.assertLess(record["codec"]["size"], 120)                # 180 bytes of words, packed with position and id
+            self.assertEqual(record["message"]["text"], {"text": text, "dict": 1})     # nothing cut
+            self.assertEqual(record["message"]["pos"]["lat"], 52.52001)
 
     def test_without_want_ack_the_status_stays_sent(self):
         with gateway() as gw:
@@ -393,6 +406,17 @@ class Tasks(unittest.TestCase):
             gw.hear({"id": 7, **FOUND})
             tasks = gw.client.get("/v2/tasks").json()["items"]
             self.assertEqual(tasks[0]["state"], "accepted")
+
+    def test_our_decline_does_not_hide_another_teams_accept(self):
+        with gateway() as gw:
+            gw.hear({"id": 7, **FOUND})
+            team_a = encode({"ack": {"ref": 7, "node": PEER, "status": "accepted"}})
+            gw.service._on_packet(RadioPacket("!0000e003", "^all", 256, team_a))                     # team A takes it
+            first = gw.post("/v2/tasks/0000e002-7/ack", status="declined").json()                   # we cannot
+            self.assertEqual(first["task"]["state"], "accepted")
+            again = gw.post("/v2/tasks/0000e002-7/ack", status="declined").json()   # the same Ack may still be queued
+            self.assertEqual(again["task"]["state"], "accepted")
+            self.assertEqual(gw.client.get("/v2/tasks/0000e002-7").json()["state"], "accepted")
 
     def test_tasks_are_sorted_critical_first(self):
         with gateway() as gw:

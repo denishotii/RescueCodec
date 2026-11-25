@@ -39,6 +39,16 @@ class RcColors(
     val measured: Color, val estimated: Color,
     val ink3: Color, val surface3: Color, val line: Color,
     val onSolid: Color,
+    /** My own chat bubble and its text. */
+    val mine: Color, val onMine: Color,
+    /** The chat ground behind the bubbles. */
+    val chatGround: Color,
+    /** Sender name colours: never red, amber, green or blue, so they cannot be read as a state. */
+    val senders: List<Color>,
+    /** The grey ring around the mic and the outline of chips. */
+    val ring: Color,
+    /** Muted text: times, small notes. */
+    val muted: Color,
     val dark: Boolean,
 )
 
@@ -51,6 +61,10 @@ private val LightRc = RcColors(
     measured = Color(0xFF23653A), estimated = Color(0xFF8A4B00),
     ink3 = Color(0xFF3A4A40), surface3 = Color(0xFFDDE3D4), line = Color(0xFFC3CAB8),
     onSolid = Color(0xFFFFFFFF),
+    mine = Color(0xFFDDE3D4), onMine = Color(0xFF17231C),
+    chatGround = Color(0xFFE6EADF),
+    senders = listOf(Color(0xFF17231C)),
+    ring = Color(0xFF7E8C82), muted = Color(0xFF5E6E63),
     dark = false,
 )
 
@@ -63,6 +77,10 @@ private val DarkRc = RcColors(
     measured = Color(0xFF77CF90), estimated = Color(0xFFF2AD4E),
     ink3 = Color(0xFFC9D4CC), surface3 = Color(0xFF21322A), line = Color(0xFF2A3C33),
     onSolid = Color(0xFFFFFFFF),
+    mine = Color(0xFF21322A), onMine = Color(0xFFE5EDE6),
+    chatGround = Color(0xFF0B1310),
+    senders = listOf(Color(0xFFE5EDE6)),
+    ring = Color(0xFF7E8C82), muted = Color(0xFF9DB0A4),
     dark = true,
 )
 
@@ -153,7 +171,7 @@ private val RcShapes = Shapes(
     extraLarge = RoundedCornerShape(16.dp),
 )
 
-/** Day, night, or follow the phone. */
+/** Day, night, or follow the phone. For now the app always uses [DAY] (see RescueRoot); the night code stays. */
 enum class ThemeMode { AUTO, DAY, NIGHT;
     companion object { fun of(name: String?) = entries.firstOrNull { it.name.equals(name, true) } ?: AUTO }
 }

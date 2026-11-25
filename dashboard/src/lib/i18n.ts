@@ -32,6 +32,7 @@ const en = {
   view2d: "2D", view3d: "3D terrain", fit: "Fit all", exportGeo: "GeoJSON",
   sectorNote: "Sector squares are 250 m markers at the reported position.",
   battery: "Battery", heard: "heard", hops: "hops", gateway: "gateway", noNodes: "No radios heard yet.",
+  viaMeshtastic: "via Meshtastic", viaMeshtasticNote: "A normal Meshtastic text (port 1), not a RescueCodec report",
   from: "from", bytes: "B", ago: "ago", now: "now", justNow: "just now",
   statusQueued: "Queued", statusSent: "Sent", statusDelivered: "Relayed", statusFailed: "Failed", statusNoRelay: "No relay confirmed", statusReceived: "Received",
   typeFound: "Found", typeTrack: "Track", typeSector: "Sector", typeRequest: "Request", typeHazard: "Hazard",
@@ -44,6 +45,14 @@ const en = {
   noPosition: "No position",
   mapOffline: "Offline map",
   tabActions: "Actions", tabFeed: "Reports", tabMap: "Map", tabStats: "Traffic", tabNodes: "Radios",
+  channel: "Channel", allChannels: "All channels", direct: "Direct", directTip: "Direct message, not on the whole channel",
+  composeTitle: "Send", to: "To", channelsGroup: "Channels", peopleGroup: "Direct to a person",
+  composePlaceholder: "Type a message or a report. Enter sends.", composeLabel: "Message",
+  sendsAs: "Sends as", asTextShort: "as text", textKind: "Text", reading: "reading…",
+  plainText: "Send as plain text", plainDirect: "Direct messages go as plain text.", plainPublic: "Public channel: plain text only.",
+  quickRecall: "Recall all", quickStatus: "Status check", quickMeet: "Meet at …", quickRequest: "+ Request", quickHazard: "+ Hazard",
+  quickGroup: "Quick messages", rateLimited: "Too many messages, send again in", noTarget: "No channel to send on yet.",
+  sendShortcut: "Enter sends, Shift+Enter new line",
 } as const;
 
 export type Key = keyof typeof en;
@@ -80,6 +89,7 @@ const de: Record<Key, string> = {
   view2d: "2D", view3d: "3D-Gelände", fit: "Alles zeigen", exportGeo: "GeoJSON",
   sectorNote: "Sektor-Quadrate sind 250-m-Marker an der gemeldeten Position.",
   battery: "Akku", heard: "gehört", hops: "Hops", gateway: "Gateway", noNodes: "Noch keine Funkgeräte gehört.",
+  viaMeshtastic: "über Meshtastic", viaMeshtasticNote: "Eine normale Meshtastic-Nachricht (Port 1), keine RescueCodec-Meldung",
   from: "von", bytes: "B", ago: "her", now: "jetzt", justNow: "gerade eben",
   statusQueued: "Wartet", statusSent: "Gesendet", statusDelivered: "Weitergegeben", statusFailed: "Fehlgeschlagen", statusNoRelay: "Kein Relais bestätigt", statusReceived: "Empfangen",
   typeFound: "Fund", typeTrack: "Spur", typeSector: "Sektor", typeRequest: "Anforderung", typeHazard: "Gefahr",
@@ -92,6 +102,14 @@ const de: Record<Key, string> = {
   noPosition: "Keine Position",
   mapOffline: "Offline-Karte",
   tabActions: "Aufgaben", tabFeed: "Meldungen", tabMap: "Karte", tabStats: "Funkverkehr", tabNodes: "Funkgeräte",
+  channel: "Kanal", allChannels: "Alle Kanäle", direct: "Direkt", directTip: "Direktnachricht, nicht an den ganzen Kanal",
+  composeTitle: "Senden", to: "An", channelsGroup: "Kanäle", peopleGroup: "Direkt an eine Person",
+  composePlaceholder: "Nachricht oder Meldung tippen. Enter sendet.", composeLabel: "Nachricht",
+  sendsAs: "Geht raus als", asTextShort: "als Text", textKind: "Text", reading: "lese…",
+  plainText: "Als Klartext senden", plainDirect: "Direktnachrichten gehen als Klartext.", plainPublic: "Öffentlicher Kanal: nur Klartext.",
+  quickRecall: "Alle zurück", quickStatus: "Statusabfrage", quickMeet: "Treffpunkt …", quickRequest: "+ Anforderung", quickHazard: "+ Gefahr",
+  quickGroup: "Schnellnachrichten", rateLimited: "Zu viele Nachrichten, nochmal senden in", noTarget: "Noch kein Kanal zum Senden.",
+  sendShortcut: "Enter sendet, Umschalt+Enter neue Zeile",
 };
 
 export const dict: Record<Lang, Record<Key, string>> = { en, de };

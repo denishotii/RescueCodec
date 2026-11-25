@@ -13,8 +13,10 @@ class GatewayConfig:
     serial: str | None = None             # "auto" or a device path
     emulator: bool = False
     emulator_demo: bool = False
-    channel_index: int | None = None      # Meshtastic channel used for sending. None = find the channel named channel_name
-    channel_name: str = "RescueCodec"     # name of the private team channel on the radio
+    channel_index: int | None = None      # default channel for sending. None = find the channel named channel_name
+    channel_name: str = "RescueCodec"     # name of the default channel for sending (the private team channel)
+    listen_channels: list[str] | None = None   # channel names to listen on. None = every private channel ("all")
+    show_public: bool = False             # also show broadcasts on public channels (LongFast, default key)
     port_num: int = 256                   # PRIVATE_APP
     hop_limit: int | None = None          # None = the radio's own setting
 
@@ -27,6 +29,11 @@ class GatewayConfig:
     # readable text line over the air: off | out | in | both
     text_over_air: str = "off"
     text_lang: str = "en"
+    # how a chat text goes out when the chat has no mode of its own: auto | compressed | normal (SPEC section 2.3).
+    # auto: packed for RescueCodec when every node in the chat runs RescueCodec, else a normal Meshtastic text.
+    text_mode: str = "auto"
+    # old setting, replaced by text_mode. False (--text-as-meshtastic off) = channels default to "compressed".
+    text_as_meshtastic: bool = True
 
     # connectors
     mqtt: str | None = None               # "host:port"
@@ -56,6 +63,8 @@ class GatewayConfig:
             raise ValueError(f"--team is longer than {C.MAX_TEAM_BYTES} bytes")
         if self.text_over_air not in ("off", "out", "in", "both"):
             raise ValueError("--text-over-air must be off, out, in or both")
+        if self.text_mode not in ("auto", "compressed", "normal"):
+            raise ValueError("--text-mode must be auto, compressed or normal")
         if self.channel_index is not None and not 0 <= self.channel_index <= 7:
             raise ValueError("--channel must be 0..7")
         if self.tx_per_minute < 0:
@@ -63,6 +72,14 @@ class GatewayConfig:
         if not is_loopback(self.host) and not self.token:
             raise ValueError(f"--host {self.host} is reachable from other computers and the API can send on the radio: "
                              "set --token (or RESCUECODEC_TOKEN), or use --host 127.0.0.1")
+
+
+def parse_channels(value: str | None) -> list[str] | None:
+    """--channels: "all" (or empty) -> None, "A,B" -> ["A", "B"]."""
+    if value is None or value.strip().lower() in ("", "all"):
+        return None
+    names = [part.strip() for part in value.split(",") if part.strip()]
+    return names or None
 
 
 def is_loopback(host: str) -> bool:

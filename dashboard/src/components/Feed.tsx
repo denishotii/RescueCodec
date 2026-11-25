@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { MapPin } from "lucide-react";
 import type { MessageRecord } from "../api/types";
-import { useData, useNow, useT } from "../state/hooks";
+import { useChannels, useData, useNow, useT } from "../state/hooks";
 import { focusOn, setUi, useUi, type Filter } from "../state/ui";
 import { bytesLabel, clock, isNoRelay, nodeLabel, relTime, typeName } from "../lib/format";
 import { utmLabel } from "../lib/geo";
-import { Panel, PriorityChip, StateChip, TypeTile } from "./bits";
+import { matchesChannel } from "../lib/channels";
+import { ChannelChip, Panel, PriorityChip, StateChip, TypeTile } from "./bits";
 import type { Key } from "../lib/i18n";
 
 const FILTERS: { id: Filter; label: Key }[] = [
@@ -20,11 +21,12 @@ function matches(f: Filter, r: MessageRecord): boolean {
   return r.type === f;
 }
 
-const STATUS_KEY: Record<MessageRecord["status"], Key> = {
+export const STATUS_KEY: Record<MessageRecord["status"], Key> = {
   received: "statusReceived", queued: "statusQueued", sent: "statusSent", delivered: "statusDelivered", failed: "statusFailed", dry_run: "statusQueued",
 };
 
-export function ReportCard({ rec, fresh }: { rec: MessageRecord; fresh: boolean }) {
+/** `chips`: show the channel (the parent knows whether more than one channel is in use). */
+export function ReportCard({ rec, fresh, chips = false }: { rec: MessageRecord; fresh: boolean; chips?: boolean }) {
   const { nodes, tasks } = useData();
   const { lang } = useUi();
   const t = useT();
@@ -41,6 +43,7 @@ export function ReportCard({ rec, fresh }: { rec: MessageRecord; fresh: boolean 
         <TypeTile type={rec.type} size={20} />
         <span className="report-type">{typeName(lang, rec.type)}</span>
         <PriorityChip priority={rec.priority} />
+        {(chips || rec.to) && <ChannelChip channel={rec.channel} to={rec.to} from={rec.from} direction={rec.direction} nodes={nodes} />}
         {rec.direction === "out" && (
           <span className={`chip out-chip status-${noRelay ? "norelay" : rec.status}`}>{t("reportOut")} · {t(noRelay ? "statusNoRelay" : STATUS_KEY[rec.status])}</span>
         )}
@@ -62,6 +65,7 @@ export function ReportCard({ rec, fresh }: { rec: MessageRecord; fresh: boolean 
         {rec.radio?.snr != null && <span title="SNR">SNR {rec.radio.snr.toFixed(1)}</span>}
         {rec.radio?.hops != null && <span title={t("hops")}>{rec.radio.hops} {t("hops")}</span>}
         {rec.codec.version === 1 && <span>v1</span>}
+        {rec.codec.version === 0 && <span title={t("viaMeshtasticNote")}>{t("viaMeshtastic")}</span>}
         {task && task.state !== "open" && (
           <StateChip state={task.state}>{t(task.state)}</StateChip>
         )}
@@ -74,6 +78,7 @@ export function ReportCard({ rec, fresh }: { rec: MessageRecord; fresh: boolean 
 export function Feed() {
   const { messages, fresh, loaded } = useData();
   const { filter } = useUi();
+  const { pick, chips } = useChannels();
   const t = useT();
   const [, tick] = useState(0);
 
@@ -81,20 +86,23 @@ export function Feed() {
   useEffect(() => { const id = setInterval(() => tick((n) => n + 1), 2000); return () => clearInterval(id); }, []);
   const nowMs = Date.now();
 
+  // the channel filter in the header narrows the feed first, then the type filter
+  const inChannel = useMemo(() => (pick === "all" ? messages : messages.filter((m) => matchesChannel(pick, m.channel?.name))), [messages, pick]);
+
   const shown = useMemo(() => {
     const out: MessageRecord[] = [];
-    for (let i = messages.length - 1; i >= 0 && out.length < 150; i--) if (matches(filter, messages[i])) out.push(messages[i]);
+    for (let i = inChannel.length - 1; i >= 0 && out.length < 150; i--) if (matches(filter, inChannel[i])) out.push(inChannel[i]);
     return out;
-  }, [messages, filter]);
+  }, [inChannel, filter]);
 
   const counts = useMemo(() => {
-    const c: Record<Filter, number> = { all: messages.length, found: 0, request: 0, hazard: 0, track: 0, other: 0 };
-    for (const m of messages) for (const f of FILTERS) if (f.id !== "all" && matches(f.id, m)) c[f.id]++;
+    const c: Record<Filter, number> = { all: inChannel.length, found: 0, request: 0, hazard: 0, track: 0, other: 0 };
+    for (const m of inChannel) for (const f of FILTERS) if (f.id !== "all" && matches(f.id, m)) c[f.id]++;
     return c;
-  }, [messages]);
+  }, [inChannel]);
 
   return (
-    <Panel id="feed" title={t("feed")} count={messages.length} className="panel-feed">
+    <Panel id="feed" title={pick === "all" ? t("feed") : `${t("feed")} · #${pick}`} count={inChannel.length} className="panel-feed">
       <div className="filters" role="group" aria-label="Filter">
         {FILTERS.map((f) => (
           <button key={f.id} className={`filter ${filter === f.id ? "on" : ""}`} aria-pressed={filter === f.id} onClick={() => setUi({ filter: f.id })}>
@@ -107,9 +115,9 @@ export function Feed() {
           <ul className="report-list" aria-busy="true">{[0, 1, 2].map((i) => <li key={i} className="report skeleton" />)}</ul>
         ) : shown.length ? (
           <ul className="report-list">
-            {shown.map((r) => <ReportCard key={r.seq} rec={r} fresh={nowMs - (fresh[r.seq] ?? 0) < 6000} />)}
+            {shown.map((r) => <ReportCard key={r.seq} rec={r} chips={chips} fresh={nowMs - (fresh[r.seq] ?? 0) < 6000} />)}
           </ul>
-        ) : <p className="empty">{messages.length ? t("noMatch") : t("noReports")}</p>}
+        ) : <p className="empty">{inChannel.length || pick !== "all" ? t("noMatch") : t("noReports")}</p>}
       </div>
     </Panel>
   );

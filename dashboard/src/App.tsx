@@ -8,6 +8,7 @@ import { MaydayBanner } from "./components/MaydayBanner";
 import { ActionsBoard } from "./components/ActionsBoard";
 import { Feed } from "./components/Feed";
 import { Nodes } from "./components/Nodes";
+import { SendPanel } from "./components/SendPanel";
 import { StatsBand } from "./components/StatsBand";
 import { MobileAction } from "./components/MobileAction";
 import { MapPanel } from "./map/MapPanel";
@@ -41,7 +42,7 @@ function Shell() {
       <main className="board">
         <div className="slot slot-actions"><ActionsBoard /></div>
         <div className="slot slot-map"><MapPanel /></div>
-        <div className="slot slot-feed"><Feed /><Nodes collapsible /></div>
+        <div className="slot slot-feed"><Feed /><Nodes collapsible /><SendPanel /></div>
         <div className="slot slot-nodes"><Nodes /></div>
         <div className="slot slot-stats"><StatsBand /></div>
       </main>

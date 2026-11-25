@@ -88,6 +88,11 @@ def _state_note(task: dict[str, Any]) -> str:
     return f"{state.upper()}{who}{eta}"
 
 
+def _channel_note(item: dict[str, Any]) -> str:
+    name = (item.get("channel") or {}).get("name")
+    return f" (channel {name})" if name else ""
+
+
 def task_events(task: dict[str, Any], *, now: datetime, stale_min: int = 360,
                 fallback_pos: Callable[[str], dict[str, Any] | None] = lambda node: None) -> list[bytes]:
     """CoT events for a Task object (found, request, hazard, mayday). Empty if there is no position."""
@@ -101,7 +106,7 @@ def task_events(task: dict[str, Any], *, now: datetime, stale_min: int = 360,
     stale = now if done else now + timedelta(minutes=stale_min)
     uid = f"RescueCodec.{task['key']}"
     label = {"found": "FOUND", "request": "REQUEST", "hazard": "HAZARD", "mayday": "MAYDAY"}[task["type"]]
-    remarks = f"{task['text']['en']} [{_state_note(task)}]"
+    remarks = f"{task['text']['en']} [{_state_note(task)}]{_channel_note(task)}"
     callsign = f"{label} {task['key']}"
     if task["type"] == "mayday":
         cancel = done
@@ -124,12 +129,13 @@ def message_events(record: dict[str, Any], *, now: datetime, stale_min: int = 36
         uid = f"RescueCodec.sector-{record['from'][1:]}-{body['sector']}"
         return [build_event(uid=uid, type_=TYPE_MARKER, lat=pos["lat"], lon=pos["lon"], now=now,
                             stale=now + timedelta(minutes=stale_min), callsign=f"SECTOR {body['sector']}",
-                            remarks=record["text"]["en"], ce=CE_BY_ACC.get(pos.get("acc", "gps"), 10.0), color=color)]
+                            remarks=record["text"]["en"] + _channel_note(record), ce=CE_BY_ACC.get(pos.get("acc", "gps"), 10.0),
+                            color=color)]
     if record["type"] == "track" and message["track"]["points"]:
         last = message["track"]["points"][-1]
         return [build_event(uid=f"RescueCodec.track-{record['from'][1:]}", type_=TYPE_UNIT, lat=last["lat"], lon=last["lon"],
                             now=now, stale=now + timedelta(minutes=10), callsign=f"Team {record['from']}",
-                            remarks=record["text"]["en"], how="m-g")]
+                            remarks=record["text"]["en"] + _channel_note(record), how="m-g")]
     return []
 
 

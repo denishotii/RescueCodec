@@ -42,17 +42,42 @@ fun privateAppPacket(from: Long, id: Int, payload: ByteArray, hopStart: Int = 3,
         }.build()
     }.build()
 
+/** A normal Meshtastic text (port 1), as the official app sends it. [to] -1 is a broadcast. */
+fun textPacket(from: Long, id: Int, text: String, to: Long = -1, channel: Int = 0, hopStart: Int = 3, hopLimit: Int = 3): MeshPacket =
+    MeshPacket.Builder().also { b ->
+        b.from = from.toInt()
+        b.channel = channel
+        b.to = to.toInt()
+        b.id = id
+        b.hop_start = hopStart
+        b.hop_limit = hopLimit
+        b.rx_rssi = -97
+        b.rx_snr = 6.25f
+        b.decoded = Data.Builder().also { d ->
+            d.portnum = PortNum.TEXT_MESSAGE_APP
+            d.payload = ByteString.of(*text.toByteArray(Charsets.UTF_8))
+        }.build()
+    }.build()
+
 /** Packets the app handed to the radio on port 256. */
-fun FakeRadioTransport.sentPrivateApp(): List<MeshPacket> {
+fun FakeRadioTransport.sentPrivateApp(): List<MeshPacket> = sentOn(PortNum.PRIVATE_APP)
+
+/** Packets the app handed to the radio on port 1 (normal Meshtastic texts). */
+fun FakeRadioTransport.sentText(): List<MeshPacket> = sentOn(PortNum.TEXT_MESSAGE_APP)
+
+/** Packets the app handed to the radio on port 256 or port 1, in send order. */
+fun FakeRadioTransport.sentMessages(): List<MeshPacket> = sentOn(PortNum.PRIVATE_APP, PortNum.TEXT_MESSAGE_APP)
+
+private fun FakeRadioTransport.sentOn(vararg ports: PortNum): List<MeshPacket> {
     // The fake's list is not thread safe and the SDK writes to it from its own thread: try again on a clash.
     repeat(20) {
         try {
-            return outboundPackets().filter { it.decoded?.portnum == PortNum.PRIVATE_APP }
+            return outboundPackets().filter { it.decoded?.portnum in ports }
         } catch (e: ConcurrentModificationException) {
             Thread.sleep(5)
         }
     }
-    return outboundPackets().filter { it.decoded?.portnum == PortNum.PRIVATE_APP }
+    return outboundPackets().filter { it.decoded?.portnum in ports }
 }
 
 /**

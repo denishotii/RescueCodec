@@ -16,8 +16,12 @@ import org.meshtastic.sdk.testing.FakeRadioTransport
 import org.meshtastic.sdk.testing.InMemoryStorageProvider
 import org.rescuecodec.app.core.AnswerResult
 import org.rescuecodec.app.core.AppSettings
+import org.rescuecodec.app.core.ChatId
+import org.rescuecodec.app.core.MaydayAlerts
 import org.rescuecodec.app.core.MemoryKeyValueStore
+import org.rescuecodec.app.core.MeshText
 import org.rescuecodec.app.core.Messenger
+import org.rescuecodec.app.core.Readable
 import org.rescuecodec.app.core.SubmitResult
 import org.rescuecodec.app.data.MessageState
 import org.rescuecodec.app.data.StatNames
@@ -27,6 +31,7 @@ import org.rescuecodec.engine.Airtime
 import org.rescuecodec.engine.AirtimeBudget
 import org.rescuecodec.engine.ModemPreset
 import org.rescuecodec.engine.Region
+import org.rescuecodec.engine.TextMode
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -55,10 +60,19 @@ class MessengerTest {
         refusalDelays: List<Long> = listOf(150),
         timeoutMs: (String) -> Long = { 300_000 },
         budget: AirtimeBudget = AirtimeBudget(Airtime(settings.modemPreset), settings.region),
+        alerts: MaydayAlerts = MaydayAlerts.NONE,
     ) = Messenger(
         useScope, clientFlow, attachedFlow, messages, tasks, stats, settings, gapMs = gap,
-        refusalDelaysMs = refusalDelays, taskTimeoutMs = timeoutMs, log = { println("[messenger] $it") }, budget = budget,
+        refusalDelaysMs = refusalDelays, taskTimeoutMs = timeoutMs, log = { println("[messenger] $it") }, alerts = alerts, budget = budget,
     )
+
+    /** Records what the Mayday notification would do. */
+    private class RecordingAlerts : MaydayAlerts {
+        val shown = java.util.concurrent.CopyOnWriteArrayList<Triple<String, Long, String?>>()
+        val cleared = java.util.concurrent.CopyOnWriteArrayList<String>()
+        override fun show(key: String, from: Long, reason: String?, channel: String?) { shown.add(Triple(key, from, reason)) }
+        override fun clear(key: String) { cleared.add(key) }
+    }
 
     private suspend fun connectRadio(channels: List<org.meshtastic.proto.Channel> = listOf(teamChannel(0))) {
         radio = fakeRadio("fake:me", me.toInt(), channels)
@@ -115,11 +129,16 @@ class MessengerTest {
         if (may is SubmitResult.Rejected) throw AssertionError("mayday rejected: $may")
         eventually(2_000, "three waiting") { messages.waiting().size == 3 }
         connectRadio()
-        eventually(10_000, "three sent") { radio.sentPrivateApp().size == 3 }
-        val order = radio.sentPrivateApp().map { RescueCodec.messageType(RescueCodec.decodeAny(it.decoded!!.payload.toByteArray())) }
-        assertEquals(listOf("mayday", "found", "text"), order)
-        assertEquals(MeshPacket.Priority.ALERT, radio.sentPrivateApp()[0].priority)
-        assertEquals(MeshPacket.Priority.BACKGROUND.let { MeshPacket.Priority.RELIABLE }, radio.sentPrivateApp()[2].priority, "text is normal priority")
+        eventually(10_000, "three sent") { radio.sentMessages().size == 3 }
+        // The text goes out as a normal Meshtastic text (port 1), but through the same queue: still last.
+        val sent = radio.sentMessages()
+        val order = sent.map {
+            if (it.decoded!!.portnum == PortNum.TEXT_MESSAGE_APP) "plain text"
+            else RescueCodec.messageType(RescueCodec.decodeAny(it.decoded!!.payload.toByteArray()))
+        }
+        assertEquals(listOf("mayday", "found", "plain text"), order)
+        assertEquals(MeshPacket.Priority.ALERT, sent[0].priority)
+        assertEquals(MeshPacket.Priority.RELIABLE, sent[2].priority, "text is normal priority")
     }
 
     @Test
@@ -163,6 +182,31 @@ class MessengerTest {
         val row = messages.all.single()
         assertEquals(1, row.hops)
         assertEquals("0badf00d-21", row.taskKey)
+    }
+
+    @Test
+    fun aMaydayFromAnotherRadioAlertsOnceAndTheAlertGoesWhenItIsDone() = runUnit {
+        val alerts = RecordingAlerts()
+        val m = messenger(alerts = alerts)
+        m.start()
+        connectRadio()
+        val may = RescueCodec.encode(mapOf("id" to 9, "pos" to mapOf("lat" to 50.7, "lon" to 7.2), "mayday" to mapOf("reason" to "injured")))
+        radio.injectPacket(privateAppPacket(other, 1, may))
+        eventually(5_000, "alerted") { alerts.shown.size == 1 }
+        assertEquals(Triple("0badf00d-9", other, "injured"), alerts.shown.single())
+        // The mesh delivers it again: no second alarm.
+        radio.injectPacket(privateAppPacket(other, 2, may))
+        eventually(5_000, "duplicate counted") { stats[StatNames.RX_DUPLICATES] == 1L }
+        // A Found report rings nothing.
+        radio.injectPacket(privateAppPacket(other, 3, RescueCodec.encode(found + ("id" to 10))))
+        eventually(5_000, "found task") { tasks.get("0badf00d-10") != null }
+        assertEquals(1, alerts.shown.size)
+        assertTrue(alerts.cleared.isEmpty())
+        // A third team reports it done: the notification goes away.
+        val done = RescueCodec.encode(mapOf("ack" to mapOf("ref" to 9, "node" to "!0badf00d", "status" to "done")))
+        radio.injectPacket(privateAppPacket(0x12345678L, 4, done))
+        eventually(5_000, "cleared") { "0badf00d-9" in alerts.cleared }
+        assertEquals(1, alerts.shown.size)
     }
 
     @Test
@@ -311,7 +355,8 @@ class MessengerTest {
         val second = messenger()
         second.start()
         connectRadio()
-        eventually(10_000, "waiting message sent after restart") { radio.sentPrivateApp().size == 1 }
+        eventually(10_000, "waiting message sent after restart") { radio.sentText().size == 1 }
+        assertEquals("still waiting", radio.sentText().single().decoded!!.payload.utf8(), "still a plain text after the restart")
         radio.injectPacket(privateAppPacket(other, 2, bytes))
         eventually(5_000, "duplicate recognised after restart") { stats[StatNames.RX_DUPLICATES] == 1L }
         assertEquals(1, tasks.all.size)
@@ -471,10 +516,12 @@ class MessengerTest {
     @Test
     fun theSameTextTwiceIsTwoMessages() = runUnit {
         val m = messenger()
+        m.routes.setMode(ChatId.Channel("RescueCodec"), TextMode.COMPRESSED) // packed RescueCodec texts on port 256
         m.start()
         connectRadio()
-        val a = m.submit(mapOf("text" to mapOf("text" to "Hilfe"))) as SubmitResult.Queued
-        val b = m.submit(mapOf("text" to mapOf("text" to "Hilfe"))) as SubmitResult.Queued
+        val words = "Wir brauchen dringend Hilfe am Waldrand"
+        val a = m.submit(mapOf("text" to mapOf("text" to words))) as SubmitResult.Queued
+        val b = m.submit(mapOf("text" to mapOf("text" to words))) as SubmitResult.Queued
         assertTrue(a.msgId != 0 && b.msgId != 0 && a.msgId != b.msgId, "every message but an Ack has its own id")
         eventually(10_000, "both sent") { radio.sentPrivateApp().size == 2 }
         val sent = radio.sentPrivateApp().map { it.decoded!!.payload.toByteArray().toList() }
@@ -546,5 +593,264 @@ class MessengerTest {
         val second = dropLinkAndReconnect()
         eventually(15_000, "still gets its link resend") { second.sentPrivateApp().size == 1 }
         assertEquals(1, Messenger.linkResendsOf(messages.all.single().attempts))
+    }
+
+    // ----------------------------------------------- normal Meshtastic texts (port 1), spec section 2.1
+
+    /** LongFast (public key) on 0, our team channel RescueCodec on 1. */
+    private suspend fun connectTeamRadio() = connectRadio(listOf(publicDefault, teamChannel(1, name = "RescueCodec")))
+
+    @Test
+    fun aPlainTextGoesOutAsANormalMeshtasticTextOnTheTeamChannel() = runUnit {
+        val m = messenger()
+        m.routes.setMode(ChatId.Channel("RescueCodec"), TextMode.NORMAL) // "Always normal" for this chat
+        m.start()
+        connectTeamRadio()
+        val r = m.submit(mapOf("text" to mapOf("text" to "Treffpunkt jetzt am Gasthaus")))
+        assertIs<SubmitResult.Queued>(r)
+        assertEquals(0, r.msgId, "a plain text has no RescueCodec id")
+        assertContentEquals("Treffpunkt jetzt am Gasthaus".toByteArray(), r.bytes)
+        eventually(10_000, "text sent") { radio.sentText().size == 1 }
+        val p = radio.sentText().single()
+        assertEquals("Treffpunkt jetzt am Gasthaus", p.decoded!!.payload.utf8())
+        assertEquals(1, p.channel, "the team channel, never LongFast")
+        assertEquals(-1, p.to, "broadcast")
+        assertEquals(true, p.want_ack)
+        assertEquals(MeshPacket.Priority.RELIABLE, p.priority)
+        assertEquals(0, radio.sentPrivateApp().size)
+        eventually(5_000, "row is sent") { messages.all.single().state == MessageState.SENT }
+        val row = messages.all.single()
+        assertTrue(MeshText.isPlain(row))
+        assertEquals("text", row.type)
+        assertEquals("Message: Treffpunkt jetzt am Gasthaus.", Readable.of(row.json, "en"))
+        assertEquals(1L, stats[StatNames.TX_MESSAGES])
+        assertEquals(28L, stats[StatNames.TX_BYTES])
+    }
+
+    @Test
+    fun aPlainTextKeepsItsPriorityAndLeavesThePositionOut() = runUnit {
+        val m = messenger()
+        m.start()
+        connectTeamRadio()
+        m.submit(mapOf("priority" to "urgent", "pos" to mapOf("lat" to 50.7, "lon" to 7.2), "text" to mapOf("text" to "Weg gesperrt")))
+        eventually(10_000, "text sent") { radio.sentText().size == 1 }
+        assertEquals("Weg gesperrt", radio.sentText().single().decoded!!.payload.utf8())
+        assertEquals(MeshPacket.Priority.HIGH, radio.sentText().single().priority)
+        assertEquals(mapOf("priority" to "urgent", "text" to mapOf("text" to "Weg gesperrt")), Json.parseObject(messages.all.single().json!!))
+    }
+
+    // ----------------------------------------------- packed texts (spec section 2.3)
+
+    private val hut = "We are at the hut, two people with us, waiting for the vehicle on the forest road"
+
+    private fun wordsOf(p: MeshPacket) = RescueCodec.decodeAny(p.decoded!!.payload.toByteArray())["text"]
+
+    @Test
+    fun aTextGoesPackedOnAChannelWhereOnlyRescueCodecTalks() = runUnit {
+        val m = messenger()
+        m.start()
+        connectTeamRadio()
+        // Another RescueCodec phone talks on the team channel, so Auto packs texts there.
+        m.routes.heardRescueCodec(other, "RescueCodec")
+        val pos = mapOf("lat" to 50.69212, "lon" to 7.21345)
+        val r = m.submit(mapOf("pos" to pos, "text" to mapOf("text" to hut)))
+        assertIs<SubmitResult.Queued>(r)
+        assertTrue(r.bytes.size <= hut.length - TextMode.MIN_SAVING_BYTES, "${r.bytes.size} B packed, ${hut.length} B as text")
+        eventually(10_000, "sent") { radio.sentPrivateApp().size == 1 }
+        val p = radio.sentPrivateApp().single()
+        assertEquals(1, p.channel)
+        assertEquals(-1, p.to, "broadcast")
+        val decoded = RescueCodec.decodeAny(p.decoded!!.payload.toByteArray())
+        assertEquals(mapOf("text" to hut, "dict" to 1), decoded["text"])
+        assertEquals(pos, decoded["pos"], "a packed text keeps the position")
+        assertTrue((decoded["id"] as Number).toInt() > 0, "and an id")
+        assertEquals(0, radio.sentText().size)
+        val row = messages.all.single()
+        assertTrue(MeshText.isPacked(row))
+        assertEquals("Message: $hut. Position 50.69212, 7.21345.", Readable.of(row.json, "en"))
+    }
+
+    @Test
+    fun aMeshtasticUserOnTheChannelMakesTextsNormalUntilTheyUseRescueCodec() = runUnit {
+        val m = messenger()
+        m.start()
+        connectTeamRadio()
+        radio.injectPacket(textPacket(other, 1, "Hallo zusammen", channel = 1))   // the official app on our channel
+        eventually(5_000, "their text") { messages.all.size == 1 }
+        assertEquals(listOf(other), m.routes.meshtasticUsers("RescueCodec"))
+        m.submit(mapOf("text" to mapOf("text" to hut)))
+        eventually(10_000, "normal text") { radio.sentText().size == 1 }
+        assertEquals(hut, radio.sentText().single().decoded!!.payload.utf8())
+        // The same node sends a RescueCodec report: it runs RescueCodec, so it can read packed texts.
+        radio.injectPacket(privateAppPacket(other, 2, RescueCodec.encode(found + ("id" to 44)), channel = 1))
+        eventually(5_000, "its report") { tasks.get("0badf00d-44") != null }
+        assertEquals(emptyList(), m.routes.meshtasticUsers("RescueCodec"))
+        m.submit(mapOf("text" to mapOf("text" to hut)))
+        eventually(10_000, "packed text") { radio.sentPrivateApp().size == 1 }
+        assertEquals(hut, (wordsOf(radio.sentPrivateApp().single()) as Map<*, *>)["text"])
+    }
+
+    @Test
+    fun aDirectMessageToARescueCodecNodeGoesPackedToThatNode() = runUnit {
+        val m = messenger()
+        m.start()
+        connectTeamRadio()
+        radio.injectPacket(privateAppPacket(other, 3, RescueCodec.encode(found + ("id" to 45)), channel = 1))
+        eventually(5_000, "its report") { tasks.get("0badf00d-45") != null }
+        assertTrue(m.routes.isRescueCodec(other))
+        val r = m.submit(mapOf("text" to mapOf("text" to hut)), peer = other)
+        assertIs<SubmitResult.Queued>(r)
+        eventually(10_000, "sent") { radio.sentPrivateApp().size == 1 }
+        val p = radio.sentPrivateApp().single()
+        assertEquals(other.toInt(), p.to, "to that node only")
+        assertEquals(mapOf("text" to hut, "dict" to 1), wordsOf(p))
+        assertEquals(0, radio.sentText().size)
+        assertEquals(other, messages.all.last().peer)
+    }
+
+    @Test
+    fun aDirectMessageToAnUnknownNodeIsANormalText() = runUnit {
+        val m = messenger()
+        m.start()
+        connectTeamRadio()
+        m.submit(mapOf("text" to mapOf("text" to hut)), peer = other)
+        eventually(10_000, "sent") { radio.sentText().size == 1 }
+        assertEquals(other.toInt(), radio.sentText().single().to)
+        assertEquals(0, radio.sentPrivateApp().size)
+    }
+
+    @Test
+    fun aPublicChannelAlwaysGetsNormalTextAndShortTextsStayNormal() = runUnit {
+        val m = messenger()
+        m.start()
+        connectTeamRadio()
+        eventually(5_000, "channels known") { m.radioChannels.value.orEmpty().any { it.isPublic } }
+        val public = m.radioChannels.value!!.first { it.isPublic }.name
+        m.routes.setMode(ChatId.Channel(public), TextMode.COMPRESSED)
+        m.routes.setMode(ChatId.Channel("RescueCodec"), TextMode.COMPRESSED)
+        m.submit(mapOf("text" to mapOf("text" to hut)), channel = public)
+        m.submit(mapOf("text" to mapOf("text" to "Ok")))                       // packed would be bigger
+        eventually(10_000, "two normal texts") { radio.sentText().size == 2 }
+        assertEquals(setOf(0, 1), radio.sentText().map { it.channel }.toSet())
+        assertEquals(0, radio.sentPrivateApp().size)
+    }
+
+    @Test
+    fun aReceivedPackedTextShowsItsWords() = runUnit {
+        val m = messenger()
+        m.start()
+        connectTeamRadio()
+        val bytes = RescueCodec.encode(mapOf("id" to 9, "text" to mapOf("text" to hut, "dict" to 1)))
+        assertTrue(bytes.size < hut.length)
+        radio.injectPacket(privateAppPacket(other, 11, bytes, channel = 1))
+        eventually(5_000, "stored") { messages.all.size == 1 }
+        val row = messages.all.single()
+        assertEquals("text", row.type)
+        assertTrue(MeshText.isPacked(row))
+        assertEquals("Message: $hut.", Readable.of(row.json, "en"))
+        assertTrue(m.routes.isRescueCodec(other))
+    }
+
+    @Test
+    fun reportsAlwaysGoOnPort256() = runUnit {
+        assertEquals(TextMode.AUTO, settings.defaultChannelMode, "auto by default")
+        val m = messenger()
+        m.start()
+        connectTeamRadio()
+        m.submit(found)
+        m.submit(mapOf("mayday" to mapOf("reason" to "injured")))
+        m.submit(mapOf("hazard" to mapOf("kind" to "fire")))
+        eventually(10_000, "three sent") { radio.sentPrivateApp().size == 3 }
+        delay(300)
+        assertEquals(0, radio.sentText().size)
+        assertTrue(messages.all.none { MeshText.isPlain(it) })
+    }
+
+    @Test
+    fun aTextOnTheTeamChannelIsShownLikeAText() = runUnit {
+        val m = messenger()
+        m.start()
+        connectTeamRadio()
+        radio.injectPacket(textPacket(other, 4242, "Wir brauchen Wasser am Gasthaus", channel = 1, hopStart = 3, hopLimit = 1))
+        eventually(5_000, "stored") { messages.all.size == 1 }
+        val row = messages.all.single()
+        assertEquals("in", row.dir)
+        assertEquals(other, row.node)
+        assertEquals("text", row.type)
+        assertEquals(MessageState.RECEIVED, row.state)
+        assertTrue(MeshText.isPlain(row), "marked, so a screen can say via Meshtastic")
+        assertEquals(4242L, row.packetId)
+        assertEquals(-97, row.rssi)
+        assertEquals(6.25f, row.snr)
+        assertEquals(2, row.hops)
+        assertEquals("Nachricht: Wir brauchen Wasser am Gasthaus.", Readable.of(row.json, "de"))
+        assertEquals(1L, stats[StatNames.RX_MESSAGES])
+        assertTrue(tasks.all.isEmpty(), "a text is never a task")
+    }
+
+    @Test
+    fun aTextOnAnotherChannelOrToAnotherNodeIsNeverShown() = runUnit {
+        val m = messenger()
+        m.start()
+        connectTeamRadio()
+        radio.injectPacket(textPacket(other, 1, "LongFast chat", channel = 0))                          // public channel
+        radio.injectPacket(textPacket(other, 2, "Another channel", channel = 3))
+        radio.injectPacket(textPacket(other, 3, "For someone else", to = 0x12345678L, channel = 1))      // a DM, not to us
+        radio.injectPacket(textPacket(me, 4, "Our own echo", channel = 1))
+        radio.injectPacket(textPacket(other, 5, "Team", channel = 1))
+        eventually(5_000, "the team text") { messages.all.size == 1 }
+        delay(300)
+        assertEquals(listOf("Team"), messages.all.map { (Json.parseObject(it.json!!)["text"] as Map<*, *>)["text"] })
+        assertEquals(0L, stats[StatNames.RX_OTHER_CHANNEL], "LongFast chat is not even counted")
+    }
+
+    @Test
+    fun aDirectMessageToUsIsShownOnAnyChannel() = runUnit {
+        val m = messenger()
+        m.start()
+        connectTeamRadio()
+        radio.injectPacket(textPacket(other, 7, "Kommst du?", to = me, channel = 0))
+        eventually(5_000, "stored") { messages.all.size == 1 }
+        assertTrue(MeshText.isPlain(messages.all.single()))
+    }
+
+    @Test
+    fun aTextIsShownOnceAndReadableCopiesAreSkipped() = runUnit {
+        val m = messenger()
+        m.start()
+        connectTeamRadio()
+        // A gateway with --text-over-air posts a readable copy of a report it also sent on port 256.
+        radio.injectPacket(privateAppPacket(0x0c0ffee0L, 9, RescueCodec.encode(found + ("id" to 31)), channel = 1))
+        radio.injectPacket(textPacket(0x0c0ffee0L, 10, MeshText.COPY_PREFIX + "Person found: child, conscious.", channel = 1))
+        eventually(5_000, "report stored, copy counted as a duplicate") { messages.all.size == 1 && stats[StatNames.RX_DUPLICATES] == 1L }
+        assertEquals("found", messages.all.single().type)
+        // The same packet twice is one message (the SDK drops a repeat it still remembers; after a reconnect we do,
+        // see theTextDuplicateMemorySurvivesARestart). The same words in a new packet are a new message.
+        radio.injectPacket(textPacket(other, 500, "Hilfe", channel = 1))
+        radio.injectPacket(textPacket(other, 500, "Hilfe", channel = 1))
+        radio.injectPacket(textPacket(other, 501, "Hilfe", channel = 1))
+        eventually(5_000, "two texts") { messages.all.count { MeshText.isPlain(it) } == 2 }
+        delay(300)
+        assertEquals(listOf(500L, 501L), messages.all.filter { MeshText.isPlain(it) }.map { it.packetId })
+    }
+
+    @Test
+    fun theTextDuplicateMemorySurvivesARestart() = runUnit {
+        val oldProcess = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val first = messenger(oldProcess)
+        first.start()
+        connectTeamRadio()
+        radio.injectPacket(textPacket(other, 900, "Treffpunkt Gasthaus", channel = 1))
+        eventually(5_000, "stored") { messages.all.size == 1 }
+        clientFlow.value = null
+        attachedFlow.value = null
+        oldProcess.cancel()
+
+        val second = messenger()
+        second.start()
+        connectTeamRadio()
+        radio.injectPacket(textPacket(other, 900, "Treffpunkt Gasthaus", channel = 1))   // the radio hands it over again
+        eventually(5_000, "duplicate") { stats[StatNames.RX_DUPLICATES] == 1L }
+        assertEquals(1, messages.all.size)
     }
 }

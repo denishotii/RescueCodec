@@ -5,7 +5,7 @@ import { circlePolygon, squarePolygon } from "../lib/geo";
 export interface PointMarker {
   id: string; // stable key
   seq: number;
-  kind: "found" | "request" | "hazard" | "mayday";
+  kind: "found" | "request" | "hazard" | "mayday" | "text";
   taskKey: string | null;
   state: TaskState | null;
   priority: string;
@@ -34,10 +34,13 @@ export function buildMapModel(
   const sectors: SectorLabel[] = [];
   const bounds: [number, number][] = [];
   const bySender = new Map<string, [number, number][]>();
+  // last known position of every team member (any incoming message with a position), in seq order
+  const lastPos = new Map<string, [number, number]>();
 
   for (const r of messages) {
     if (r.status === "dry_run") continue;
     const p = posOf(r);
+    if (r.direction === "in" && p) lastPos.set(r.from, [p.lon, p.lat]);
     switch (r.type) {
       case "found": case "request": case "mayday": case "hazard": {
         if (!p) break;
@@ -72,20 +75,34 @@ export function buildMapModel(
         const line = bySender.get(r.from) ?? [];
         for (const q of pts) { line.push([q.lon, q.lat]); bounds.push([q.lon, q.lat]); }
         bySender.set(r.from, line);
+        if (r.direction === "in") lastPos.set(r.from, line[line.length - 1]);
+        break;
+      }
+      case "text": {
+        if (!p) break;
+        markers.push({
+          id: `m${r.seq}`, seq: r.seq, kind: "text", taskKey: null, state: null,
+          priority: r.priority, lat: p.lat, lon: p.lon, label: r.text.en,
+        });
+        bounds.push([p.lon, p.lat]);
         break;
       }
       default: break;
     }
   }
 
+  // One tag per team member at their last known position, with their track line if they sent one.
   const trackEnds: TrackEnd[] = [];
-  let i = 0;
+  const colorOf = new Map<string, string>();
+  for (const from of new Set([...bySender.keys(), ...lastPos.keys()])) colorOf.set(from, colors[colorOf.size % colors.length]);
   for (const [from, coords] of bySender) {
-    const color = colors[i++ % colors.length];
     if (coords.length > 1) {
-      features.push({ type: "Feature", properties: { kind: "track", from, color }, geometry: { type: "LineString", coordinates: coords } as LineString });
+      features.push({ type: "Feature", properties: { kind: "track", from, color: colorOf.get(from)! }, geometry: { type: "LineString", coordinates: coords } as LineString });
     }
-    const last = coords[coords.length - 1];
+  }
+  for (const [from, color] of colorOf) {
+    const last = lastPos.get(from) ?? bySender.get(from)?.at(-1);
+    if (!last) continue;
     trackEnds.push({ id: `t${from}`, from, lat: last[1], lon: last[0], color, label: nameOf(from) });
   }
 

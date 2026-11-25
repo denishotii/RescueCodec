@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import sys
+import zlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -19,6 +20,7 @@ from rescuecodec.protocol.codec import confirmation_packet, encode_report, encod
 from rescuecodec.schemas import (Assistance, Breathing, Consciousness, Equipment,  # noqa: E402
                                  PersonFoundReport, Urgency)
 from rescuecodec.v2 import CodecError, decode, decode_any, encode, render  # noqa: E402
+from rescuecodec.v2 import textpack  # noqa: E402
 
 POS = {"lat": 50.69212, "lon": 7.21345}  # Siebengebirge, near the Drachenfels
 NODE = "!a1b2c3d4"
@@ -27,6 +29,43 @@ WALK = [(50.69212, 7.21345), (50.69250, 7.21390), (50.69291, 7.21422), (50.69330
         (50.69362, 7.21530), (50.69401, 7.21571), (50.69447, 7.21600), (50.69490, 7.21641),
         (50.69521, 7.21702), (50.69560, 7.21744), (50.69600, 7.21790), (50.69633, 7.21840),
         (50.69670, 7.21881), (50.69711, 7.21920), (50.69750, 7.21966), (50.69789, 7.22010)]
+
+
+def _raw_deflate(data: bytes, zdict: bytes | None = None) -> bytes:
+    comp = zlib.compressobj(9, zlib.DEFLATED, -15, 8, zlib.Z_DEFAULT_STRATEGY, **({"zdict": zdict} if zdict else {}))
+    return comp.compress(data) + comp.flush()
+
+
+def _ld(field: int, data: bytes) -> str:
+    """One length-delimited protobuf field (tag + varint length + bytes), as hex."""
+    n, out = len(data), bytearray([(field << 3) | 2])
+    while True:
+        out.append((n & 0x7F) | (0x80 if n > 0x7F else 0))
+        n >>= 7
+        if not n:
+            break
+    return (bytes(out) + data).hex()
+
+
+def packed_wire(deflate: bytes, dict_no: int | None = 1, text: str | None = None, id_: int = 7) -> str:
+    """Envelope{id, text{text?, deflate, dict?}} as hex."""
+    body = (_ld(1, text.encode()) if text else "") + _ld(2, deflate) + (f"18{dict_no:02x}" if dict_no else "")
+    return f"08{id_:02x}" + _ld(13, bytes.fromhex(body))
+
+
+HUT_EN = "We are at the hut, two people with us, waiting for the vehicle on the forest road"
+HUT_DE = "Wir sind an der Hütte, zwei Personen bei uns, warten auf das Fahrzeug am Forstweg"
+#: Packed texts. Compressors may make other bytes for the same text, so these are not in `valid`. Every library
+#: must unpack `deflate` to `text`, decode `hex` to `decoded`, and decode(encode(decoded)) must give `decoded`.
+PACKED_TEXT = [
+    ("packed-en-hut", "The example from SPEC section 3.5, English.", {"id": 3, "text": {"text": HUT_EN, "dict": 1}}),
+    ("packed-de-hut", "The same in German, with umlauts.", {"id": 4, "text": {"text": HUT_DE, "dict": 1}}),
+    ("packed-de-short", "A short German chat line.", {"id": 5, "text": {"text": "Bin unterwegs, Ankunft in ca. 10 Minuten", "dict": 1}}),
+    ("packed-en-pos", "A packed text keeps position and priority.",
+     {"id": 6, "priority": "urgent", "pos": POS, "text": {"text": "Need a stretcher and two more people at the edge of the forest", "dict": 1}}),
+    ("packed-long", "A 300-byte text (too long for a plain text) fits packed.",
+     {"id": 8, "text": {"text": ("Sector 4 fully searched, nothing found. " * 8)[:300], "dict": 1}}),
+]
 
 
 def walk(n: int, times: bool = True, step: int = 30) -> list[dict]:
@@ -191,6 +230,12 @@ INVALID_ENCODE = [
     ("ack-node-zero-string", "Node !00000000 is no node.", {"ack": {"ref": 7, "node": "!00000000", "status": "accepted"}},
      "missing_field", "ack.node"),
     ("v1-not-encodable", "Only v2 can be encoded.", {"v": 1, "id": 1, "found": {}}, "invalid_value", "v"),
+    ("text-dict-unknown", "Only dictionary 1 exists.", {"text": {"text": "Hallo", "dict": 2}}, "invalid_value", "text.dict"),
+    ("text-dict-zero", "Dictionary numbers start at 1.", {"text": {"text": "Hallo", "dict": 0}}, "invalid_value", "text.dict"),
+    ("text-dict-string", "The dictionary is a number.", {"text": {"text": "Hallo", "dict": "1"}}, "invalid_value", "text.dict"),
+    ("text-packed-1025", "A packed text is at most 1024 bytes unpacked.", {"text": {"text": "A" * 1025, "dict": 1}},
+     "invalid_value", "text.text"),
+    ("text-packed-empty", "A packed text must not be empty.", {"text": {"text": "", "dict": 1}}, "missing_field", "text.text"),
 ]
 
 # Decode-only cases: bytes another (newer or differently ordered) encoder may send.
@@ -213,6 +258,14 @@ DECODE_ONLY = [
      {"sector": {"sector": 3, "status": "unknown_9"}}),
     ("non-packed-track", "Repeated numbers sent unpacked must also be accepted.", "3a04" + "0802" + "1004",
      {"track": {"points": [{"lat": 0.00001, "lon": 0.00002}]}}),
+    ("packed-stored-block", "A DEFLATE stream that does not use the dictionary (one stored block) is valid too.",
+     packed_wire(bytes.fromhex("010500faff") + b"Hallo"), {"id": 7, "text": {"text": "Hallo", "dict": 1}}),
+    ("packed-no-dictionary-used", "Packed without the dictionary by another compressor: still valid.",
+     packed_wire(_raw_deflate(b"Treffpunkt Parkplatz Nord")), {"id": 7, "text": {"text": "Treffpunkt Parkplatz Nord", "dict": 1}}),
+    ("packed-1024", "A packed text of exactly 1024 bytes unpacked is the largest allowed.",
+     packed_wire(_raw_deflate(b"A" * 1024)), {"id": 7, "text": {"text": "A" * 1024, "dict": 1}}),
+    ("packed-unknown-dict", "Dictionary 2 is from a newer spec: decode as unknown, do not reject.",
+     packed_wire(_raw_deflate(b"Hallo"), 2), {"id": 7, "unknown": {}}),
 ]
 
 INVALID_DECODE = [
@@ -238,6 +291,25 @@ INVALID_DECODE = [
     ("ack-node-zero", "Ack without node.", "6204" + "0807" + "1801", "missing_field", "ack.node"),
     ("wire-text-181", "Text of 181 bytes.", "6ab801" + "0ab501" + "41" * 181, "invalid_value", "text.text"),
     ("wire-too-large", "234 bytes is above the Meshtastic payload limit.", "6ae701" + "0ae401" + "41" * 228, "too_large", None),
+    ("wire-packed-and-text", "A text has words or packed words, not both.",
+     packed_wire(_raw_deflate(b"Hallo"), 1, "Hallo"), "invalid_value", "text.deflate"),
+    ("wire-packed-no-dict", "Packed words need their dictionary number.", packed_wire(_raw_deflate(b"Hallo"), None),
+     "missing_field", "text.dict"),
+    ("wire-dict-without-packed", "A dictionary number without packed words.", "0807" + _ld(13, bytes.fromhex(_ld(1, b"Hallo") + "1801")),
+     "invalid_value", "text.dict"),
+    ("wire-packed-broken", "Not a DEFLATE stream (block type 3 does not exist).", packed_wire(bytes.fromhex("ffff")),
+     "malformed", "text.deflate"),
+    ("wire-packed-cut", "A DEFLATE stream cut off before its end.", packed_wire(textpack.pack(HUT_EN)[:-3]),
+     "malformed", "text.deflate"),
+    ("wire-packed-trailing", "Bytes after the end of the DEFLATE stream.", packed_wire(textpack.pack("Hallo") + b"\x00"),
+     "malformed", "text.deflate"),
+    ("wire-packed-1025", "Unpacks to more than 1024 bytes: reject (zip bomb guard).", packed_wire(_raw_deflate(b"A" * 1025)),
+     "too_large", "text.deflate"),
+    ("wire-packed-bomb", "Unpacks to 100000 bytes: reject without unpacking it all.", packed_wire(_raw_deflate(b"A" * 100000)),
+     "too_large", "text.deflate"),
+    ("wire-packed-bad-utf8", "The unpacked bytes are not UTF-8.", packed_wire(_raw_deflate(b"\xff\xfeHallo")),
+     "malformed", "text.deflate"),
+    ("wire-packed-empty", "The packed words are empty.", packed_wire(_raw_deflate(b"")), "missing_field", "text.text"),
 ]
 
 
@@ -265,8 +337,14 @@ def main() -> None:
                   "text: Level 2, render(decoded) must give these strings. "
                   "decode_only: decode(hex) must give decoded. "
                   "invalid_encode / invalid_decode: must be rejected; error codes should match. "
-                  "v1: decode_any(hex) must give decoded."),
+                  "v1: decode_any(hex) must give decoded. "
+                  "packed_text: unpack(deflate, dict) must give text, decode(hex) must give decoded, and "
+                  "decode(encode(decoded)) must give decoded (compressors may make other bytes). "
+                  "text_dicts: SHA-256 of each text dictionary file."),
         "valid": [], "decode_only": [], "invalid_encode": [], "invalid_decode": [], "v1": [],
+        "packed_text": [],
+        "text_dicts": {str(n): {"file": f"vocab/{name}", "sha256": sha, "size": len(textpack.dictionary(n))}
+                       for n, (name, sha) in textpack.DICTS.items()},
     }
     names = set()
     for name, note, msg in VALID:
@@ -282,7 +360,8 @@ def main() -> None:
         assert decoded == expected, (name, decoded)
         out["decode_only"].append({"name": name, "note": note, "hex": hexstr, "size": len(hexstr) // 2,
                                    "decoded": decoded})
-    all_names = [c[0] for c in VALID + DECODE_ONLY + INVALID_ENCODE + INVALID_DECODE] + [c[0] for c in v1_cases()]
+    all_names = ([c[0] for c in VALID + DECODE_ONLY + INVALID_ENCODE + INVALID_DECODE + PACKED_TEXT]
+                 + [c[0] for c in v1_cases()])
     assert len(all_names) == len(set(all_names)), "case names must be unique"
     for name, note, msg, code, field in INVALID_ENCODE:
         try:
@@ -300,13 +379,23 @@ def main() -> None:
         else:
             raise AssertionError(f"{name} was accepted")
         out["invalid_decode"].append({"name": name, "note": note, "hex": hexstr, "error": code, "field": field})
+    for name, note, msg in PACKED_TEXT:
+        data = encode(msg)
+        decoded = decode(data)
+        assert decoded == {k: v for k, v in msg.items() if k != "pos"} | ({"pos": decoded["pos"]} if "pos" in msg else {}), name
+        deflate = textpack.pack(msg["text"]["text"])
+        plain = len(msg["text"]["text"].encode("utf-8"))
+        out["packed_text"].append({"name": name, "note": note, "text": msg["text"]["text"], "dict": 1,
+                                   "deflate": deflate.hex(), "hex": data.hex(), "size": len(data),
+                                   "text_size": plain, "decoded": decoded})
     for name, note, data in v1_cases():
         out["v1"].append({"name": name, "note": note, "hex": data.hex(), "size": len(data), "decoded": decode_any(data)})
     path = ROOT / "spec" / "vectors" / "codec.json"
     path.write_text(json.dumps(out, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
-    total = sum(len(out[k]) for k in ("valid", "decode_only", "invalid_encode", "invalid_decode", "v1"))
+    total = sum(len(out[k]) for k in ("valid", "decode_only", "invalid_encode", "invalid_decode", "v1", "packed_text"))
     print(f"wrote {path.relative_to(ROOT)}: {total} cases "
-          + ", ".join(f"{k}={len(out[k])}" for k in ("valid", "decode_only", "invalid_encode", "invalid_decode", "v1")))
+          + ", ".join(f"{k}={len(out[k])}" for k in ("valid", "decode_only", "invalid_encode", "invalid_decode", "v1",
+                                                     "packed_text")))
 
 
 if __name__ == "__main__":

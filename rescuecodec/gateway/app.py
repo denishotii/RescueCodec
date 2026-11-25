@@ -20,6 +20,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from rescuecodec.gateway import extract_api
 from rescuecodec.gateway.hub import ConnectorHub
 from rescuecodec.gateway.service import ApiError, GatewayService
 
@@ -86,6 +87,12 @@ def csv_filter(value: str | None, allowed: tuple[str, ...], name: str) -> list[s
     if bad:
         raise ApiError(400, "bad_request", f"unknown {name} {bad[0]!r}, use {', '.join(allowed)}", name)
     return items
+
+
+def channel_filter(value: str | None) -> list[str] | None:
+    """?channel=A,B -> ["A", "B"] (channel names, compared without case)."""
+    names = [part.strip() for part in (value or "").split(",") if part.strip()]
+    return names or None
 
 
 def bearer_token(authorization: str | None, query_token: str | None) -> str | None:
@@ -177,10 +184,35 @@ def create_app(service: GatewayService, *, hub: ConnectorHub | None = None, stat
     def nodes():
         return {"items": service.list_nodes()}
 
+    # ------------------------------------------------------------ text mode per chat
+    def mode_body(body: dict[str, Any]) -> Any:
+        unknown = set(body) - {"mode"}
+        if unknown:
+            raise ApiError(400, "bad_request", f"unknown key {sorted(unknown)[0]!r}", sorted(unknown)[0])
+        if "mode" not in body:
+            raise ApiError(400, "bad_request", "the body needs a mode", "mode")
+        return body["mode"]
+
+    @app.get("/v2/channels/{name}/mode")
+    def get_channel_mode(name: str):
+        return service.chat_mode(channel=name)
+
+    @app.put("/v2/channels/{name}/mode")
+    def put_channel_mode(name: str, body: dict[str, Any] = Body(...)):
+        return service.set_chat_mode(mode_body(body), channel=name)
+
+    @app.get("/v2/nodes/{node}/mode")
+    def get_node_mode(node: str):
+        return service.chat_mode(node=node)
+
+    @app.put("/v2/nodes/{node}/mode")
+    def put_node_mode(node: str, body: dict[str, Any] = Body(...)):
+        return service.set_chat_mode(mode_body(body), node=node)
+
     # ------------------------------------------------------------ messages
     @app.post("/v2/messages", status_code=202)
     def send_message(body: dict[str, Any] = Body(...)):
-        unknown = set(body) - {"message", "want_ack", "dry_run"}
+        unknown = set(body) - {"message", "want_ack", "dry_run", "channel", "to"}
         if unknown:
             raise ApiError(400, "bad_request", f"unknown key {sorted(unknown)[0]!r}", sorted(unknown)[0])
         if "message" not in body:
@@ -188,12 +220,14 @@ def create_app(service: GatewayService, *, hub: ConnectorHub | None = None, stat
         for flag in ("want_ack", "dry_run"):
             if flag in body and not isinstance(body[flag], bool):
                 raise ApiError(400, "bad_request", f"{flag} must be true or false", flag)
-        return service.send_message(body["message"], want_ack=body.get("want_ack", True), dry_run=body.get("dry_run", False))
+        return service.send_message(body["message"], want_ack=body.get("want_ack", True), dry_run=body.get("dry_run", False),
+                                    channel=body.get("channel"), to=body.get("to"))
 
     @app.get("/v2/messages")
     def list_messages(since_seq: int = Query(0, ge=0), type: str | None = None, direction: Literal["in", "out"] | None = None,
-                      limit: int = Query(100, ge=1, le=1000)):
-        return service.list_messages(since_seq, csv_filter(type, MESSAGE_TYPES, "type"), direction, limit)
+                      limit: int = Query(100, ge=1, le=1000), channel: str | None = None):
+        return service.list_messages(since_seq, csv_filter(type, MESSAGE_TYPES, "type"), direction, limit,
+                                     channel_filter(channel))
 
     @app.get("/v2/messages/{seq}")
     def get_message(seq: int):
@@ -203,7 +237,7 @@ def create_app(service: GatewayService, *, hub: ConnectorHub | None = None, stat
 
     @app.post("/v2/text", status_code=202)
     def send_text(body: dict[str, Any] = Body(...)):
-        unknown = set(body) - {"text", "priority", "also_plain"}
+        unknown = set(body) - {"text", "priority", "also_plain", "channel", "to"}
         if unknown:
             raise ApiError(400, "bad_request", f"unknown key {sorted(unknown)[0]!r}", sorted(unknown)[0])
         if "text" not in body:
@@ -211,14 +245,15 @@ def create_app(service: GatewayService, *, hub: ConnectorHub | None = None, stat
         also_plain = body.get("also_plain", False)
         if not isinstance(also_plain, bool):
             raise ApiError(400, "bad_request", "also_plain must be true or false", "also_plain")
-        return service.send_text(body["text"], body.get("priority"), also_plain)
+        return service.send_text(body["text"], body.get("priority"), also_plain, body.get("channel"), body.get("to"))
 
     # ------------------------------------------------------------ tasks
     @app.get("/v2/tasks")
-    def list_tasks(state: str | None = None, type: str | None = None):
+    def list_tasks(state: str | None = None, type: str | None = None, channel: str | None = None):
         states = csv_filter(state, TASK_STATES, "state")
         types = csv_filter(type, MESSAGE_TYPES, "type")
-        return {"items": service.list_tasks(set(states) if states else None, set(types) if types else None)}
+        return {"items": service.list_tasks(set(states) if states else None, set(types) if types else None,
+                                            channel_filter(channel))}
 
     @app.get("/v2/tasks/{key}")
     def get_task(key: str):
@@ -236,8 +271,8 @@ def create_app(service: GatewayService, *, hub: ConnectorHub | None = None, stat
 
     # ------------------------------------------------------------ export and tools
     @app.get("/v2/export.geojson")
-    def export_geojson(since_seq: int = Query(0, ge=0), type: str | None = None):
-        data = service.geojson(since_seq, csv_filter(type, MESSAGE_TYPES, "type"))
+    def export_geojson(since_seq: int = Query(0, ge=0), type: str | None = None, channel: str | None = None):
+        data = service.geojson(since_seq, csv_filter(type, MESSAGE_TYPES, "type"), channel_filter(channel))
         return Response(json.dumps(data, ensure_ascii=False), media_type="application/geo+json")
 
     @app.post("/v2/encode")
@@ -245,6 +280,14 @@ def create_app(service: GatewayService, *, hub: ConnectorHub | None = None, stat
         if "message" not in body:
             raise ApiError(400, "bad_request", "the body needs a message", "message")
         return service.encode_preview(body["message"])
+
+    @app.post("/v2/extract")
+    def extract_message(body: Any = Body(...)):
+        try:
+            return extract_api.preview(body, next_id=service.store.peek_message_id,
+                                       text_as_meshtastic=service.config.text_as_meshtastic)
+        except extract_api.ExtractError as exc:
+            raise ApiError(400, "bad_request", exc.message, exc.field) from None
 
     @app.post("/v2/decode")
     def decode_message(body: dict[str, Any] = Body(...)):

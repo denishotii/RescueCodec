@@ -15,11 +15,12 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from collections.abc import Mapping
 from typing import Any
 
 from rescuecodec.engine.vocab import Vocab, fold, load_vocab, tokenize
 from rescuecodec.v2 import codes as C
-from rescuecodec.v2.codec import CodecError, encode
+from rescuecodec.v2.codec import CodecError, encode, message_type
 
 SUFFIXES = frozenset({"s", "e", "n", "en", "er", "es", "em"})
 FILLERS = frozenset({"selbst", "auch", "noch", "wieder", "sehr", "ganz", "very", "still", "just", "really", "quite"})
@@ -38,6 +39,7 @@ UNIT_M = frozenset({"m", "meter", "metern", "metre", "metres", "meters"})
 UNIT_KM = frozenset({"km", "kilometer", "kilometern", "kilometre", "kilometres", "kilometers"})
 PERCENT_WORDS = frozenset({"%", "percent", "prozent"})
 MAX_TEXT_BYTES = C.MAX_TEXT_BYTES
+ELLIPSIS = "…"                # added at the end of a text that fit_text shortened
 IGNORED_FIELDS = frozenset({"acc", "ack.status"})
 # A negated value that has an opposite meaning flips; every other negated value is dropped.
 FLIP = {("consciousness", "conscious"): "unconscious", ("consciousness", "unconscious"): "conscious",
@@ -248,8 +250,14 @@ class _Run:
     def _language(self, hint: str | None) -> str:
         if hint in ("de", "en"):
             return hint
-        de = sum(1 for m in self.matches if m.lang == "de")
-        en = sum(1 for m in self.matches if m.lang == "en")
+        # words listed in both languages ("mayday", "sos", "gps") count only when there is nothing else
+        listed = {"de": set(), "en": set()}
+        for p in self.voc.phrases:
+            listed.get(p.lang, set()).add(p.tokens)
+        both = listed["de"] & listed["en"]
+        mine = [m for m in self.matches if tuple(self.tokens[m.start:m.end]) not in both] or self.matches
+        de = sum(1 for m in mine if m.lang == "de")
+        en = sum(1 for m in mine if m.lang == "en")
         return "de" if de > en else "en" if en > de else "unknown"
 
     # --- helpers over matches
@@ -545,6 +553,55 @@ def _cut_text(text: str) -> str:
     text = " ".join(text.split())
     raw = text.encode("utf-8")[:MAX_TEXT_BYTES]
     return raw.decode("utf-8", "ignore")
+
+
+def _encode_error(msg: Mapping) -> str | None:
+    try:
+        encode(msg)
+        return None
+    except CodecError as exc:
+        return exc.code
+
+
+def fit_text(msg: Mapping) -> Mapping:
+    """Make a text message fit into one packet. Same rule as TextFit.fitText in the Kotlin engine.
+
+    Only a text message, and only when it is too large with its position and id (over 200 bytes): the text is cut
+    to the longest prefix that ends on a whole UTF-8 character, trailing spaces go, and "…" is added, so the whole
+    message encodes to at most 200 bytes. The position and every other field stay. Every other message, and a text
+    that fits or is broken for another reason, comes back unchanged (the same object).
+    Example: a 180-byte text fallback plus a position and an id is 201 to 204 bytes; this cuts a few bytes off."""
+    try:
+        if message_type(msg) != "text":
+            return msg
+    except CodecError:
+        return msg
+    body = msg.get("text")
+    if not isinstance(body, Mapping) or not isinstance(body.get("text"), str) or _encode_error(msg) != "too_large":
+        return msg
+    raw = body["text"].encode("utf-8")
+    for cut in range(len(raw) - 1, -1, -1):      # longest first: the size only shrinks with the prefix
+        if (raw[cut] & 0xC0) == 0x80:             # a cut here would split a character
+            continue
+        candidate = {**msg, "text": {**body, "text": raw[:cut].decode("utf-8").rstrip() + ELLIPSIS}}
+        if _encode_error(candidate) is None:
+            return candidate
+    return msg
+
+
+def fit_plain(text: str, limit: int = C.MAX_ENCODE_BYTES) -> str:
+    """Make a plain Meshtastic text (port 1) fit into `limit` UTF-8 bytes. Same rule as TextFit.fitPlain in Kotlin.
+
+    A text that fits comes back unchanged. A longer one is cut to the longest prefix that ends on a whole UTF-8
+    character, trailing spaces go, and "…" is added, so the result is at most `limit` bytes.
+    Example: a 230-byte readable line becomes 197 bytes of it plus "…" (200 bytes)."""
+    raw = text.encode("utf-8")
+    if len(raw) <= limit:
+        return text
+    cut = max(0, limit - len(ELLIPSIS.encode("utf-8")))
+    while cut > 0 and (raw[cut] & 0xC0) == 0x80:       # a cut here would split a character
+        cut -= 1
+    return raw[:cut].decode("utf-8").rstrip() + ELLIPSIS
 
 
 def _fallback(run: _Run | None, text: str, reason: str, cues: list[str] | None = None) -> Extraction:

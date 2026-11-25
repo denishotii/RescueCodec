@@ -376,11 +376,31 @@ object RescueCodec {
     }
 
     private fun buildText(body: Any?): Text {
-        val b = checkKeys(body, setOf("text"), "text")
+        val b = checkKeys(body, setOf("text", "dict"), "text")
         val t = Text.newBuilder()
-        if (b.containsKey("text")) t.text = checkedString(b["text"], "text.text")
+        val dict = if (b.containsKey("dict")) intValue(b["dict"], "text.dict", 1, 0xFFFFFFFFL) else null
+        if (dict != null && dict !in TextPack.DICTS) {
+            throw err("invalid_value", "unknown dictionary, known: ${TextPack.DICTS.keys.sorted()}", "text.dict")
+        }
+        if (b.containsKey("text")) {
+            val words = checkedString(b["text"], "text.text")
+            val size = words.toByteArray(Charsets.UTF_8).size
+            if (dict == null) {
+                t.text = words
+            } else if (size > 0) {
+                if (size > TextPack.MAX_UNPACKED_BYTES) {
+                    throw err("invalid_value", "a packed text is at most ${TextPack.MAX_UNPACKED_BYTES} bytes", "text.text")
+                }
+                t.deflate = com.google.protobuf.ByteString.copyFrom(TextPack.pack(words, dict))
+                t.dict = dict
+            }
+        }
         return t.build()
     }
+
+    /** The words of a Text body: `text`, or `deflate` unpacked. Throws [CodecException]. */
+    private fun unpackedText(t: Text): String =
+        if (t.deflate.isEmpty) t.text else TextPack.unpack(t.deflate.toByteArray(), t.dict)
 
     private fun checkedString(value: Any?, field: String): String {
         if (value !is String) throw err("invalid_value", "must be a string", field)
@@ -403,7 +423,9 @@ object RescueCodec {
         Envelope.BodyCase.HAZARD -> "hazard"
         Envelope.BodyCase.MAYDAY -> "mayday"
         Envelope.BodyCase.ACK -> "ack"
-        Envelope.BodyCase.TEXT -> "text"
+        // A text packed with a dictionary this library does not know can only be read after an update.
+        Envelope.BodyCase.TEXT ->
+            if (!env.text.deflate.isEmpty && env.text.dict != 0 && env.text.dict !in TextPack.DICTS) "unknown" else "text"
         else -> "unknown"
     }
 
@@ -461,7 +483,15 @@ object RescueCodec {
                 }
             }
             "text" -> {
-                val size = env.text.text.toByteArray(Charsets.UTF_8).size
+                val t = env.text
+                if (!t.deflate.isEmpty) {
+                    if (t.text.isNotEmpty()) throw err("invalid_value", "give text or deflate, not both", "text.deflate")
+                    if (t.dict == 0) throw err("missing_field", "a packed text needs its dictionary number", "text.dict")
+                    if (unpackedText(t).isEmpty()) throw err("missing_field", "text must not be empty", "text.text")
+                    return
+                }
+                if (t.dict != 0) throw err("invalid_value", "dict is only allowed with deflate", "text.dict")
+                val size = t.text.toByteArray(Charsets.UTF_8).size
                 if (size == 0) throw err("missing_field", "text must not be empty", "text.text")
                 if (size > Codes.MAX_TEXT_BYTES) throw err("invalid_value", "text is at most ${Codes.MAX_TEXT_BYTES} bytes", "text.text")
             }
@@ -577,7 +607,11 @@ object RescueCodec {
                 if (a.team.isNotEmpty()) b["team"] = a.team
                 out["ack"] = b
             }
-            "text" -> out["text"] = linkedMapOf<String, Any?>("text" to env.text.text)
+            "text" -> out["text"] = if (env.text.deflate.isEmpty) {
+                linkedMapOf<String, Any?>("text" to env.text.text)
+            } else {
+                linkedMapOf<String, Any?>("text" to unpackedText(env.text), "dict" to env.text.dict)
+            }
             else -> out["unknown"] = LinkedHashMap<String, Any?>()
         }
         return out

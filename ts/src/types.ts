@@ -11,7 +11,8 @@ export interface Request { resource: string; count?: number; urgency?: string }
 export interface Hazard { kind: string; severity?: string; radius?: number }
 export interface Mayday { reason?: string; persons?: number }
 export interface Ack { ref: number; node: string; status: string; eta?: number; team?: string }
-export interface Text { text: string }
+/** `dict` set: the text travels packed with that dictionary (spec section 3.5). */
+export interface Text { text: string; dict?: number }
 
 export interface RescueMessage {
   /** Set by decodeAny: 1 for old v1 packets, 2 for v2. Encode accepts only 2. */

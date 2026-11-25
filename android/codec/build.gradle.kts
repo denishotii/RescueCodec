@@ -48,6 +48,11 @@ tasks.processResources {
         include("*.json")
         into("rescuecodec/i18n")
     }
+    // Preset dictionaries for packed texts (spec section 3.5). Copied byte for byte.
+    from(specDir.dir("vocab")) {
+        include("text-dict-v*.txt")
+        into("rescuecodec/vocab")
+    }
 }
 
 tasks.test {

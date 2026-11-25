@@ -381,5 +381,9 @@ class Ack(_message.Message):
 class Text(_message.Message):
     __slots__ = ()
     TEXT_FIELD_NUMBER: _ClassVar[int]
+    DEFLATE_FIELD_NUMBER: _ClassVar[int]
+    DICT_FIELD_NUMBER: _ClassVar[int]
     text: str
-    def __init__(self, text: _Optional[str] = ...) -> None: ...
+    deflate: bytes
+    dict: int
+    def __init__(self, text: _Optional[str] = ..., deflate: _Optional[bytes] = ..., dict: _Optional[int] = ...) -> None: ...

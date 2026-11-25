@@ -1,8 +1,9 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { CodecError, canonical, decode, decodeAny, encode, render } from "../src/index.js";
+import { CodecError, canonical, decode, decodeAny, encode, packText, render, textDictionary, unpackText } from "../src/index.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const vectors = JSON.parse(readFileSync(join(here, "..", "..", "spec", "vectors", "codec.json"), "utf8"));
@@ -45,6 +46,30 @@ describe(`conformance Level 1, spec ${vectors.spec_version}`, () => {
 
   it.each<any>(vectors.v1)("v1: $name", (c: any) => {
     expect(decodeAny(bytes(c.hex))).toEqual(c.decoded);
+  });
+});
+
+describe("packed texts (spec section 3.5)", () => {
+  it.each<any>(vectors.packed_text)("packed_text: $name", (c: any) => {
+    expect(unpackText(bytes(c.deflate), c.dict)).toBe(c.text);
+    expect(decode(bytes(c.hex))).toEqual(c.decoded);
+    expect(decode(encode(c.decoded))).toEqual(c.decoded);
+    expect(encode(c.decoded).length).toBeLessThanOrEqual(c.size + 2);
+  });
+
+  it("has the dictionaries of text_dicts, byte for byte", () => {
+    for (const [n, d] of Object.entries<any>(vectors.text_dicts)) {
+      const data = textDictionary(Number(n));
+      expect(data.length).toBe(d.size);
+      expect(createHash("sha256").update(data).digest("hex")).toBe(d.sha256);
+      expect(Buffer.compare(Buffer.from(data), readFileSync(join(here, "..", "..", "spec", d.file)))).toBe(0);
+    }
+  });
+
+  it("packs the example sentence to 34 bytes", () => {
+    const text = "We are at the hut, two people with us, waiting for the vehicle on the forest road";
+    expect(packText(text).length).toBe(34);
+    expect(unpackText(packText(text), 1)).toBe(text);
   });
 });
 

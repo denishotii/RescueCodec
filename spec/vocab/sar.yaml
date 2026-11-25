@@ -206,7 +206,7 @@ fields:
     kind: enum
     wire: Mayday.reason
     values:
-      - {id: 1, code: injured, meaning: "Team member injured.", en: ["colleague injured", "team member injured", "one of us is hurt", "i am injured"], de: ["kollege verletzt", "kollegin verletzt", "einsatzkraft verletzt", "bin verletzt", "truppmitglied verletzt"]}
+      - {id: 1, code: injured, meaning: "Team member injured.", en: ["colleague injured", "team member injured", "one of us is hurt", "i am injured", "i fell", "colleague fell", "team member fell", "one of us fell"], de: ["kollege verletzt", "kollegin verletzt", "einsatzkraft verletzt", "bin verletzt", "truppmitglied verletzt", "kollege abgestürzt", "kollegin abgestürzt", "kollege gestürzt", "kollegin gestürzt", "bin gestürzt", "bin abgestürzt", "truppmitglied abgestürzt"]}
       - {id: 2, code: lost, meaning: "Team is lost or disoriented.", en: ["we are lost", "lost our way", "don't know where we are", "dont know where we are"], de: ["haben uns verlaufen", "wissen nicht wo wir sind", "orientierung verloren", "verirrt"]}
       - {id: 3, code: missing_member, meaning: "Contact to a team member lost.", en: ["lost contact", "team member missing", "can't reach", "cant find our"], de: ["kontakt verloren", "kontakt zu truppmitglied verloren", "kollege vermisst", "kollegin vermisst", "nicht erreichbar"]}
       - {id: 4, code: medical, meaning: "Sudden illness in the team.", en: ["collapsed", "medical emergency", "seizure"], de: ["zusammengebrochen", "medizinischer notfall", krampfanfall, kollabiert]}

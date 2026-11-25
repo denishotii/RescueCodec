@@ -7,7 +7,7 @@ import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import { Protocol } from "pmtiles";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { Download, Layers, LocateFixed, Mountain, Square } from "lucide-react";
-import { api } from "../api/client";
+import { api, config } from "../api/client";
 import { useData, useT } from "../state/hooks";
 import { setUi, useUi, type Layers as LayerKeys } from "../state/ui";
 import { isActiveMayday } from "../lib/format";
@@ -27,7 +27,8 @@ function ensureProtocol() {
   protocolReady = true;
 }
 
-const HOME: [number, number] = [7.215, 50.69];
+const HOME: [number, number] = [7.215, 50.69]; // Siebengebirge; config.json "home" overrides it
+const homeCenter = (): [number, number] => (config.home ? [config.home.lon, config.home.lat] : HOME);
 
 function useMarkerHost(map: MlMap | null, items: { id: string; lat: number; lon: number }[], className: string) {
   const store = useRef(new Map<string, { marker: Marker; el: HTMLElement }>());
@@ -100,7 +101,7 @@ export function MapPanel() {
     if (!host.current) return;
     ensureProtocol();
     const m = new MlMap({
-      container: host.current, style: buildStyle(ui.theme, ui.lang, ui.room), center: HOME, zoom: 11.6, maxPitch: 75,
+      container: host.current, style: buildStyle(ui.theme, ui.lang, ui.room), center: homeCenter(), zoom: config.home?.zoom ?? 11.6, maxPitch: 75,
       attributionControl: false, canvasContextAttributes: { antialias: true },
     });
     m.addControl(new AttributionControl({ compact: true }), "bottom-right");
@@ -254,7 +255,7 @@ export function MapPanel() {
         </div>
       </div>
       {map && pinItems.map((m) => { const v = pins.get(m.id); return v ? createPortal(<Badge m={m} selected={selected === m.id} />, v.el, m.id) : null; })}
-      {map && endItems.map((e) => { const v = ends.get(e.id); return v ? createPortal(<span className="end-tag" style={{ ["--c" as string]: e.color }}>{e.label}</span>, v.el, e.id) : null; })}
+      {map && endItems.map((e) => { const v = ends.get(e.id); return v ? createPortal(<><i className="end-dot" style={{ ["--c" as string]: e.color }} aria-hidden="true" /><span className="end-tag" style={{ ["--c" as string]: e.color }}>{e.label}</span></>, v.el, e.id) : null; })}
       {map && sectorItems.map((s) => { const v = sectorPins.get(s.id); return v ? createPortal(<span className={`sector-tag s-${s.status}`}>{s.n}</span>, v.el, s.id) : null; })}
       {map && nodeItems.map((n) => {
         const v = nodePins.get(n.id);
@@ -266,7 +267,7 @@ export function MapPanel() {
 }
 
 function fit(map: MlMap, bounds: [number, number][]) {
-  if (!bounds.length) { map.flyTo({ center: HOME, zoom: 12, duration: 600 }); return; }
+  if (!bounds.length) { map.flyTo({ center: homeCenter(), zoom: config.home?.zoom ?? 12, duration: 600 }); return; }
   let [w, s, e, n] = [180, 90, -180, -90];
   for (const [lon, lat] of bounds) { w = Math.min(w, lon); e = Math.max(e, lon); s = Math.min(s, lat); n = Math.max(n, lat); }
   map.fitBounds([[w, s], [e, n]], { padding: { top: 70, bottom: 60, left: 60, right: 60 }, maxZoom: 15, duration: 800 });

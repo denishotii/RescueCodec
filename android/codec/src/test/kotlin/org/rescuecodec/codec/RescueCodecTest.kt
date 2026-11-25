@@ -85,6 +85,44 @@ class RescueCodecTest {
     }
 
     @Test
+    fun packedTextCases() {
+        val list = cases("packed_text")
+        assertTrue(list.size >= 5)
+        for (c in list) {
+            val name = c["name"] as String
+            val dict = (c["dict"] as Number).toInt()
+            assertEquals(c["text"], TextPack.unpack(hex(c["deflate"] as String), dict), "$name: unpack reference bytes")
+            assertSame(c["decoded"], RescueCodec.decode(hex(c["hex"] as String)), "$name: decode")
+            val again = RescueCodec.encode(obj(c["decoded"]))
+            assertSame(c["decoded"], RescueCodec.decode(again), "$name: round trip")
+            assertTrue(hex(c["deflate"] as String).size < (c["text_size"] as Number).toInt(), "$name: smaller")
+        }
+    }
+
+    @Test
+    fun textDictionaryHashes() {
+        @Suppress("UNCHECKED_CAST")
+        val dicts = vectors["text_dicts"] as Map<String, Map<String, Any?>>
+        for ((number, entry) in dicts) {
+            val file = File(System.getProperty("rescuecodec.spec"), entry["file"] as String).readBytes()
+            val sha = java.security.MessageDigest.getInstance("SHA-256").digest(file).joinToString("") { "%02x".format(it) }
+            assertEquals(entry["sha256"], sha, "dictionary $number file")
+            assertEquals(TextPack.DICTS[number.toInt()]?.second, sha, "dictionary $number in TextPack")
+            assertTrue(TextPack.dictionary(number.toInt()).contentEquals(file), "dictionary $number bundled")
+        }
+    }
+
+    @Test
+    fun packedTextIsSmallerAndRoundTrips() {
+        val words = "We are at the hut, two people with us, waiting for the vehicle on the forest road"
+        val packed = TextPack.pack(words)
+        assertTrue(packed.size < 45, "packed ${packed.size} B")
+        assertEquals(words, TextPack.unpack(packed, 1))
+        val bytes = RescueCodec.encode(mapOf("id" to 3, "text" to mapOf("text" to words, "dict" to 1)))
+        assertSame(mapOf("id" to 3, "text" to mapOf("text" to words, "dict" to 1)), RescueCodec.decode(bytes), "decode")
+    }
+
+    @Test
     fun readableTextLevel2() {
         var checked = 0
         for (c in cases("valid") + cases("decode_only")) {

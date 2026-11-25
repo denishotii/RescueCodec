@@ -51,7 +51,7 @@ Four decisions shape everything:
 
 ### Spec (`spec/`)
 
-The spec is a folder you can copy. `SPEC.md` is the text. `rescuecodec/v2/rescuecodec.proto` is the one wire definition. `vocab/sar.yaml` holds the words the extractor knows (German and English). `i18n/*.json` holds the words for readable text. `vectors/` holds test cases: valid and invalid messages with exact bytes, readable text, and 70 extraction sentences. `api/openapi.yaml` describes the gateway. A new library is finished when it passes the vectors (SPEC section 12).
+The spec is a folder you can copy. `SPEC.md` is the text. `rescuecodec/v2/rescuecodec.proto` is the one wire definition. `vocab/sar.yaml` holds the words the extractor knows (German and English). `i18n/*.json` holds the words for readable text. `vectors/` holds test cases: valid and invalid messages with exact bytes, readable text, and 73 extraction sentences. `api/openapi.yaml` describes the gateway. A new library is finished when it passes the vectors (SPEC section 12).
 
 ### Engine
 
@@ -59,9 +59,9 @@ Three pieces, written first in Python and ported line by line to Kotlin:
 
 - **Extractor.** Spoken or typed German or English becomes one message. It uses plain rules: token matching, a filler word list, negation ("nicht ansprechbar"), number words, typos of one edit, and spoken coordinates. If it cannot code a sentence safely, it says so and offers the plain text message instead. It never guesses a medical fact. A person always checks the chips before sending. An optional local model (Ollama) can help in Python, but the rules are the default and the only path on the phone.
 - **Send queue and airtime budget.** EU 868 MHz allows 10 percent airtime per hour (360 s). The queue computes LoRa airtime per packet, sends Mayday first, then Found, Request and Ack, then Hazard, Sector, Track and Text. Each type has its own ceiling (a Mayday and an Ack are never held, tracks stop at 70 percent). A held message stays queued and goes out when the window frees up.
-- **Task tracker.** Every Found, Request, Hazard and Mayday is a task with the key `<sender node>-<id>`. The newest Ack with that key sets its state: open, accepted, declined or done. Done is final. Duplicates are dropped by (sender, id) for 24 hours.
+- **Task tracker.** Every Found, Request, Hazard and Mayday is a task with the key `<sender node>-<id>`. Its state comes from the newest Ack of each team: done from anyone is final, else accepted while any team has it accepted, else declined if a team declined, else open. Duplicates are dropped by (sender, id) for 24 hours.
 
-The Python engine, the Kotlin engine and the vectors agree: 70 of 70 extraction cases in both, and the same rules for the queue and tracker (SPEC section 15.1).
+The Python engine, the Kotlin engine and the vectors agree: 73 of 73 extraction cases in both, and the same rules for the queue and tracker (SPEC section 15.1).
 
 ### Gateway
 

@@ -438,6 +438,33 @@
    "notes": "A missing team member is a mayday even without the word."
   },
   {
+   "name": "de-mayday-colleague-fell",
+   "lang": "de",
+   "text": "Mayday, Kollege abgestürzt",
+   "unsupported": false,
+   "expect": {
+    "mayday": {
+     "reason": "injured"
+    }
+   },
+   "notes": "'Kollege abgestürzt' is an injured team member."
+  },
+  {
+   "name": "de-hiker-fell-is-found",
+   "lang": "de",
+   "text": "Wanderer abgestürzt, Bein gebrochen",
+   "unsupported": false,
+   "expect": {
+    "found": {
+     "age": "adult",
+     "injuries": [
+      "fracture"
+     ]
+    }
+   },
+   "notes": "A hiker who fell is a found report, not a mayday. Only a fallen team member ('Kollege abgestürzt') is a mayday."
+  },
+  {
    "name": "de-two-states",
    "lang": "de",
    "text": "Zwei Personen gefunden, eine bewusstlos, die andere ansprechbar",
@@ -687,6 +714,18 @@
      "reason": "injured"
     }
    }
+  },
+  {
+   "name": "en-mayday-i-fell",
+   "lang": "en",
+   "text": "Mayday, I fell and broke my leg, cannot move",
+   "unsupported": false,
+   "expect": {
+    "mayday": {
+     "reason": "injured"
+    }
+   },
+   "notes": "'I fell' gives the reason. Mayday has no field for the leg or for 'cannot move'."
   },
   {
    "name": "en-sos",

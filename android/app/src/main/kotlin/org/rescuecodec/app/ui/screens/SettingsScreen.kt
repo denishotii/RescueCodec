@@ -51,6 +51,9 @@ import org.rescuecodec.app.voice.ModelStatus
 import org.rescuecodec.app.voice.VoskModels
 import org.rescuecodec.engine.Airtime
 
+/** The day/night choice is off while the app is light only. */
+private const val SHOW_THEME = false
+
 /** Settings: language, day/night, team, radio and region info, speech models, other apps, licences. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -86,6 +89,8 @@ fun SettingsScreen(vm: SettingsViewModel, connection: ConnectionViewModel, lang:
         }
         Text(stringResource(R.string.set_language_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
+        // Day / night: hidden for now, the app is light only (RescueRoot forces Day). The setting and night palette stay.
+        if (SHOW_THEME) {
         SectionHeader(stringResource(R.string.set_theme))
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
             listOf("auto" to R.string.theme_auto, "day" to R.string.theme_day, "night" to R.string.theme_night).forEachIndexed { i, (code, label) ->
@@ -97,6 +102,19 @@ fun SettingsScreen(vm: SettingsViewModel, connection: ConnectionViewModel, lang:
                 ) { Text(stringResource(label), style = MaterialTheme.typography.labelLarge) }
             }
         }
+        }
+
+        SectionHeader(stringResource(R.string.set_sounds))
+        val sounds by vm.sounds.collectAsStateWithLifecycle()
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("sounds_row"),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(stringResource(R.string.set_sounds_switch), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+            Switch(checked = sounds, onCheckedChange = vm::setSounds, modifier = Modifier.testTag("sounds_switch"))
+        }
+        Text(stringResource(R.string.set_sounds_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
         SectionHeader(stringResource(R.string.set_team))
         OutlinedTextField(
@@ -117,6 +135,15 @@ fun SettingsScreen(vm: SettingsViewModel, connection: ConnectionViewModel, lang:
                 InfoRow(stringResource(R.string.set_airtime_11), "%.2f s".format(Airtime(preset).millis(11) / 1000.0))
                 Text(stringResource(R.string.set_radio_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+        }
+        // Packed or normal text is chosen per chat now (the chat's menu: Auto, Always compressed, Always normal).
+        val showPublic by vm.showPublic.collectAsStateWithLifecycle()
+        Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.set_show_public), style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.set_show_public_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Switch(checked = showPublic, onCheckedChange = { vm.setShowPublic(it) }, modifier = Modifier.testTag("show_public_switch"))
         }
 
         SectionHeader(stringResource(R.string.set_voice))
@@ -166,7 +193,7 @@ fun SettingsScreen(vm: SettingsViewModel, connection: ConnectionViewModel, lang:
                 BigButton(stringResource(R.string.set_licences), { licences = true }, Modifier.fillMaxWidth().testTag("licences_button"), outlined = true)
             }
         }
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(16.dp))
     }
     if (licences) LicencesDialog { licences = false }
 }

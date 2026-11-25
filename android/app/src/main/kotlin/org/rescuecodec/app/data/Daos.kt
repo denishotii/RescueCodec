@@ -22,6 +22,17 @@ interface MessageDao {
     @Query("SELECT * FROM messages ORDER BY id DESC LIMIT :limit")
     fun observeRecent(limit: Int): Flow<List<MessageEntity>>
 
+    /**
+     * One channel chat, newest first: broadcasts on the channel [name]. With [team] true it also holds the outgoing
+     * messages that wait for the team channel (channelName still null).
+     */
+    @Query("SELECT * FROM messages WHERE peer IS NULL AND (channelName = :name OR (:team AND channelName IS NULL)) ORDER BY id DESC LIMIT :limit")
+    fun observeChannel(name: String, team: Boolean, limit: Int): Flow<List<MessageEntity>>
+
+    /** One direct-message chat with node [peer], newest first. */
+    @Query("SELECT * FROM messages WHERE peer = :peer ORDER BY id DESC LIMIT :limit")
+    fun observeDirect(peer: Long, limit: Int): Flow<List<MessageEntity>>
+
     /** Messages that still wait to be sent (also used to rebuild the queue after a restart). */
     @Query("SELECT * FROM messages WHERE dir = 'out' AND state IN ('queued','held','refused_airtime') ORDER BY id ASC")
     suspend fun waiting(): List<MessageEntity>
@@ -85,4 +96,46 @@ interface StatDao {
 suspend fun StatDao.add(name: String, delta: Long = 1) {
     ensure(StatEntity(name, 0))
     addRaw(name, delta)
+}
+
+@Dao
+interface NodeSeenDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(row: NodeSeenEntity)
+
+    /** True when [node] sent a RescueCodec packet since [sinceMs]. */
+    @Query("SELECT COUNT(*) > 0 FROM nodes_seen WHERE node = :node AND port = 256 AND lastSeenMs >= :sinceMs")
+    suspend fun isRescueCodec(node: Long, sinceMs: Long): Boolean
+
+    /** Nodes that sent normal texts on [channel] since [sinceMs] and no RescueCodec packet in that time. */
+    @Query(
+        "SELECT DISTINCT node FROM nodes_seen WHERE channel = :channel AND port = 1 AND lastSeenMs >= :sinceMs " +
+            "AND node NOT IN (SELECT node FROM nodes_seen WHERE port = 256 AND lastSeenMs >= :sinceMs) ORDER BY node",
+    )
+    suspend fun meshtasticUsers(channel: String, sinceMs: Long): List<Long>
+
+    /** Nodes that sent a RescueCodec packet on [channel] since [sinceMs]. */
+    @Query("SELECT DISTINCT node FROM nodes_seen WHERE channel = :channel AND port = 256 AND lastSeenMs >= :sinceMs ORDER BY node")
+    suspend fun rescueCodecNodes(channel: String, sinceMs: Long): List<Long>
+
+    @Query("DELETE FROM nodes_seen WHERE lastSeenMs < :beforeMs")
+    suspend fun forget(beforeMs: Long)
+
+    @Query("SELECT * FROM nodes_seen ORDER BY lastSeenMs DESC")
+    fun observeAll(): Flow<List<NodeSeenEntity>>
+}
+
+@Dao
+interface ChatModeDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun set(row: ChatModeEntity)
+
+    @Query("SELECT mode FROM chat_modes WHERE chat = :chat")
+    suspend fun get(chat: String): String?
+
+    @Query("SELECT mode FROM chat_modes WHERE chat = :chat")
+    fun observe(chat: String): Flow<String?>
+
+    @Query("DELETE FROM chat_modes WHERE chat = :chat")
+    suspend fun clear(chat: String)
 }

@@ -5,9 +5,11 @@ import okio.ByteString.Companion.toByteString
 import org.meshtastic.proto.ChannelSet
 import org.meshtastic.proto.ChannelSettings
 import org.rescuecodec.app.core.FieldKind
+import org.rescuecodec.app.core.Fix
 import org.rescuecodec.app.core.Labels
 import org.rescuecodec.app.core.ReportFields
 import org.rescuecodec.app.radio.ChannelJoin
+import org.rescuecodec.app.ui.ReportViewModel
 import org.rescuecodec.codec.RescueCodec
 import org.rescuecodec.engine.Extractor
 import java.io.File
@@ -103,6 +105,26 @@ class ReportUiLogicTest {
         assertNull(ChannelJoin.parse("https://example.com/#abc"))
         assertNull(ChannelJoin.parse("hello"))
         assertNull(ChannelJoin.parse("https://meshtastic.org/e/#!!!notbase64"))
+    }
+
+    @Test
+    fun aLongTextWithThePositionIsShortenedSoItCanBeSent() {
+        // The bug: a 180-byte free text plus the position was 201 to 204 bytes and could not be sent.
+        val text = ReportFields.clampText("Wir sind am Waldweg hinter der Mühle, die Brücke über den Bach ist weggespült. ".repeat(3))
+        val withPos = linkedMapOf<String, Any?>("pos" to Fix(52.52001, 13.40495, fresh = false).toPos()) + ReportFields.textMessage(text)
+        assertTrue(runCatching { RescueCodec.encode(withPos + ("id" to 300)) }.isFailure, "too large without the fix")
+        val out = ReportViewModel.fitForSending(withPos)
+        assertNull(out["id"], "the id is added later, by Messenger.submit")
+        assertEquals(withPos["pos"], out["pos"], "the position stays")
+        val cut = ReportFields.body(out)["text"] as String
+        assertTrue(cut.endsWith("…") && text.startsWith(cut.removeSuffix("…")), cut)
+        // Fits with the largest id and with a small one.
+        for (id in listOf(1, 127, 128, 16383)) assertTrue(RescueCodec.encode(out + ("id" to id)).size <= 200)
+        // A short text, or a report that is not text, stays as it is.
+        val short = linkedMapOf<String, Any?>("pos" to Fix(52.52001, 13.40495, fresh = false).toPos()) + ReportFields.textMessage("Weg frei")
+        assertEquals(short, ReportViewModel.fitForSending(short))
+        val found = extractor.extract("Child found, conscious", "en").message
+        assertEquals(found, ReportViewModel.fitForSending(found))
     }
 
     @Test

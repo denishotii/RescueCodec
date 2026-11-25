@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package org.rescuecodec.app.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -44,7 +45,7 @@ object MessageState {
 }
 
 /** One row per message we sent or received. Newest rows have the highest [id]. */
-@Entity(tableName = "messages", indices = [Index("atMs"), Index("taskKey"), Index("state")])
+@Entity(tableName = "messages", indices = [Index("atMs"), Index("taskKey"), Index("state"), Index("channelName"), Index("peer")])
 data class MessageEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     /** "out" or "in". */
@@ -72,12 +73,29 @@ data class MessageEntity(
     val snr: Float? = null,
     val rssi: Int? = null,
     val hops: Int? = null,
-    /** Who asked us to send it: "app", or the package name of another app (Intent API). */
+    /**
+     * Who asked us to send it: "app", or the package name of another app (Intent API).
+     * "meshtastic" ([org.rescuecodec.app.core.MeshText.SOURCE]) marks a plain Meshtastic text (port 1), sent or
+     * received: [bytes] is then the UTF-8 text and [json] the text as a canonical `text` message.
+     */
     val source: String? = null,
+    /** Radio channel index at receive or send time. Null while an outgoing message waits for its channel. */
+    val channelIndex: Int? = null,
+    /**
+     * Name of the channel (shared contract with the gateway: a channel is identified by its name; an empty primary
+     * name is the modem preset's name, for example "LongFast"). Null on an outgoing message means "the team channel",
+     * filled in when it is handed to the radio.
+     */
+    val channelName: String? = null,
+    /** True when the channel has no key or the public default key. */
+    @ColumnInfo(defaultValue = "0") val channelPublic: Boolean = false,
+    /** Direct message: the other node (`to` when we sent it, `from` when we received it). Null for a channel broadcast. */
+    val peer: Long? = null,
 ) {
     override fun equals(other: Any?) = other is MessageEntity && id == other.id && state == other.state &&
         detail == other.detail && retryAtMs == other.retryAtMs && attempts == other.attempts &&
-        atMs == other.atMs && bytes.contentEquals(other.bytes) && json == other.json && taskKey == other.taskKey
+        atMs == other.atMs && bytes.contentEquals(other.bytes) && json == other.json && taskKey == other.taskKey &&
+        channelName == other.channelName && peer == other.peer && node == other.node
     override fun hashCode() = id.hashCode() * 31 + state.hashCode()
 }
 
@@ -105,6 +123,10 @@ data class TaskEntity(
     val ownStatus: String? = null,
     /** Highest priority first: 0 mayday, 1 other. Used for sorting. */
     val rank: Int = 1,
+    /** Channel of the report: answers (Accept, Decline, Done) go out on this same channel. Index, name, public. */
+    val channelIndex: Int? = null,
+    val channelName: String? = null,
+    @ColumnInfo(defaultValue = "0") val channelPublic: Boolean = false,
 )
 
 /** A named counter. Names are listed in [StatNames]. */
@@ -124,7 +146,7 @@ object StatNames {
     const val RX_DUPLICATES = "rx_duplicates"
     const val RX_INVALID = "rx_invalid"
 
-    /** Port 256 packets that came in on another channel than our private one (other teams, other apps). Dropped. */
+    /** Packets on a channel we do not show (the public channel while it is hidden, an unknown channel). Dropped. */
     const val RX_OTHER_CHANNEL = "rx_other_channel"
 
     /** Reports typed or spoken in the app that went into the send queue: bytes of the text, bytes of the coded message. */
@@ -135,3 +157,22 @@ object StatNames {
     const val REPORT_AIRTIME_SAVED_MS = "report_airtime_saved_ms"
     const val REPORT_COUNT = "report_count"
 }
+
+/**
+ * Who we heard and how (spec section 2.3): a node that sent a RescueCodec packet ([port] 256, on any channel) runs
+ * RescueCodec; a node that sent normal texts ([port] 1) on a channel and no RescueCodec packet is a Meshtastic user
+ * there. One row per (node, channel, port) with the last time. Rows older than 24 h are forgotten.
+ */
+@Entity(tableName = "nodes_seen", primaryKeys = ["node", "channel", "port"], indices = [Index("lastSeenMs")])
+data class NodeSeenEntity(
+    val node: Long,
+    /** Channel name the packet came on ("" when unknown). */
+    val channel: String,
+    /** 256 (RescueCodec) or 1 (normal Meshtastic text). */
+    val port: Int,
+    val lastSeenMs: Long,
+)
+
+/** The text mode of one chat ([org.rescuecodec.app.core.ChatId.key]): auto, compressed or normal. No row: the default. */
+@Entity(tableName = "chat_modes")
+data class ChatModeEntity(@PrimaryKey val chat: String, val mode: String)

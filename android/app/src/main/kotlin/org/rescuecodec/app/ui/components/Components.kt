@@ -4,6 +4,8 @@ package org.rescuecodec.app.ui.components
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -57,11 +59,12 @@ fun RcCard(
     container: Color = MaterialTheme.colorScheme.surfaceContainerLow,
     outline: Color = MaterialTheme.colorScheme.outlineVariant,
     padding: PaddingValues = PaddingValues(16.dp),
+    shape: androidx.compose.ui.graphics.Shape = MaterialTheme.shapes.medium,
     content: @Composable () -> Unit,
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
+        shape = shape,
         color = container,
         border = BorderStroke(1.dp, outline),
     ) {
@@ -84,13 +87,13 @@ fun BigButton(
 ) {
     val bg = if (outlined) Color.Transparent else if (enabled) container else MaterialTheme.colorScheme.surfaceContainerLow
     val fg = if (!enabled) MaterialTheme.colorScheme.onSurfaceVariant else if (outlined) container else content
-    val border = if (outlined) BorderStroke(2.dp, if (enabled) container else MaterialTheme.colorScheme.outline)
+    val border = if (outlined) BorderStroke(1.5.dp, if (enabled) container else MaterialTheme.colorScheme.outline)
         else if (!enabled) BorderStroke(2.dp, MaterialTheme.colorScheme.outline) else null
     Surface(
         onClick = onClick,
         enabled = enabled,
         modifier = modifier.heightIn(min = height),
-        shape = MaterialTheme.shapes.medium,
+        shape = RoundedCornerShape(8.dp),
         color = bg,
         contentColor = fg,
         border = border,
@@ -129,7 +132,7 @@ fun RcChip(
         selected -> if (emphasis != null) Rc.colors.onSolid else MaterialTheme.colorScheme.onPrimary
         else -> MaterialTheme.colorScheme.onSurface
     }
-    val border = if (selected) null else BorderStroke(1.5.dp, MaterialTheme.colorScheme.outline)
+    val border = if (selected) null else BorderStroke(1.5.dp, Rc.colors.ring)
     Surface(
         onClick = onClick,
         enabled = enabled,
@@ -151,35 +154,61 @@ fun RcChip(
     }
 }
 
-/** Small read-only label: message type, state. Colour plus words, never colour alone. */
+/** Small read-only label: message type, state. Colour plus words, never colour alone. 13 sp, 6 dp corners. */
 @Composable
-fun Tag(text: String, background: Color, content: Color, modifier: Modifier = Modifier, @DrawableRes icon: Int? = null) {
+fun Tag(
+    text: String,
+    background: Color,
+    content: Color,
+    modifier: Modifier = Modifier,
+    @DrawableRes icon: Int? = null,
+    border: Color? = null,
+) {
     Row(
         modifier
             .background(background, RoundedCornerShape(6.dp))
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .then(if (border != null) Modifier.border(1.dp, border, RoundedCornerShape(6.dp)) else Modifier)
+            .padding(horizontal = 8.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        if (icon != null) RcIcon(icon, null, tint = content, size = 16.dp)
-        Text(text, style = MaterialTheme.typography.labelMedium, color = content, maxLines = 1)
+        if (icon != null) RcIcon(icon, null, tint = content, size = 15.dp)
+        Text(text, style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp, letterSpacing = 0.sp), color = content, maxLines = 1)
     }
 }
 
-/** State of a task: open (amber), accepted (blue), declined (grey), done (green), delivery unknown (grey, dashed). */
+/** A plain grey tag: the report type ("Person found"), "Sent by you". */
+@Composable
+fun PlainTag(text: String, modifier: Modifier = Modifier) =
+    Tag(text, MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurface, modifier)
+
+/** State of a task: open (amber), accepted (blue), declined (grey), done (green), delivery unknown (grey). */
 @Composable
 fun StateTag(state: String, modifier: Modifier = Modifier) {
     val c = Rc.colors
-    // Solid tonal fills with ink text: they read in sunlight and in the dark.
-    val ink = Color(0xFF17231C)
     val (bg, fg, label) = when (state) {
-        "open" -> Triple(Color(0xFFF2C14E), ink, stringResource(R.string.state_open))
-        "accepted" -> Triple(Color(0xFF9CC9EC), ink, stringResource(R.string.state_accepted))
-        "done" -> Triple(Color(0xFFA6D8B2), ink, stringResource(R.string.state_done))
-        "declined" -> Triple(Color(0xFFC9CEC9), ink, stringResource(R.string.state_declined))
-        else -> Triple(Color(0xFFC9CEC9), ink, stringResource(R.string.state_delivery_unknown))
+        "open" -> Triple(c.openSoft, c.open, stringResource(R.string.state_open))
+        "accepted" -> Triple(c.acceptedSoft, c.accepted, stringResource(R.string.state_accepted))
+        "done" -> Triple(c.doneSoft, c.done, stringResource(R.string.state_done))
+        "declined" -> Triple(c.declinedSoft, c.declined, stringResource(R.string.state_declined))
+        else -> Triple(c.declinedSoft, c.declined, stringResource(R.string.state_delivery_unknown))
     }
     Tag(label, bg, fg, modifier, icon = if (state == "done") R.drawable.ic_check else null)
+}
+
+/** The UTM grid reference as a chip: "Grid 32U 373815 5617111 · 450 m NE". */
+@Composable
+fun GridChip(ref: String, modifier: Modifier = Modifier, distance: String? = null) {
+    Row(
+        modifier.padding(top = 2.dp).background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(6.dp))
+            .padding(horizontal = 9.dp, vertical = 3.dp).testTag("grid_ref"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
+    ) {
+        Text(stringResource(R.string.task_grid_ref), style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp), color = Rc.colors.muted)
+        Text(ref, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium, fontFeatureSettings = "tnum"), color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
+        if (distance != null) Text("· $distance", style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp), color = Rc.colors.muted, maxLines = 1)
+    }
 }
 
 /**
@@ -210,15 +239,31 @@ fun SourceTag(measured: Boolean, modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * Section heading like the dashboard: condensed capitals with a 2 dp amber rule underneath. [note] is a small word
+ * after it ("on your radio"). [plain] draws the rule in the line colour instead of amber.
+ */
 @Composable
-fun SectionHeader(text: String, modifier: Modifier = Modifier, count: Int? = null, color: Color = MaterialTheme.colorScheme.onSurface) {
-    // Same signature as the dashboard: condensed capitals with a 2 dp amber rule underneath.
-    Column(modifier.fillMaxWidth().padding(top = 8.dp)) {
-        Row(Modifier.padding(bottom = 4.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(text.uppercase(), style = MaterialTheme.typography.headlineSmall.copy(letterSpacing = 0.8.sp), color = color, modifier = Modifier.semantics { contentDescription = text })
-            if (count != null) Text(count.toString(), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+fun SectionHeader(
+    text: String,
+    modifier: Modifier = Modifier,
+    count: Int? = null,
+    color: Color = MaterialTheme.colorScheme.onSurface,
+    note: String? = null,
+    plain: Boolean = false,
+) {
+    Column(modifier.fillMaxWidth().padding(top = 8.dp).semantics(mergeDescendants = true) {}) {
+        Row(Modifier.padding(start = 2.dp, bottom = 4.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(text.uppercase(), style = MaterialTheme.typography.titleLarge.copy(fontSize = 21.sp, letterSpacing = 0.8.sp), color = color)
+            val small = note ?: count?.toString()
+            if (small != null) Text(
+                if (note != null) small.uppercase() else small,
+                style = if (note != null) MaterialTheme.typography.titleLarge.copy(fontSize = 16.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, letterSpacing = 0.6.sp)
+                else MaterialTheme.typography.titleMedium.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Medium),
+                color = Rc.colors.muted, modifier = Modifier.padding(bottom = 1.dp),
+            )
         }
-        Box(Modifier.fillMaxWidth().height(2.dp).background(Rc.colors.openSolid))
+        Box(Modifier.fillMaxWidth().height(2.dp).background(if (plain) MaterialTheme.colorScheme.outlineVariant else Rc.colors.openSolid))
     }
 }
 

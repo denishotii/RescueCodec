@@ -3,14 +3,16 @@
 Key: "<sender node hex>-<id>", for example "a1b2c3d4-7". States:
   open      nobody answered yet
   accepted  a team took it
-  declined  a team cannot take it (another team may still accept)
+  declined  only declines so far (another team may still accept)
   done      finished. Final: nothing changes it any more.
   unknown   an Ack arrived for a task we never received (or have not received yet)
 
 Moves you make yourself (`transition`): open -> accepted | declined; accepted -> done | declined;
 declined -> accepted; the same state again is allowed (it re-sends the Ack). Everything else raises InvalidTransition
-(the gateway answers 409). Acks that arrive from the radio (`on_ack`) are applied as they come, newest wins,
-except that done stays done and a late Ack for a missing task makes an `unknown` placeholder.
+(the gateway answers 409). Every Ack is kept in the history, and the state follows one rule (`state_of`, the same
+as the Kotlin RequestTracker): a done from anyone is final; else accepted while any responder's latest answer is
+accepted; else declined if any responder's latest answer is declined; else open. So when team A accepts and team B
+declines, the task stays accepted: A still has it. An Ack for a missing task makes an `unknown` placeholder.
 
 Placeholders are bounded: at most MAX_PLACEHOLDERS are kept and one that no report has filled in for
 PLACEHOLDER_TTL_S is dropped, so a flood of Acks cannot grow memory. Trust: the private channel key is the only
@@ -119,15 +121,21 @@ class TaskBoard:
             self._tasks[key] = task
         elif task.type is None:      # the Ack came first: fill in the placeholder
             task.type, task.priority, task.message, task.created = kind, effective_priority(msg), dict(msg), now
-            task.state = self._state_from_acks(task) if task.acks else "open"
+            task.state = self.state_of(task)
             task.updated = now
         return task
 
     @staticmethod
-    def _state_from_acks(task: Task) -> str:
+    def state_of(task: Task) -> str:
+        """The state the Acks give (SPEC section 15). Done from anyone is final. Else accepted if any responder's
+        latest answer is accepted, else declined if any responder's latest answer is declined, else open."""
         if any(a["status"] == "done" for a in task.acks):
             return "done"
-        return task.acks[-1]["status"] if task.acks else "open"
+        latest = {a["by"]: a["status"] for a in task.acks}     # in arrival order, so a later answer replaces an earlier one
+        for status in ("accepted", "declined"):
+            if status in latest.values():
+                return status
+        return "open"
 
     def on_ack(self, sender: int | str, msg: Mapping, now: datetime | None = None) -> Task | None:
         now = now or datetime.now(timezone.utc)
@@ -143,8 +151,8 @@ class TaskBoard:
         by = node_to_json(node_from_json(sender) if isinstance(sender, str) else int(sender))
         entry = {"by": by, "status": ack["status"], "eta": ack.get("eta"), "team": ack.get("team"), "time": now}
         task.acks.append({k: v for k, v in entry.items() if v is not None})
-        if task.state != "done" and task.type is not None:
-            task.state = ack["status"]
+        if task.type is not None:
+            task.state = self.state_of(task)
         task.updated = now
         return task
 
@@ -165,6 +173,6 @@ class TaskBoard:
             body["eta"] = eta
         if team:
             body["team"] = team
-        task.state = status
+        task.state = status           # the gateway feeds the sent Ack back through on_message, which applies state_of
         task.updated = now
         return {"ack": body}

@@ -2,7 +2,7 @@
 
 TypeScript library for **RescueCodec v2**. It turns a rescue report into a tiny protobuf message (about 23 bytes) that fits on a Meshtastic LoRa radio. It turns the bytes back into a readable German or English line. It works fully offline.
 
-Passes RescueCodec 2.0.0 conformance Level 1 and Level 2 (`spec/vectors/codec.json`, all cases). Old v1 packets can be read. Licence: Apache-2.0.
+Passes RescueCodec 2.0.0 conformance Level 1 and Level 2 (`spec/vectors/codec.json`, all cases, including `packed_text`). Old v1 packets can be read. Licence: Apache-2.0.
 
 ## Install
 
@@ -40,6 +40,13 @@ console.log(render(decodeAny(bytes), "en")); // decodeAny also reads old v1 pack
 | `meshtasticPriority(msg)` | Suggested Meshtastic packet priority (critical 110, urgent 100, normal 70, routine 10). |
 | `resolveTime("17:45", now)` | Full UTC date for a message time. |
 | `PORTNUM` | 256, the Meshtastic port. |
+| `packText(text)`, `unpackText(bytes, 1)` | Raw DEFLATE with the shared text dictionary (see below). |
+
+## Packed texts
+
+A free text can travel packed: `encode({id: 3, text: {text: "We are at the hut, ...", dict: 1}})` packs the words with raw DEFLATE and the shared dictionary `spec/vocab/text-dict-v1.txt` (spec section 3.5). The example sentence goes from 81 to 34 bytes. `decode` always unpacks: you get `{text: {text: "...", dict: 1}}`, so `dict` tells you it came packed. A packed text with a dictionary this library does not know decodes as `unknown` (newer type). Unpacking stops at 1024 bytes (`too_large`); a broken, cut or trailing stream is `malformed`.
+
+Packing and unpacking use [pako](https://github.com/nodeca/pako) 2.1.0 (MIT and Zlib licence), the only other runtime dependency. Its output is byte-identical to Python's zlib for the vectors, but the spec does not require that: any valid DEFLATE stream is fine. The dictionary is bundled in `src/text-dict-data.ts` (about 16 KB), and a test checks its SHA-256 against the vectors.
 
 `CodecError` has a stable `code` (`empty`, `too_large`, `unsupported_version`, `malformed`, `no_body`, `multiple_bodies`, `unknown_key`, `invalid_value`, `missing_field`) and a `field` path such as `pos.lat`. The JSON shape and all rules are in `spec/SPEC.md`.
 
@@ -47,7 +54,7 @@ console.log(render(decodeAny(bytes), "en")); // decodeAny also reads old v1 pack
 
 ```sh
 npm install
-npm run gen     # regenerate src/gen and src/i18n-data.ts from ../spec (needs protoc)
+npm run gen     # regenerate src/gen, src/i18n-data.ts and src/text-dict-data.ts from ../spec (needs protoc)
 npm test        # conformance vectors with vitest
 npm run build   # ESM and type definitions in dist/
 ```

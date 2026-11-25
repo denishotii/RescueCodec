@@ -5,6 +5,7 @@ import { BinaryReader } from "@bufbuild/protobuf/wire";
 import * as C from "./codes.js";
 import { CodecError, type ErrorCode } from "./errors.js";
 import { EnvelopeSchema, type Envelope } from "./gen/rescuecodec/v2/rescuecodec_pb.js";
+import { MAX_UNPACKED_BYTES, PackError, knownDict, packText, unpackText } from "./textpack.js";
 import type { RescueMessage } from "./types.js";
 
 type Obj = Record<string, unknown>;
@@ -259,14 +260,39 @@ function buildAck(b0: unknown): Body {
 }
 
 function buildText(b0: unknown): Body {
-  const b = checkKeys(b0, ["text"], "text");
+  const b = checkKeys(b0, ["text", "dict"], "text");
+  if ("dict" in b && !knownDict(int(b.dict, "text.dict", 1, 0xffffffff))) {
+    throw err("invalid_value", "unknown dictionary, known: [1]", "text.dict");
+  }
   let text = "";
+  let deflate: Uint8Array = new Uint8Array(0);
+  let dict = 0;
   if ("text" in b) {
     if (typeof b.text !== "string") throw err("invalid_value", "must be a string", "text.text");
     if (hasLoneSurrogate(b.text)) throw err("invalid_value", "must be valid Unicode", "text.text");
-    text = b.text;
+    const size = byteLength(b.text);
+    if (!("dict" in b)) text = b.text;
+    else if (size > 0) {
+      // A packed text: the same words as raw DEFLATE with the shared dictionary (spec section 3.5).
+      if (size > MAX_UNPACKED_BYTES) throw err("invalid_value", `a packed text is at most ${MAX_UNPACKED_BYTES} bytes`, "text.text");
+      dict = b.dict as number;
+      deflate = packText(b.text, dict);
+    }
   }
-  return { case: "text", value: { text } } as Body;
+  return { case: "text", value: { text, deflate, dict } } as Body;
+}
+
+type TextBody = { text: string; deflate: Uint8Array; dict: number };
+
+/** The words of a Text body: `text`, or `deflate` unpacked. Throws CodecError. */
+export function unpackedText(t: TextBody): string {
+  if (t.deflate.length === 0) return t.text;
+  try {
+    return unpackText(t.deflate, t.dict);
+  } catch (e) {
+    if (e instanceof PackError) throw err(e.code, e.message, "text.deflate");
+    throw err("malformed", e instanceof Error ? e.message : String(e), "text.deflate");
+  }
 }
 
 const BUILDERS: Record<C.BodyType, (b: unknown) => Body> = {
@@ -306,9 +332,16 @@ export function toProto(msg: unknown): Envelope {
 
 // ---------------------------------------------------- validation (both ways)
 
-/** Body type name, or "unknown" for a body from a newer spec version. */
+/**
+ * Body type name, or "unknown" for a body from a newer spec version. A text packed with a dictionary this
+ * library does not know is "unknown" too: it can only be read after an update.
+ */
 export function bodyType(env: Envelope): string {
-  return env.body.case ?? "unknown";
+  const body = env.body;
+  if (body.case === "text" && body.value.deflate.length > 0 && body.value.dict !== 0 && !knownDict(body.value.dict)) {
+    return "unknown";
+  }
+  return body.case ?? "unknown";
 }
 
 /** Value rules shared by encoder and decoder (spec section 5). */
@@ -379,7 +412,16 @@ export function validate(env: Envelope): void {
       break;
     }
     case "text": {
-      const size = byteLength(body.value.text);
+      const t = body.value;
+      if (kind === "unknown") break; // packed with a newer dictionary
+      if (t.deflate.length > 0) {
+        if (t.text) throw err("invalid_value", "give text or deflate, not both", "text.deflate");
+        if (t.dict === 0) throw err("missing_field", "a packed text needs its dictionary number", "text.dict");
+        if (!unpackedText(t)) throw err("missing_field", "text must not be empty", "text.text");
+        break;
+      }
+      if (t.dict) throw err("invalid_value", "dict is only allowed with deflate", "text.dict");
+      const size = byteLength(t.text);
       if (size === 0) throw err("missing_field", "text must not be empty", "text.text");
       if (size > C.MAX_TEXT_BYTES) throw err("invalid_value", `text is at most ${C.MAX_TEXT_BYTES} bytes`, "text.text");
       break;
@@ -471,7 +513,9 @@ export function fromProto(env: Envelope): RescueMessage {
       break;
     }
     case "text":
-      out.text = { text: body.value.text };
+      if (bodyType(env) === "unknown") out.unknown = {};
+      else if (body.value.deflate.length > 0) out.text = { text: unpackedText(body.value), dict: body.value.dict };
+      else out.text = { text: body.value.text };
       break;
     default:
       out.unknown = {};

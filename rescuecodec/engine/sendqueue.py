@@ -83,6 +83,7 @@ class QueueItem:
     meshtastic_priority: int
     queued_at: float
     sort_key: tuple = field(default=(), repr=False)
+    target: Any = None          # where it goes (gateway: channel and peer). The same bytes to another target are not a repeat
 
     @property
     def airtime_basis(self) -> str:
@@ -102,17 +103,21 @@ class SendQueue:
     def __len__(self) -> int:
         return len(self._items)
 
-    def put(self, msg: Mapping, now: float | None = None) -> QueueItem | None:
+    def put(self, msg: Mapping, now: float | None = None, payload: bytes | None = None, target: Any = None) -> QueueItem | None:
         """Encode and queue a message. Returns None when the same bytes are already waiting (dedupe).
-        Raises CodecError when the message is invalid."""
+        Raises CodecError when the message is invalid.
+        `payload` replaces the encoded message for a message that goes out in another form, for example a text sent
+        as a plain Meshtastic text (port 1): those bytes are sent and their airtime is counted. Type and priority
+        still come from `msg`."""
         now = self._clock() if now is None else now
-        payload = encode(msg)
-        if any(i.payload == payload for i in self._items):
+        payload = encode(msg) if payload is None else bytes(payload)
+        if any(i.payload == payload and i.target == target for i in self._items):
             return None
         kind = message_type(msg)
         prio = effective_priority(msg)
         item = QueueItem(next(self._seq), dict(msg), payload, kind, prio, TYPE_RANK[kind],
-                         message_airtime_seconds(len(payload), self.preset), C.MESHTASTIC_PRIORITY[prio], now)
+                         message_airtime_seconds(len(payload), self.preset), C.MESHTASTIC_PRIORITY[prio], now,
+                         target=target)
         item.sort_key = (item.rank, -PRIORITY_LEVEL[prio], item.seq)
         self._items.append(item)
         self._items.sort(key=lambda i: i.sort_key)

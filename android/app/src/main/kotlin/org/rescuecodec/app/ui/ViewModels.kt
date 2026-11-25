@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -18,6 +19,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -28,6 +30,12 @@ import org.rescuecodec.app.core.AirtimeStatus
 import org.rescuecodec.app.core.AnswerResult
 import org.rescuecodec.app.core.ChannelChoice
 import org.rescuecodec.app.core.ChannelOption
+import org.rescuecodec.app.core.ChatId
+import org.rescuecodec.app.core.ChatList
+import org.rescuecodec.app.core.ChatSummary
+import org.rescuecodec.app.core.MeshText
+import org.rescuecodec.app.core.NodeName
+import org.rescuecodec.app.core.RadioChannel
 import org.rescuecodec.app.core.Fix
 import org.rescuecodec.app.core.LocationHelper
 import org.rescuecodec.app.core.Messenger
@@ -37,8 +45,16 @@ import org.rescuecodec.app.data.MessageEntity
 import org.rescuecodec.app.data.StatNames
 import org.rescuecodec.app.data.TaskEntity
 import org.rescuecodec.app.data.add
+import org.meshtastic.proto.Channel
+import org.meshtastic.proto.Config
+import org.meshtastic.sdk.AdminResult
+import org.rescuecodec.app.core.Channels
+import org.rescuecodec.app.radio.ChannelAdmin
 import org.rescuecodec.app.radio.ChannelJoin
+import org.rescuecodec.app.radio.CreateResult
+import org.rescuecodec.app.radio.NameProblem
 import org.rescuecodec.app.radio.ChannelLink
+import org.rescuecodec.app.radio.JoinPlan
 import org.rescuecodec.app.radio.LinkState
 import org.rescuecodec.app.radio.RadioTarget
 import org.rescuecodec.app.service.RadioService
@@ -49,6 +65,8 @@ import org.rescuecodec.codec.Json
 import org.rescuecodec.codec.RescueCodec
 import org.rescuecodec.engine.Airtime
 import org.rescuecodec.engine.Extractor
+import org.rescuecodec.engine.TextFit
+import org.rescuecodec.engine.TextMode
 
 /** Radio connection: state, scan, connect, disconnect, channel, joining a channel by link. */
 class ConnectionViewModel(app: Application, private val graph: AppGraph) : AndroidViewModel(app) {
@@ -92,7 +110,8 @@ class ConnectionViewModel(app: Application, private val graph: AppGraph) : Andro
     /** Result of reading a channel link. */
     sealed interface JoinState {
         data object Idle : JoinState
-        data class Preview(val link: ChannelLink) : JoinState
+        /** [plan] says what joining will do; null while no radio is connected. */
+        data class Preview(val link: ChannelLink, val plan: JoinPlan?) : JoinState
         data object Working : JoinState
         data object Done : JoinState
         data class Failed(val reason: String) : JoinState
@@ -105,7 +124,9 @@ class ConnectionViewModel(app: Application, private val graph: AppGraph) : Andro
     /** Reads text from a QR code or a pasted link. */
     fun readChannelText(text: String) {
         val link = ChannelJoin.parse(text)
-        _join.value = if (link == null) JoinState.NotALink else JoinState.Preview(link)
+        val client = graph.link.client.value
+        _join.value = if (link == null) JoinState.NotALink
+        else JoinState.Preview(link, client?.let { ChannelJoin.plan(it.channels.value.orEmpty(), ChannelJoin.loraOf(it), link) })
     }
 
     fun clearJoin() { _join.value = JoinState.Idle }
@@ -125,6 +146,114 @@ class ConnectionViewModel(app: Application, private val graph: AppGraph) : Andro
             graph.messenger.refreshChannel()
         }
     }
+
+    // ------------------------------------------------------------------ new, share and remove a channel
+
+    /** A channel's share link, for the QR sheet. */
+    data class ChannelShare(val index: Int, val name: String, val link: String)
+
+    /** Making a new channel. */
+    sealed interface CreateState {
+        data object Idle : CreateState
+        data object Working : CreateState
+        data class Done(val share: ChannelShare) : CreateState
+        data object NoRadio : CreateState
+        data object NoFreeSlot : CreateState
+        data class BadName(val problem: NameProblem) : CreateState
+        data class Refused(val detail: String) : CreateState
+    }
+
+    /** Removing a channel. */
+    sealed interface RemoveState {
+        data object Idle : RemoveState
+        data class Working(val name: String) : RemoveState
+        data class Done(val name: String) : RemoveState
+        data class Failed(val name: String, val reason: String) : RemoveState
+    }
+
+    private val _create = MutableStateFlow<CreateState>(CreateState.Idle)
+    val create: StateFlow<CreateState> = _create.asStateFlow()
+
+    private val _remove = MutableStateFlow<RemoveState>(RemoveState.Idle)
+    val remove: StateFlow<RemoveState> = _remove.asStateFlow()
+
+    /** The connected radio's channels (with keys, they never leave the app unasked) and LoRa settings. Debug demo: made-up ones. */
+    private fun radioNow(): Pair<List<Channel>, Config.LoRaConfig?>? {
+        val c = graph.link.client.value ?: return org.rescuecodec.app.Demo.radio()
+        return c.channels.value.orEmpty() to ChannelJoin.loraOf(c)
+    }
+
+    /** The radio's admin call that writes one channel, or null without a radio. */
+    private fun writer(): (suspend (Channel) -> AdminResult<Unit>)? {
+        val c = graph.link.client.value ?: return org.rescuecodec.app.Demo.writer()
+        return { ch -> c.admin.setChannel(ch) }
+    }
+
+    /** Names in use: from the radio, else the last known list. */
+    private fun takenNames(): List<String> {
+        radioNow()?.let { (list, lora) -> return Channels.list(list, Channels.presetName(lora)).map { it.name } + Channels.presetName(lora) }
+        return graph.messenger.radioChannels.value.orEmpty().map { it.name }
+    }
+
+    /** A name for a new channel that is still free: "Team 2". */
+    fun suggestName(): String = ChannelAdmin.suggestName(takenNames())
+
+    /** Null when [name] can be used. */
+    fun checkName(name: String): NameProblem? = ChannelAdmin.checkName(name, takenNames())
+
+    /** True when a radio is there to write to. */
+    fun canWrite(): Boolean = writer() != null
+
+    /** Writes a new private channel with a fresh key into a free secondary slot. The QR sheet opens on [CreateState.Done]. */
+    fun createChannel(name: String) {
+        if (_create.value == CreateState.Working) return
+        val radio = radioNow()
+        val write = writer()
+        if (radio == null || write == null) { _create.value = CreateState.NoRadio; return }
+        _create.value = CreateState.Working
+        viewModelScope.launch {
+            val r = runCatching { ChannelAdmin.create(radio.first, radio.second, name, write) }
+                .getOrElse { CreateResult.Failed(CreateResult.Reason.REFUSED, it.message ?: it::class.simpleName) }
+            _create.value = when (r) {
+                is CreateResult.Created -> CreateState.Done(ChannelShare(r.index, r.name, r.link))
+                is CreateResult.Failed -> when (r.reason) {
+                    CreateResult.Reason.NO_FREE_SLOT -> CreateState.NoFreeSlot
+                    CreateResult.Reason.BAD_NAME -> CreateState.BadName(ChannelAdmin.checkName(name, radio.first, Channels.presetName(radio.second)) ?: NameProblem.TAKEN)
+                    CreateResult.Reason.REFUSED -> CreateState.Refused(r.detail.orEmpty())
+                }
+            }
+            graph.messenger.refreshChannel()
+        }
+    }
+
+    fun clearCreate() { _create.value = CreateState.Idle }
+
+    /** The QR content of channel [index] (only that channel and the radio's LoRa settings), or null without a radio. */
+    fun share(index: Int): ChannelShare? {
+        val (list, lora) = radioNow() ?: return null
+        val link = ChannelAdmin.shareLink(list, index, lora) ?: return null
+        val name = list.firstOrNull { it.index == index }?.let { Channels.displayName(it, Channels.presetName(lora)) } ?: return null
+        return ChannelShare(index, name, link)
+    }
+
+    /** True when channel [index] may be removed (not the primary). Without a radio: any slot but 0. */
+    fun removable(index: Int): Boolean = radioNow()?.let { ChannelAdmin.removable(it.first, index) } ?: (index > 0)
+
+    /** Switches channel [index] off on the radio. Its chat leaves the list; its messages stay in the database. */
+    fun removeChannel(index: Int, name: String) {
+        val radio = radioNow()
+        val write = writer()
+        if (radio == null || write == null) { _remove.value = RemoveState.Failed(name, "no radio"); return }
+        _remove.value = RemoveState.Working(name)
+        viewModelScope.launch {
+            val problem = runCatching { ChannelAdmin.remove(radio.first, index, write) }.getOrElse { it.message ?: "failed" }
+            if (problem == null && graph.settings.channelIndex == index) pickChannel(-1)
+            _remove.value = if (problem == null) RemoveState.Done(name) else RemoveState.Failed(name, problem)
+            graph.messenger.refreshChannel()
+        }
+    }
+
+    fun clearRemove() { _remove.value = RemoveState.Idle }
 }
 
 /** One task as the screen shows it. */
@@ -141,6 +270,8 @@ data class TaskItem(
     val updatedMs: Long,
     /** Moves the person may make now: accepted, declined, done. */
     val moves: Set<String>,
+    /** Name of the channel the report came on (answers go there), or null for the team channel. */
+    val channelName: String? = null,
 )
 
 /** One answer (Accept, Decline, Done) of a team. */
@@ -150,6 +281,11 @@ class TasksViewModel(app: Application, private val graph: AppGraph) : AndroidVie
     val tasks: StateFlow<List<TaskItem>> = graph.database.tasks().observeAll()
         .map { list -> list.map(::toItem) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** True when the radio has more than one private channel: then task cards name their channel. */
+    val showChannel: StateFlow<Boolean> = graph.messenger.radioChannels
+        .map { l -> l.orEmpty().count { it.isPrivate } > 1 }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     private fun toItem(t: TaskEntity): TaskItem {
         val answers = runCatching {
@@ -168,12 +304,22 @@ class TasksViewModel(app: Application, private val graph: AppGraph) : AndroidVie
         return TaskItem(
             key = t.key, type = t.type, json = t.json, state = t.state, local = t.local,
             meshDelivered = t.meshDelivered, ownStatus = t.ownStatus, answers = answers, updatedMs = t.updatedMs,
-            moves = if (t.local || t.type == "unknown") emptySet() else Messenger.ALLOWED_MOVES[t.ownStatus ?: "open"].orEmpty(),
+            moves = movesFor(t), channelName = t.channelName,
         )
     }
 
     fun answer(key: String, status: String, onResult: (AnswerResult) -> Unit = {}) {
         viewModelScope.launch { onResult(graph.messenger.answer(key, status)) }
+    }
+
+    companion object {
+        /**
+         * Moves the person may make on [t] now. None on our own tasks and on answers without a report. None once the
+         * task is done: a Done from any team is final, so Accept and Decline would change nothing.
+         */
+        fun movesFor(t: TaskEntity): Set<String> =
+            if (t.local || t.type == "unknown" || t.state == "done") emptySet()
+            else Messenger.ALLOWED_MOVES[t.ownStatus ?: "open"].orEmpty()
     }
 }
 
@@ -183,11 +329,8 @@ sealed interface SosResult {
     data class Failed(val message: String) : SosResult
 }
 
-/** Sent and received messages, the waiting queue, read-aloud and the SOS button. */
+/** The waiting queue, cancel and send again, read-aloud and the SOS button. The messages themselves: [ChatViewModel]. */
 class MessagesViewModel(app: Application, private val graph: AppGraph) : AndroidViewModel(app) {
-    val recent: StateFlow<List<MessageEntity>> = graph.database.messages().observeRecent(100)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-
     val waiting: StateFlow<List<MessageEntity>> = graph.database.messages().observeWaiting()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -208,12 +351,96 @@ class MessagesViewModel(app: Application, private val graph: AppGraph) : Android
             fix?.let { msg["pos"] = it.toPos() }
             msg["mayday"] = emptyMap<String, Any?>()
             onResult(
-                when (val r = graph.messenger.submit(msg, source = "app")) {
+                // Always the team channel, whatever chat is open: that is where the team listens for a Mayday.
+                when (val r = graph.messenger.submit(msg, source = "app", channel = null, peer = null)) {
                     is SubmitResult.Queued -> SosResult.Queued(fix != null)
                     is SubmitResult.Rejected -> SosResult.Failed(r.message)
                 },
             )
         }
+    }
+}
+
+/**
+ * One conversation: a channel by name, or a direct message with one node. The team channel also shows the messages
+ * that still wait for it (no channel name yet).
+ */
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+class ChatViewModel(app: Application, private val graph: AppGraph, val chat: ChatId) : AndroidViewModel(app) {
+    private val dao = graph.database.messages()
+
+    /** Newest first. Null until the database answered, so the screen never flashes "No messages yet". */
+    val messages: StateFlow<List<MessageEntity>?> = when (chat) {
+        is ChatId.Direct -> dao.observeDirect(chat.node, LIMIT)
+        is ChatId.Channel -> graph.teamName.flatMapLatest { team -> dao.observeChannel(chat.name, chat.name == team, LIMIT) }
+    }
+        .map<List<MessageEntity>, List<MessageEntity>?> { it }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** True for the team channel (SOS and reports go there). */
+    val isTeam: StateFlow<Boolean> = graph.teamName.map { chat is ChatId.Channel && chat.name == it }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), chat is ChatId.Channel && chat.name == graph.teamName.value)
+
+    /** True when this chat is a public channel: text only, never a report. */
+    val isPublic: StateFlow<Boolean> = graph.messenger.radioChannels
+        .map { l -> chat is ChatId.Channel && l.orEmpty().any { it.name == chat.name && it.isPublic } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    /** The channel name, or the node's name from the radio's node list (null while unknown). */
+    val title: StateFlow<String?> = graph.nodes.nodes
+        .map { n -> titleOf(chat, n) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), titleOf(chat, graph.nodes.nodes.value))
+
+    /** Names of the other radios, for the sender line of each message. */
+    val names: StateFlow<Map<Long, NodeName>> = graph.nodes.nodes
+
+    /** How texts go out in this chat: auto, compressed or normal (spec section 2.3). */
+    val textMode: StateFlow<String> = graph.messenger.routes.observeMode(chat)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TextMode.AUTO)
+
+    fun setTextMode(mode: String) { viewModelScope.launch { graph.messenger.routes.setMode(chat, mode) } }
+
+    /** The person sees this chat: everything up to the newest row is read, and the app opens it next time. */
+    fun markRead() {
+        graph.settings.lastChat = chat.key
+        val newest = messages.value?.firstOrNull()?.id ?: return
+        graph.chatReads.markRead(chat.key, newest)
+    }
+
+    companion object {
+        private const val LIMIT = 200
+
+        fun titleOf(chat: ChatId, names: Map<Long, NodeName>): String? = when (chat) {
+            is ChatId.Channel -> chat.name
+            is ChatId.Direct -> names[chat.node]?.label
+        }
+    }
+}
+
+/** The chat list on the Team tab: the team channel pinned on top, the other private channels, direct messages, public. */
+class ChatListViewModel(app: Application, private val graph: AppGraph) : AndroidViewModel(app) {
+    private val rows = graph.database.messages().observeRecent(LIST_ROWS)
+    private val maydays = graph.database.tasks().observeAll().map { list ->
+        list.filter { it.type == "mayday" && it.state != "done" }.map { it.channelName ?: graph.teamName.value }.toSet()
+    }
+    private val inputs = combine(graph.messenger.radioChannels, graph.teamName, graph.ui.showPublic) { r, t, p -> Triple(r, t, p) }
+
+    val chats: StateFlow<List<ChatSummary>?> = combine(rows, inputs, graph.nodes.nodes, graph.chatReads.read, maydays) { rows, (radio, team, pub), names, reads, may ->
+        ChatList.build(rows, radio, team, pub, names, reads, may)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** Radios from the node list the person can start a direct message with (not our own), by name. */
+    val directCandidates: StateFlow<List<NodeName>> = graph.nodes.nodes
+        .map { m -> m.values.filter { it.num != graph.settings.lastOwnNode }.sortedBy { it.label?.lowercase() } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** The chat the app opens at start: the last one used, else the team channel. */
+    fun startChat(): ChatId = ChatId.parse(graph.settings.lastChat) ?: ChatId.Channel(graph.teamName.value)
+
+    fun team(): ChatId = ChatId.Channel(graph.teamName.value)
+
+    companion object {
+        private const val LIST_ROWS = 2_000
     }
 }
 
@@ -263,6 +490,14 @@ class SettingsViewModel(app: Application, private val graph: AppGraph) : Android
     fun setLanguage(l: String) = graph.ui.setLanguage(l)
     fun toggleLanguage() = graph.ui.toggleLanguage()
     fun setTheme(m: String) = graph.ui.setTheme(m)
+
+    /** In-app sound and haptic tick for new messages and tasks. */
+    val sounds: StateFlow<Boolean> = graph.ui.sounds
+    fun setSounds(on: Boolean) = graph.ui.setSounds(on)
+
+    /** The public channel (LongFast) in the chat list. Off by default. */
+    val showPublic: StateFlow<Boolean> = graph.ui.showPublic
+    fun setShowPublic(on: Boolean) = graph.ui.setShowPublic(on)
 
     val teamLabel: String get() = graph.settings.teamLabel
     fun setTeamLabel(v: String) { graph.settings.teamLabel = Messenger.teamLabelFor(v).orEmpty() }
@@ -318,7 +553,15 @@ data class ReportUi(
     val problem: String? = null,
     /** True when the phone has a position that is added to the report. */
     val hasPosition: Boolean = false,
+    /** The text was cut so it fits into 200 bytes with the position. It ends with "…". */
+    val shortened: Boolean = false,
     val busy: Boolean = false,
+    /** A text goes packed for RescueCodec ([sentBytes] on air) instead of as a normal Meshtastic text ([plainBytes]). */
+    val packed: Boolean = false,
+    /** Bytes of a text as a normal Meshtastic text, 0 when the message is not a text. */
+    val plainBytes: Int = 0,
+    /** The chat's text mode: auto, compressed or normal. */
+    val textMode: String = TextMode.AUTO,
 )
 
 /** One-off results the screen shows as a snackbar. */
@@ -335,6 +578,41 @@ class ReportViewModel(app: Application, private val graph: AppGraph) : AndroidVi
     private val textInput = MutableStateFlow("")
     private val extractor by lazy { Extractor() }
     private var fix: Fix? = null
+
+    /** The chat the composer sends to. Null: the team channel. */
+    @Volatile private var target: ChatId? = null
+    @Volatile private var targetIsTeam: Boolean = true
+
+    /** Direct messages and the public channel take plain text only: no report fields, no position. */
+    @Volatile var textOnly: Boolean = false
+        private set
+
+    private var modeJob: Job? = null
+
+    /** The chat screen tells the composer where it sends. A new chat starts with an empty field. */
+    fun setChat(chat: ChatId, isTeam: Boolean, isPublic: Boolean) {
+        val only = chat is ChatId.Direct || isPublic
+        if (target != null && chat != target) clear()
+        val changed = only != textOnly || isTeam != targetIsTeam
+        target = chat
+        targetIsTeam = isTeam
+        textOnly = only
+        if (changed && _ui.value.text.isNotBlank()) viewModelScope.launch { rebuild(_ui.value.text, force = true) }
+        // The byte line follows the chat's text mode (packed or normal), also when the person changes it.
+        modeJob?.cancel()
+        modeJob = viewModelScope.launch {
+            graph.messenger.routes.observeMode(chat).collect { mode ->
+                _ui.update { it.copy(textMode = mode) }
+                if (_ui.value.message != null) recompute(_ui.value.message, graph.ui.language.value)
+            }
+        }
+    }
+
+    /** (channel, peer) of the chat the composer sends to, as [Messenger.submit] takes them. */
+    private fun destination(): Pair<String?, Long?> {
+        val chat = target
+        return (chat as? ChatId.Channel)?.name?.takeUnless { targetIsTeam } to (chat as? ChatId.Direct)?.node
+    }
 
     private val _events = MutableSharedFlow<ReportEvent>(extraBufferCapacity = 4)
     val events: SharedFlow<ReportEvent> = _events.asSharedFlow()
@@ -367,7 +645,7 @@ class ReportViewModel(app: Application, private val graph: AppGraph) : AndroidVi
     }
 
     fun clear() {
-        _ui.value = ReportUi()
+        _ui.value = ReportUi(textMode = _ui.value.textMode)
         textInput.value = ""
     }
 
@@ -379,7 +657,12 @@ class ReportViewModel(app: Application, private val graph: AppGraph) : AndroidVi
     private suspend fun rebuild(text: String, force: Boolean) {
         if (_ui.value.edited && !force) return
         if (text.isBlank()) {
-            _ui.update { ReportUi(text = text, textBytes = text.toByteArray(Charsets.UTF_8).size) }
+            _ui.update { ReportUi(text = text, textBytes = text.toByteArray(Charsets.UTF_8).size, textMode = it.textMode) }
+            return
+        }
+        if (textOnly) {
+            _ui.update { it.copy(fallback = false, edited = false) }
+            recompute(MeshText.message(text.trim()), graph.ui.language.value, fallback = false)
             return
         }
         val ex = withContext(Dispatchers.Default) { extractor.extract(text, graph.ui.language.value) }
@@ -404,14 +687,27 @@ class ReportViewModel(app: Application, private val graph: AppGraph) : AndroidVi
         var sent = 0
         var problem: String? = null
         var readable = ""
+        var shortened = false
+        var packed = false
+        var plainBytes = 0
         withContext(Dispatchers.Default) {
             try {
+                val out = fitForSending(withPos)
+                shortened = out != withPos
                 // A placeholder id of 2 bytes (128 and up) gives the real size of almost every message. Every message
                 // except an Ack gets an id when it is sent (spec section 14), also text and track.
-                val probe = if (ReportFields.typeOf(withPos) != "ack" && withPos["id"] == null) withPos + ("id" to 128) else withPos
+                val probe = if (ReportFields.typeOf(out) != "ack" && out["id"] == null) out + ("id" to ID_PROBE) else out
                 val bytes = RescueCodec.encode(probe)
                 sent = bytes.size
                 readable = RescueCodec.reconstruct(RescueCodec.decodeAny(bytes), lang)
+                if (ReportFields.typeOf(out) == "text") {
+                    // A text goes packed or as a normal Meshtastic text, by the chat's mode (spec section 2.3).
+                    val (channel, peer) = destination()
+                    val form = graph.messenger.textForm(out, channel, peer)
+                    sent = form.payload.size
+                    packed = form.packed
+                    plainBytes = form.plainSize
+                }
             } catch (e: CodecException) {
                 problem = e.message ?: e.code
             } catch (e: IllegalArgumentException) {
@@ -421,13 +717,14 @@ class ReportViewModel(app: Application, private val graph: AppGraph) : AndroidVi
         _ui.update {
             it.copy(
                 message = message, fallback = fallback, sentBytes = sent, readable = readable,
-                problem = problem, hasPosition = withPos["pos"] != null,
+                problem = problem, hasPosition = withPos["pos"] != null, shortened = shortened,
+                packed = packed, plainBytes = plainBytes,
             )
         }
     }
 
     private fun withPosition(message: Map<String, Any?>): Map<String, Any?> {
-        if (message["pos"] != null) return message
+        if (textOnly || message["pos"] != null) return message
         val f = fix ?: return message
         val out = LinkedHashMap<String, Any?>()
         (message["priority"])?.let { out["priority"] = it }
@@ -443,8 +740,9 @@ class ReportViewModel(app: Application, private val graph: AppGraph) : AndroidVi
         if (s.busy || s.problem != null) return
         _ui.update { it.copy(busy = true) }
         viewModelScope.launch {
-            val toSend = withPosition(msg)
-            when (val r = graph.messenger.submit(toSend, source = "app")) {
+            val toSend = fitForSending(withPosition(msg))
+            val (channel, peer) = destination()
+            when (val r = graph.messenger.submit(toSend, source = "app", channel = channel, peer = peer)) {
                 is SubmitResult.Queued -> {
                     if (!s.fallback) countSaving(s.textBytes, r.bytes.size)
                     _events.tryEmit(ReportEvent.Queued(r.bytes.size, r.readable))
@@ -489,8 +787,26 @@ class ReportViewModel(app: Application, private val graph: AppGraph) : AndroidVi
         speech.release()
     }
 
-    private companion object {
+    companion object {
+        /** A 2-byte id (128 and up): the size of the real id that is added when the message is sent. */
+        private const val ID_PROBE = 128
+
+        /**
+         * A text that is too long with the position is cut to fit ([TextFit.fitText]). It is measured with a 2-byte
+         * id, the largest one [Messenger.submit] gives, so it still fits when the real id is added.
+         */
+        fun fitForSending(message: Map<String, Any?>): Map<String, Any?> {
+            if (ReportFields.typeOf(message) != "text") return message
+            if (message["id"] != null) return TextFit.fitText(message)
+            return TextFit.fitText(message + ("id" to ID_PROBE)) - "id"
+        }
     }
+}
+
+/** Creates the [ChatViewModel] of one chat. Use it with `viewModel(key = chat.key, factory = ...)`. */
+class ChatViewModelFactory(private val app: Application, private val graph: AppGraph, private val chat: ChatId) : ViewModelProvider.Factory {
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : ViewModel> create(modelClass: Class<T>): T = ChatViewModel(app, graph, chat) as T
 }
 
 /** Creates the ViewModels with the app graph. */
@@ -505,6 +821,7 @@ class AppViewModelFactory(private val app: Application, private val graph: AppGr
             StatsViewModel::class.java -> StatsViewModel(app, g)
             SettingsViewModel::class.java -> SettingsViewModel(app, g)
             ReportViewModel::class.java -> ReportViewModel(app, g)
+            ChatListViewModel::class.java -> ChatListViewModel(app, g)
             else -> throw IllegalArgumentException("Unknown ViewModel ${modelClass.name}")
         } as T
     }

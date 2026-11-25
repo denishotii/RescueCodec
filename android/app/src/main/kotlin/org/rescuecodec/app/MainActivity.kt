@@ -11,8 +11,10 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import org.rescuecodec.app.radio.LinkState
 import org.rescuecodec.app.radio.RadioTarget
+import org.rescuecodec.app.service.AppForeground
 import org.rescuecodec.app.service.RadioService
 import org.rescuecodec.app.ui.AppViewModelFactory
+import org.rescuecodec.app.ui.NavRequest
 import org.rescuecodec.app.ui.ReportViewModel
 import org.rescuecodec.app.ui.RescueRoot
 import org.rescuecodec.app.ui.Screen
@@ -20,27 +22,28 @@ import org.rescuecodec.app.ui.Screen
 /**
  * The one screen host. Everything on screen is Compose, see `ui/RescueRoot.kt`.
  *
- * `adb shell am start -n org.rescuecodec.app/.MainActivity --es screen STATS` opens a screen
- * directly (REPORT, ACTIONS, FEED, STATS, RADIO, SETTINGS). The screenshot script uses it.
+ * `adb shell am start -n org.rescuecodec.app/.MainActivity --es screen TASKS` opens a screen
+ * directly (CHATS, TASKS, RADIO, SETTINGS; the old names REPORT, FEED and TEAM open Chats, ACTIONS opens Tasks,
+ * STATS opens Radio).
  * Debug builds also accept `--es connect host:port` to connect to a network radio (the simulator).
  */
 class MainActivity : ComponentActivity() {
     /** A screen asked for by an intent while the app is already open (counter, screen). */
-    private val navRequest = mutableStateOf<Pair<Int, Screen>?>(null)
+    private val navRequest = mutableStateOf<NavRequest?>(null)
     private var navCounter = 0
 
     private fun screenFrom(intent: Intent?): Screen? =
-        intent?.getStringExtra("screen")?.let { n -> Screen.entries.firstOrNull { it.name.equals(n, true) } }
+        Screen.from(intent?.getStringExtra("screen"))
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        screenFrom(intent)?.let { navRequest.value = ++navCounter to it }
+        screenFrom(intent)?.let { navRequest.value = NavRequest(++navCounter, it, intent.getStringExtra("chat")) }
         injectReportText(intent)
     }
 
     /**
-     * Debug builds only: type a sentence into the Report screen from the command line, with real umlauts
+     * Debug builds only: type a sentence into the composer from the command line, with real umlauts
      * (adb cannot type them). `--es report_text_b64 <base64 of the UTF-8 sentence>`.
      */
     private fun injectReportText(intent: Intent?) {
@@ -72,8 +75,24 @@ class MainActivity : ComponentActivity() {
                 RadioService.start(this, RadioTarget.Tcp(host, port))
             }
         }
-        val initial = screenFrom(intent) ?: Screen.REPORT
-        setContent { RescueRoot(graph, initial, navRequest.value) }
+        // Debug builds only: `--ez demo true` fills the app with the demo content of the mockup (see Demo in src/debug).
+        if (BuildConfig.DEBUG) Demo.start(this, graph, intent)
+        val initial = screenFrom(intent) ?: Screen.CHATS
+        // A notification names the chat to open ("chat" extra); otherwise the app opens the last chat used.
+        val initialChat = intent?.getStringExtra("chat")?.takeIf { initial == Screen.CHATS }
+        setContent { RescueRoot(graph, initial, navRequest.value, initialChat) }
         injectReportText(intent)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        AppForeground.visible = true
+        // The person sees the chat now: message and answer notifications are read.
+        AppGraph.from(this).teamNotifier.clearRead()
+    }
+
+    override fun onStop() {
+        AppForeground.visible = false
+        super.onStop()
     }
 }

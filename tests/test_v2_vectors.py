@@ -73,6 +73,24 @@ class VectorTests(unittest.TestCase):
             with self.subTest(case["name"]):
                 self.assertEqual(decode_any(bytes.fromhex(case["hex"])), case["decoded"])
 
+    def test_packed_text(self):
+        from rescuecodec.v2 import textpack
+        self.assertGreaterEqual(len(VECTORS["packed_text"]), 5)
+        for case in VECTORS["packed_text"]:
+            with self.subTest(case["name"]):
+                self.assertEqual(textpack.unpack(bytes.fromhex(case["deflate"]), case["dict"]), case["text"])
+                self.assertEqual(decode(bytes.fromhex(case["hex"])), case["decoded"])
+                self.assertEqual(decode(encode(case["decoded"])), case["decoded"])
+                self.assertLess(len(bytes.fromhex(case["deflate"])), case["text_size"])
+
+    def test_text_dictionary_hash(self):
+        import hashlib
+        for number, entry in VECTORS["text_dicts"].items():
+            data = (ROOT / "spec" / entry["file"]).read_bytes()
+            self.assertEqual(hashlib.sha256(data).hexdigest(), entry["sha256"], f"dictionary {number} changed")
+            self.assertEqual(len(data), entry["size"])
+            self.assertLess(len(data), 16 * 1024)
+
     def test_every_body_type_is_covered(self):
         kinds = {next(k for k in c["input"] if k in ("found", "track", "sector", "request", "hazard", "mayday",
                                                       "ack", "text")) for c in VECTORS["valid"]}

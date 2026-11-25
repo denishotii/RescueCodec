@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
 import { AlertTriangle, Check, ChevronDown, CheckCheck, HandHelping, MessageSquare, Route, Siren, SquareDashed, UserSearch, HelpCircle } from "lucide-react";
-import type { MessageType, Priority, TaskState } from "../api/types";
+import type { Channel, MeshNode, MessageType, Priority, TaskState } from "../api/types";
 import { useT } from "../state/hooks";
 import { useUi } from "../state/ui";
-import { prioName } from "../lib/format";
+import { nodeLabel, prioName } from "../lib/format";
 
 export const TYPE_ICON: Record<MessageType, typeof Siren> = {
   found: UserSearch, track: Route, sector: SquareDashed, request: HandHelping, hazard: AlertTriangle,
@@ -36,6 +36,26 @@ export function SourceTag({ source, always = false }: { source: "measured" | "es
       {t(source)}
     </span>
   );
+}
+
+/**
+ * Where a message went: the channel name, or "Direct" with the other radio for a direct message.
+ * Neutral on purpose: colour is kept for meaning (priority, state).
+ */
+export function ChannelChip({ channel, to, from, direction, nodes }: {
+  channel: Channel | null | undefined; to?: string | null; from?: string; direction?: "in" | "out"; nodes?: Record<string, MeshNode>;
+}) {
+  const t = useT();
+  if (to) {
+    const peer = direction === "in" ? from : to;
+    return (
+      <span className="chip chip-channel" title={t("directTip")}>
+        {t("direct")}{peer ? ` · ${nodes ? nodeLabel(peer, nodes) : peer}` : ""}
+      </span>
+    );
+  }
+  if (!channel?.name) return null;
+  return <span className="chip chip-channel" title={`${t("channel")} ${channel.name}`}>#{channel.name}</span>;
 }
 
 export function StateChip({ state, children }: { state: TaskState; children: ReactNode }) {

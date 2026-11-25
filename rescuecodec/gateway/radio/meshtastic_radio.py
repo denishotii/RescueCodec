@@ -11,8 +11,9 @@ import threading
 from collections.abc import Callable
 from typing import Any
 
-from rescuecodec.gateway.radio.base import (BROADCAST, PORT_PRIVATE_APP, RadioAdapter, RadioInfo, RadioPacket,
-                                            ResultCallback, node_id)
+from rescuecodec.gateway.radio.base import (BROADCAST, PORT_PRIVATE_APP, PORT_TEXT_MESSAGE, PRESET_DISPLAY_NAME, Channel,
+                                            RadioAdapter, RadioInfo, RadioPacket, ResultCallback, is_for_us,
+                                            listening_channels, node_id)
 
 log = logging.getLogger("rescuecodec.gateway.radio")
 
@@ -55,6 +56,7 @@ def pick_serial_port(setting: str, globber: Callable[[str], list[str]] | None = 
 DEFAULT_PSK = bytes([0xd4, 0xf1, 0xbb, 0x3a, 0x20, 0x29, 0x07, 0x59, 0xf0, 0xbc, 0xff, 0xab, 0xcf, 0x4e, 0x69, 0x01])
 DEFAULT_CHANNEL_NAME = "RescueCodec"
 ROLE_DISABLED = 0
+ROLE_PRIMARY = 1
 
 
 class ChannelError(RuntimeError):
@@ -96,6 +98,23 @@ def resolve_channel(channels: Any, name: str = DEFAULT_CHANNEL_NAME, explicit: i
     if not own:
         raise ChannelError(f'no private channel on this radio, add one named "{name}" with its own key (import the team QR with Replace)')
     raise ChannelError(f'several private channels on this radio, name the team channel "{name}" or pass --channel')
+
+
+def channel_table(channels: Any, preset: str | None = None) -> list[Channel]:
+    """Every enabled channel of the radio as Channel(index, name, public). An empty primary name shows as the modem
+    preset's name ("LongFast"), an empty secondary name as "Channel N"."""
+    out = []
+    for position, channel in enumerate(channels or []):
+        role = int(getattr(channel, "role", 0) or 0)
+        if role == ROLE_DISABLED:
+            continue
+        settings = getattr(channel, "settings", None)
+        index = int(getattr(channel, "index", position))
+        name = str(getattr(settings, "name", "") or "")
+        if not name:
+            name = PRESET_DISPLAY_NAME.get(preset or "LONG_FAST", "LongFast") if role == ROLE_PRIMARY else f"Channel {index}"
+        out.append(Channel(index, name, is_default_key(bytes(getattr(settings, "psk", b"") or b""))))
+    return out
 
 
 def _int_or_none(value: Any) -> int | None:
@@ -174,7 +193,8 @@ class MeshtasticRadio(RadioAdapter):
     """
 
     def __init__(self, kind: str, target: str, *, interface_factory: Callable[[str, str], Any] | None = None,
-                 retry_s: float = 3.0, channel_name: str = DEFAULT_CHANNEL_NAME, channel_index: int | None = None):
+                 retry_s: float = 3.0, channel_name: str = DEFAULT_CHANNEL_NAME, channel_index: int | None = None,
+                 listen: list[str] | None = None, show_public: bool = False):
         super().__init__()
         if kind not in ("tcp", "serial"):
             raise ValueError("kind must be tcp or serial")
@@ -192,6 +212,8 @@ class MeshtasticRadio(RadioAdapter):
         self._own_node: str | None = None
         self.channel_name = channel_name
         self.channel_index = channel_index          # None = look it up by name on the radio
+        self.listen = listen                        # channel names to hear (None = every private channel)
+        self.show_public = show_public              # also hear broadcasts on public channels (LongFast)
         self.other_channel = 0                      # packets dropped because they came in on another channel
 
     # ------------------------------------------------------------ opening
@@ -261,6 +283,7 @@ class MeshtasticRadio(RadioAdapter):
         self._own_node = self._read_own_node()
         self._set_connected(True)
         log.info("radio connected: %s", self.info())
+        self._safe(self._log_channels, "listing the channels")
         self._safe(self._announce_nodes, "announcing the radio's nodes")
         return True
 
@@ -271,6 +294,18 @@ class MeshtasticRadio(RadioAdapter):
             fn()
         except Exception:
             log.exception("%s failed", what)
+
+    def _log_channels(self) -> None:
+        heard = self.listen_channels()
+        log.info("listening on %s, plus direct messages to %s", ", ".join(f"{c.name} ({c.index})" for c in heard) or "no channel",
+                 self._own_node)
+        known = {c.name.lower(): c for c in self.channels()}
+        for name in self.listen or []:
+            channel = known.get(name.lower())
+            if channel is None:
+                log.warning('--channels names "%s", but the radio has no such channel', name)
+            elif channel.public and not self.show_public:
+                log.warning('channel "%s" is public: add --show-public to hear it', channel.name)
 
     def _read_own_node(self) -> str | None:
         try:
@@ -329,15 +364,15 @@ class MeshtasticRadio(RadioAdapter):
                 return
             if radio_packet.sender == self._own_node:        # our own packet coming back
                 return
-            if radio_packet.port == PORT_PRIVATE_APP:
-                try:
-                    wanted = self.resolved_channel()[0]
-                except ChannelError:
-                    wanted = None
-                if wanted is None or radio_packet.channel != wanted:   # other teams or apps on port 256, or no safe channel
-                    self.other_channel += 1
-                    log.debug("dropped a port 256 packet from %s on channel %s (ours: %s)", radio_packet.sender,
-                              radio_packet.channel, wanted)
+            if radio_packet.port in (PORT_PRIVATE_APP, PORT_TEXT_MESSAGE):
+                # Only broadcasts on the channels we listen on, and direct messages to us. The public LongFast chat
+                # stays out unless --show-public.
+                listening = {c.index for c in self.listen_channels()}
+                if not is_for_us(radio_packet, self._own_node, listening):
+                    if radio_packet.port == PORT_PRIVATE_APP:       # other teams or apps on port 256, or no safe channel
+                        self.other_channel += 1
+                    log.debug("ignored a port %d packet from %s on channel %s to %s (listening on %s)", radio_packet.port,
+                              radio_packet.sender, radio_packet.channel, radio_packet.to, sorted(listening))
                     return
             self.on_packet(radio_packet)
         except Exception:
@@ -376,6 +411,33 @@ class MeshtasticRadio(RadioAdapter):
             raise ChannelError("no radio connected")
         return resolve_channel(getattr(iface.localNode, "channels", None), self.channel_name, self.channel_index)
 
+    def _preset(self) -> str | None:
+        try:
+            from meshtastic.protobuf import config_pb2
+            return config_pb2.Config.LoRaConfig.ModemPreset.Name(self._iface.localNode.localConfig.lora.modem_preset)
+        except Exception:
+            return None
+
+    def channels(self) -> list[Channel]:
+        iface = self._iface
+        if iface is None or not self._connected:
+            return []
+        try:
+            return channel_table(getattr(iface.localNode, "channels", None), self._preset())
+        except Exception:
+            log.debug("could not read the channels", exc_info=True)
+            return []
+
+    def default_channel(self) -> Channel | None:
+        try:
+            index = self.resolved_channel()[0]
+        except ChannelError:
+            return None
+        return self.channel_by_index(index)
+
+    def listen_channels(self) -> list[Channel]:
+        return listening_channels(self.channels(), self.default_channel(), self.listen, self.show_public)
+
     def info(self) -> RadioInfo:
         iface = self._iface
         info = RadioInfo(connected=self.connected, kind=self.kind, detail=self._device or self.target)
@@ -391,10 +453,13 @@ class MeshtasticRadio(RadioAdapter):
             pass
         try:
             info.channel_index, info.channel = self.resolved_channel()
+            default = self.channel_by_index(info.channel_index)
+            info.channel = default.name if default else info.channel
         except ChannelError as exc:
             info.channel_error = str(exc)
         except Exception:
             log.debug("could not read the channels", exc_info=True)
+        info.channels = self.listen_channels()
         info.other_channel = self.other_channel
         try:
             info.firmware = (iface.metadata.firmware_version or None) if iface.metadata else None
@@ -414,7 +479,8 @@ class MeshtasticRadio(RadioAdapter):
 
     # ------------------------------------------------------------ sending
     def send(self, payload: bytes, *, port: int = PORT_PRIVATE_APP, want_ack: bool = False, priority: int | None = None,
-             channel: int | None = None, hop_limit: int | None = None, on_result: ResultCallback | None = None) -> int:
+             channel: int | None = None, hop_limit: int | None = None, on_result: ResultCallback | None = None,
+             to: str | None = None) -> int:
         iface = self._iface
         if iface is None or not self._connected:
             raise RuntimeError("no Meshtastic radio connected")
@@ -423,7 +489,7 @@ class MeshtasticRadio(RadioAdapter):
                 channel = self.resolved_channel()[0]
             except ChannelError as exc:
                 raise RuntimeError(f"no private channel to send on: {exc}") from exc
-        kwargs: dict[str, Any] = {"destinationId": BROADCAST, "portNum": port, "wantAck": want_ack,
+        kwargs: dict[str, Any] = {"destinationId": to or BROADCAST, "portNum": port, "wantAck": want_ack,
                                   "channelIndex": channel}
         if hop_limit is not None:
             kwargs["hopLimit"] = hop_limit

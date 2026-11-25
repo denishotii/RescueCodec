@@ -1,6 +1,6 @@
 // REST client. Every path here must exist in spec/api/openapi.yaml (tests/contract.test.ts checks that).
 import type {
-  AckStatus, ApiErrorBody, Health, MeshNode, MessageRecord, Stats, Task,
+  AckStatus, ApiErrorBody, ExtractResult, Health, MeshNode, MessageRecord, SendMessageBody, SendTextBody, Stats, Task,
 } from "./types";
 
 export interface RuntimeConfig {
@@ -8,6 +8,8 @@ export interface RuntimeConfig {
   apiBase: string;
   /** Folder with the offline map files, relative to the page or absolute. */
   mapBase: string;
+  /** Where the map starts when there is nothing to show yet, for example the event site. */
+  home?: { lon: number; lat: number; zoom?: number };
 }
 
 export const config: RuntimeConfig = { apiBase: "", mapBase: "map" };
@@ -20,6 +22,10 @@ export async function loadConfig(): Promise<RuntimeConfig> {
       const j = (await r.json()) as Partial<RuntimeConfig>;
       if (typeof j.apiBase === "string") config.apiBase = j.apiBase.replace(/\/$/, "");
       if (typeof j.mapBase === "string") config.mapBase = j.mapBase.replace(/\/$/, "");
+      const h = j.home;
+      if (h && Number.isFinite(h.lon) && Number.isFinite(h.lat)) {
+        config.home = { lon: h.lon, lat: h.lat, zoom: Number.isFinite(h.zoom) ? h.zoom : undefined };
+      }
     }
   } catch { /* no config file: defaults */ }
   const q = new URLSearchParams(location.search).get("api");
@@ -71,6 +77,11 @@ export const api = {
   stats: () => call<Stats>("/v2/stats"),
   ack: (key: string, body: { status: AckStatus; eta?: number; team?: string }) =>
     call<{ task: Task; record: MessageRecord }>(`/v2/tasks/${encodeURIComponent(key)}/ack`, { method: "POST", body: JSON.stringify(body) }),
+  /** Live preview of the composer: what this sentence would send. Sends nothing. */
+  extract: (text: string, signal?: AbortSignal) =>
+    call<ExtractResult>("/v2/extract", { method: "POST", body: JSON.stringify({ text }), signal }),
+  sendMessage: (body: SendMessageBody) => call<MessageRecord>("/v2/messages", { method: "POST", body: JSON.stringify(body) }),
+  sendText: (body: SendTextBody) => call<MessageRecord>("/v2/text", { method: "POST", body: JSON.stringify(body) }),
   geojsonUrl: () => config.apiBase + "/v2/export.geojson" + (authToken() ? `?token=${encodeURIComponent(authToken()!)}` : ""),
 };
 
