@@ -117,6 +117,8 @@ class Messenger(
     /** Time without any answer after which a sent task shows "delivery unknown". */
     private val taskTimeoutMs: (type: String) -> Long = { if (it == "mayday") 90_000L else 300_000L },
     private val log: (String) -> Unit = {},
+    /** Alerts the person to a Mayday from another radio (a loud notification in the app). */
+    private val alerts: MaydayAlerts = MaydayAlerts.NONE,
     /** Airtime budget of the send queue. The default follows the region and preset in the settings. */
     budget: AirtimeBudget = AirtimeBudget(Airtime(settings.modemPreset), settings.region),
 ) {
@@ -131,6 +133,9 @@ class Messenger(
     )
     private val rowBySeq = HashMap<Long, Long>()
     private var started = false
+
+    /** Mayday task keys we already alerted for, so a copy never alerts twice. */
+    private val alerted = HashSet<String>()
 
     private val _airtime = MutableStateFlow(AirtimeStatus(0.0, queue.budget.limitMs))
 
@@ -596,7 +601,14 @@ class Messenger(
                 snr = p.rx_snr, rssi = p.rx_rssi, hops = hops,
             ),
         )
-        if (taskKey != null) persistTask(taskKey, self)
+        if (taskKey != null) {
+            persistTask(taskKey, self)
+            val key = taskKey.toString()
+            if (MaydayAlerts.shouldAlert(type, from, self, outcome, tracker[taskKey]?.state, key in alerted)) {
+                alerted.add(key)
+                alerts.show(key, from, MaydayAlerts.reasonOf(canonical))
+            }
+        }
     }
 
     // ------------------------------------------------------------------- tasks
@@ -616,6 +628,7 @@ class Messenger(
                 rank = if (t.type == "mayday") 0 else 1,
             ),
         )
+        if (MaydayAlerts.shouldClear(t.type, t.state)) alerts.clear(key.toString())
     }
 
     /** Our own Accept, Decline or Done counts as soon as we make it, and again when it is really sent. */

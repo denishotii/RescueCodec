@@ -5,7 +5,7 @@
     <string name="perm_bt_connect">Mit deinem Funkgerät per Bluetooth sprechen. Android nennt das \"Geräte in der Nähe\".</string>
     <string name="perm_location_for_bt">Dein Funkgerät finden. Ab Android 11 abwärts braucht die Bluetooth-Suche die Standortfreigabe. Wir speichern nicht, wo du bist.</string>
     <string name="perm_location_for_reports">Deine Position an Meldungen anhängen. Optional.</string>
-    <string name="perm_notifications">Zeigen, dass die Funkverbindung im Hintergrund läuft. Optional, aber ohne siehst du den Status nicht.</string>
+    <string name="perm_notifications">Zeigen, dass die Funkverbindung läuft, und dich laut bei einem Mayday aus dem Team alarmieren. Optional, aber ohne gibt es keinen Mayday-Alarm.</string>
     <string name="perm_battery">Die Funkverbindung bei ausgeschaltetem Bildschirm am Leben halten. Erlaube diese App unter Akku auf \"Uneingeschränkt\", wenn dein Handy das anbietet.</string>
     <string name="channel_radio">Funkverbindung</string>
     <string name="channel_radio_desc">Zeigt, dass die App mit deinem Funkgerät verbunden ist. Nötig, um Nachrichten bei ausgeschaltetem Bildschirm zu empfangen.</string>
@@ -286,4 +286,9 @@
     <string name="counter_line">%1$d Bytes als Text → %2$d Bytes gesendet</string>
     <string name="task_grid_ref">Gitter</string>
     <string name="report_text_shortened">Text gekürzt, damit er mit deiner Position in 200 Bytes passt.</string>
+    <string name="channel_mayday">Mayday</string>
+    <string name="channel_mayday_desc">Lauter Alarm, wenn eine Einsatzkraft einen Mayday sendet.</string>
+    <string name="mayday_alert">MAYDAY von %1$s</string>
+    <string name="mayday_alert_reason">MAYDAY von %1$s: %2$s</string>
+    <string name="mayday_alert_text">Tippen, um Aufgaben zu öffnen und zu antworten.</string>
 </resources>

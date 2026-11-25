@@ -21,6 +21,7 @@ import org.rescuecodec.app.radio.DefaultTransportFactory
 import org.rescuecodec.app.radio.LastRadioStore
 import org.rescuecodec.app.radio.RadioScanner
 import org.rescuecodec.app.radio.TransportFactory
+import org.rescuecodec.app.service.MaydayNotifier
 import org.rescuecodec.app.ui.Permissions
 import java.io.File
 
@@ -65,6 +66,7 @@ class AppGraph(
         stats = database.stats(),
         settings = settings,
         log = { android.util.Log.i(TAG, it) },
+        alerts = MaydayNotifier(appContext) { ui.language.value },
     )
 
     private var started = false

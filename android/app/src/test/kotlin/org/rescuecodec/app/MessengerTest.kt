@@ -16,6 +16,7 @@ import org.meshtastic.sdk.testing.FakeRadioTransport
 import org.meshtastic.sdk.testing.InMemoryStorageProvider
 import org.rescuecodec.app.core.AnswerResult
 import org.rescuecodec.app.core.AppSettings
+import org.rescuecodec.app.core.MaydayAlerts
 import org.rescuecodec.app.core.MemoryKeyValueStore
 import org.rescuecodec.app.core.Messenger
 import org.rescuecodec.app.core.SubmitResult
@@ -55,10 +56,19 @@ class MessengerTest {
         refusalDelays: List<Long> = listOf(150),
         timeoutMs: (String) -> Long = { 300_000 },
         budget: AirtimeBudget = AirtimeBudget(Airtime(settings.modemPreset), settings.region),
+        alerts: MaydayAlerts = MaydayAlerts.NONE,
     ) = Messenger(
         useScope, clientFlow, attachedFlow, messages, tasks, stats, settings, gapMs = gap,
-        refusalDelaysMs = refusalDelays, taskTimeoutMs = timeoutMs, log = { println("[messenger] $it") }, budget = budget,
+        refusalDelaysMs = refusalDelays, taskTimeoutMs = timeoutMs, log = { println("[messenger] $it") }, alerts = alerts, budget = budget,
     )
+
+    /** Records what the Mayday notification would do. */
+    private class RecordingAlerts : MaydayAlerts {
+        val shown = java.util.concurrent.CopyOnWriteArrayList<Triple<String, Long, String?>>()
+        val cleared = java.util.concurrent.CopyOnWriteArrayList<String>()
+        override fun show(key: String, from: Long, reason: String?) { shown.add(Triple(key, from, reason)) }
+        override fun clear(key: String) { cleared.add(key) }
+    }
 
     private suspend fun connectRadio(channels: List<org.meshtastic.proto.Channel> = listOf(teamChannel(0))) {
         radio = fakeRadio("fake:me", me.toInt(), channels)
@@ -163,6 +173,31 @@ class MessengerTest {
         val row = messages.all.single()
         assertEquals(1, row.hops)
         assertEquals("0badf00d-21", row.taskKey)
+    }
+
+    @Test
+    fun aMaydayFromAnotherRadioAlertsOnceAndTheAlertGoesWhenItIsDone() = runUnit {
+        val alerts = RecordingAlerts()
+        val m = messenger(alerts = alerts)
+        m.start()
+        connectRadio()
+        val may = RescueCodec.encode(mapOf("id" to 9, "pos" to mapOf("lat" to 50.7, "lon" to 7.2), "mayday" to mapOf("reason" to "injured")))
+        radio.injectPacket(privateAppPacket(other, 1, may))
+        eventually(5_000, "alerted") { alerts.shown.size == 1 }
+        assertEquals(Triple("0badf00d-9", other, "injured"), alerts.shown.single())
+        // The mesh delivers it again: no second alarm.
+        radio.injectPacket(privateAppPacket(other, 2, may))
+        eventually(5_000, "duplicate counted") { stats[StatNames.RX_DUPLICATES] == 1L }
+        // A Found report rings nothing.
+        radio.injectPacket(privateAppPacket(other, 3, RescueCodec.encode(found + ("id" to 10))))
+        eventually(5_000, "found task") { tasks.get("0badf00d-10") != null }
+        assertEquals(1, alerts.shown.size)
+        assertTrue(alerts.cleared.isEmpty())
+        // A third team reports it done: the notification goes away.
+        val done = RescueCodec.encode(mapOf("ack" to mapOf("ref" to 9, "node" to "!0badf00d", "status" to "done")))
+        radio.injectPacket(privateAppPacket(0x12345678L, 4, done))
+        eventually(5_000, "cleared") { "0badf00d-9" in alerts.cleared }
+        assertEquals(1, alerts.shown.size)
     }
 
     @Test

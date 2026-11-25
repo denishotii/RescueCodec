@@ -5,7 +5,7 @@
     <string name="perm_bt_connect">Talk to your radio over Bluetooth. Android calls this \"Nearby devices\".</string>
     <string name="perm_location_for_bt">Find your radio. On Android 11 and older, Bluetooth scanning needs the location permission. We do not store where you are.</string>
     <string name="perm_location_for_reports">Add your position to reports. Optional.</string>
-    <string name="perm_notifications">Show that the radio link is running in the background. Optional, but you will not see the status without it.</string>
+    <string name="perm_notifications">Show that the radio link is running, and alert you loudly to a Mayday from your team. Optional, but without it you get no Mayday alert.</string>
     <string name="perm_battery">Keep the radio link alive when the screen is off. Allow \"Unrestricted\" battery use for this app if your phone offers it.</string>
     <string name="channel_radio">Radio link</string>
     <string name="channel_radio_desc">Shows that the app is connected to your radio. Needed to receive messages with the screen off.</string>
@@ -286,4 +286,9 @@
     <string name="counter_line">%1$d bytes as text → %2$d bytes sent</string>
     <string name="task_grid_ref">Grid</string>
     <string name="report_text_shortened">Text shortened to fit 200 bytes with your position.</string>
+    <string name="channel_mayday">Mayday</string>
+    <string name="channel_mayday_desc">Loud alert when a team member sends a Mayday.</string>
+    <string name="mayday_alert">MAYDAY from %1$s</string>
+    <string name="mayday_alert_reason">MAYDAY from %1$s: %2$s</string>
+    <string name="mayday_alert_text">Tap to open Actions and answer.</string>
 </resources>
