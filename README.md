@@ -54,8 +54,8 @@ Byte counts are measured. Airtime is calculated with the LoRa formula for the LO
 | The example sentence, with GPS | 105 B, 1.21 s on air | 23 B, 0.60 s on air | 4.6× fewer bytes, about 2× less airtime |
 | All messages of our real-radio test on 25 Nov | | | 1.9× fewer bytes |
 | Free text, packed (40 test messages not used for tuning) | | | 43 % smaller (German 44 %, English 43 %) |
-| Compact text (2-byte words), 2,357 disaster messages not used to build the dictionary | | | 44 % smaller, 99.5 % fit one radio packet |
-| Compact text, 4,998 everyday English sentences not used to build the dictionary | | | 31 % smaller, 13 % stay plain text because that is smaller |
+| Compact text (2-byte words, compact frame, dictionary 2), 2,357 disaster messages not used to build the dictionary | | | 61 % smaller (2.4 bytes per word), 100 % fit one radio packet; Meshtastic adds its own ~16 B header per packet on air |
+| Compact text, 4,998 everyday English sentences not used to build the dictionary ("hello world": 6 B instead of 11) | | | 61 % smaller (2.0 bytes per word), 99.7 % go compact, 0.3 % stay plain text because that is smaller |
 
 **Why is the airtime gain smaller than the byte gain?** Meshtastic adds about 23 bytes of header to every packet, and every LoRa packet starts with the same preamble. So 23 bytes of content are about 46 bytes on air. The gain grows when more facts share one packet, for example a GPS track of 10 points in 48 bytes.
 

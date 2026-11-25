@@ -1,6 +1,6 @@
 # RescueCodec v2 specification
 
-Version 2.1.0, 25 Nov 2026 (2.1 adds compact texts, section 3.6). Licence: Apache-2.0 (spec, vocabulary, test vectors and libraries).
+Version 2.2.0, 25 Nov 2026 (2.1 adds compact texts, section 3.6; 2.2 adds the compact frame, section 3.7, and word dictionary 2). Licence: Apache-2.0 (spec, vocabulary, test vectors and libraries).
 
 ## 1. Purpose
 
@@ -27,7 +27,7 @@ The key words MUST, SHOULD and MAY have their usual meaning (RFC 2119).
 | Destination | Broadcast (`^all`) on a private channel, so every team sees reports and who took them. |
 | Channel | A private channel with its own random 256-bit key (AES-256). Never the default `LongFast` key. |
 | Region and preset | EU_868, LONG_FAST on our radios. The format does not depend on them. |
-| Payload | One serialized `Envelope`. Nothing before or after it. |
+| Payload | One serialized `Envelope`, or one compact frame (first byte `0x02`, section 3.7). Nothing before or after it. |
 | Sender | The Meshtastic packet's `from` node number. It is not repeated in the payload. |
 | Delivery check | Senders SHOULD set `want_ack`. Meshtastic then retries and reports delivery to a neighbour. The RescueCodec `Ack` is the real "a person took it" answer. |
 | Size | Encoders MUST NOT produce more than 200 bytes. Decoders MUST accept up to 233 bytes (Meshtastic's payload limit). |
@@ -101,7 +101,7 @@ A node not heard for 24 hours is forgotten. Readable copies (`[RC] ` texts) do n
 3. Auto, direct chat: packed when the peer runs RescueCodec, else normal text.
 4. Auto, channel: packed when at least one RescueCodec node and no Meshtastic user was heard on that channel in the last 24 hours. Otherwise normal text, also when nobody is known yet (reason `nobody_known`), so a new or foreign channel (for example a partner's) always gets text everyone can read.
 5. Packed only when it saves at least **3 bytes**: the packed packet (with id, `pos`, `time`, priority) must be at least 3 bytes smaller than the normal text (the words, cut to 200 bytes like `fit_plain`). Else normal text. A GPS position costs 11 bytes, so short texts with a position stay normal.
-6. **Compact text** (opt-in, off by default: app setting "Use compact encoding for text messages", gateway `--compact-text on`). Only when rules 1 to 4 say packed: the sender also builds the word-token form (section 3.6) and sends it when its whole payload is **smaller** than what rule 5 picked (the DEFLATE packet or the normal text). A tie or a loss keeps rule 5. Sizes are complete payloads: envelope, id, `pos`, mode and dictionary fields included.
+6. **Compact text** (opt-in, off by default: app setting "Use compact encoding for text messages", gateway `--compact-text on`). Only when rules 1 to 4 say packed. Rule 5 is then replaced: the sender builds every complete payload, the normal text (port 1), the DEFLATE packet (3.5), the word tokens in the Envelope (3.6) and the compact frame (3.7, only when the message has no `pos` and no `time`), and sends the **strictly smallest**. The normal text when it is smaller or equal. Ties between packed forms: compact frame, then words, then DEFLATE. Sizes are complete payloads (envelope, id, `pos`, dictionary fields included). Example: "hello world" is 11 bytes as a normal text and 6 bytes as a compact frame, so it goes compact; "Ok" is 2 bytes as a normal text and stays normal.
 7. **Length.** A chat that packs (rules 2 to 4 say packed) takes up to **400 bytes** of typed text (`MAX_PACKED_TEXT_BYTES`); any other chat 180 bytes. The packet stays at most 200 bytes. A text that no form keeps whole in 200 bytes is cut (section 3.6.6) and the composer says "Too long: will be cut to fit one radio message". There is no multipart message.
 
 Examples: "Ok" is 2 bytes as a normal text and 12 packed: normal. "We are at the hut, two people with us, waiting for the vehicle on the forest road" is 81 bytes as a normal text and 42 packed with an id (53 with a GPS position): packed on a RescueCodec channel. As soon as someone with the official app writes on that channel, the next text goes normal, so that person can read it.
@@ -239,9 +239,9 @@ Added in 2.1. A third form of `Text`: the words as **2-byte dictionary tokens**.
 | # | Field | Meaning |
 |---|---|---|
 | 4 | `words` | The token stream (3.6.2). Decodes to 1 to 1024 bytes of UTF-8. |
-| 5 | `words_dict` | Number of the word dictionary, required with `words`. `1` = `vocab/words-dict-v1.txt`. |
+| 5 | `words_dict` | Number of the word dictionary, required with `words`. `1` = `vocab/words-dict-v1.txt`, `2` = `vocab/words-dict-v2.txt` (2.2, used for new texts). |
 
-Exactly one of `text`, `deflate` and `words` is set. The **mode** is told by the field that is set (field 4 = word tokens); the **dictionary version** by `words_dict`. The token codes and controls below belong to word dictionary 1: a new token rule or a new control needs a new `words_dict` number. The two fields cost 4 bytes plus the stream, the same as `deflate` with `dict`.
+Exactly one of `text`, `deflate` and `words` is set. The **mode** is told by the field that is set (field 4 = word tokens); the **dictionary version** by `words_dict`. The token codes and controls below hold for word dictionaries 1 and 2: a new token rule or a new control needs a new `words_dict` number. The two fields cost 4 bytes plus the stream, the same as `deflate` with `dict`.
 
 #### 3.6.2 Token stream
 
@@ -304,7 +304,7 @@ A chat that packs takes up to 400 bytes of typed text. `choose_form` first check
 
 #### 3.6.7 Older readers
 
-A reader before 2.1 does not know fields 4 and 5. It sees a `Text` with an empty `text` and rejects the packet (`missing_field`, `text.text`): the 2.0 app shows "Unreadable message", the 2.0 gateway counts it as rejected. It **never shows wrong words**. The sender cannot see the reader's version, so compact text is off by default. A team with older apps keeps it off or sets the chat to Always normal.
+A reader before 2.1 does not know fields 4 and 5 (a reader before 2.2 does not have word dictionary 2: it shows "dictionary this app does not have", 3.6.5). It sees a `Text` with an empty `text` and rejects the packet (`missing_field`, `text.text`): the 2.0 app shows "Unreadable message", the 2.0 gateway counts it as rejected. It **never shows wrong words**. The sender cannot see the reader's version, so compact text is off by default. A team with older apps keeps it off or sets the chat to Always normal.
 
 GPS from the report flow stays in `Envelope.pos` (11 bytes), never in the words, so a compact text with a position is still on the map. Coordinates typed into the text are just text: every character comes back (`words-coordinates-prose`).
 
@@ -320,6 +320,49 @@ GPS from the report flow stays in `Envelope.pos` (11 bytes), never in the words,
 | Disaster messages | 2357 | 317307 B | 176659 B | 44.3 % | 43.6 % | 92.1 % / 6.3 % / 1.6 % |
 
 Without compact text (DEFLATE or normal, the 2.0 rule) the same sets save 9.7 % and 25.4 %.
+
+**Word dictionary 2** (2.2): `vocab/words-dict-v2.txt`, **61440 entries** (every code `0x0000`..`0xEFFF`), same file rules, 623992 bytes, SHA-256 `3b6fff5d9bb04bfd0e624e5904afaa93895ee373f7fb88c52ae903a6e9a52616`. 22545 single words and punctuation pieces (capitalised forms such as "The", "We", "Please" are entries of their own) and 38895 two-word phrases. Built reproducibly by `tools/words_dict2.py` from the same two corpora and the same train / validation / test split as dictionary 1; SCOWL word lists (permissive licence) filter rare entries, so a word seen in fewer than 10 training messages must be an ordinary English word (no rare names, no typos). Sources and licences: `docs/COMPACT_TEXT.md`. In the APK it takes about 277 KB (zip compressed). Frozen like dictionary 1; dictionary 1 stays readable forever. New texts use dictionary 2.
+
+### 3.7 Compact frame (no Envelope)
+
+Added in 2.2. The shortest form of a chat text between RescueCodec apps: the word stream of 3.6 **without the Envelope**.
+
+```
+byte 0     0x02            marker (a reserved first byte in 2.0 and 2.1, section 7)
+byte 1     1..255          word dictionary version (2 for new texts; 1 is allowed)
+byte 2..   word stream     exactly as 3.6.2 to 3.6.4: tokens, literals, CAP / UPPER / GLUE, spacing rules
+```
+
+"hello world" = `02 02 033e 0124` = **6 bytes** (11 as a normal text, 13 as words in the Envelope with a 2-byte id). Every word of dictionary 2 costs 2 bytes, a single space between two words costs nothing, and the frame adds 2 bytes. Meshtastic adds its own header (about 16 bytes plus the `Data` wrapper) to every packet on air, as for any payload.
+
+| Rule | Value |
+|---|---|
+| What it carries | Only a chat text. No id, no `pos`, no `time`, no priority. A text with a position or time goes in the Envelope (3.6). |
+| Duplicates and delivery | Like a normal port 1 text (2.1): the same (sender node, Meshtastic packet id) within 24 hours is a repeat; delivery status comes from the Meshtastic packet. |
+| Priority | Not on the air; the sender's queue and `MeshPacket.priority` use the text's priority (normal by default), like a normal text. |
+| Size | Encoders: at most 200 bytes. Decoders accept up to 233. An empty text has no frame (`missing_field`). |
+| Canonical JSON | `{"text": {"text": "hello world", "words": 2}}` (no `id`). `decode_any` adds `"v": 2`. |
+| Unknown dictionary | Version byte this library does not have, or whose copy fails the SHA-256 check: `{"unknown": {"words": n}}`, shown as "Message encoded with a dictionary this app does not have (word dictionary n), please update the app". Never guessed words. |
+| Errors | `malformed`: only the marker, no stream, version 0, or any stream error of 3.6.5 (half a token, a literal cut off, a reserved code, a token past the end, a control at the end). `too_large`: over 233 bytes, or a stream that decodes to over 1024 bytes. |
+| Cut packets | A cut inside a token or a literal is `malformed`. The frame has no length field: a cut exactly between two units would read as a shorter text. The radio never delivers a cut packet (LoRa CRC and Meshtastic's packet length), the same as for normal port 1 texts, which have no length either. |
+| Older readers | Apps and gateways before 2.2 treat `0x02` as a reserved version: `unsupported_version`. The app shows an unreadable-message line, the gateway counts the packet as rejected. **Never wrong words.** If someone in the chat has an older app, leave compact text off or set the chat to Always normal. |
+
+Libraries: `encode_compact` / `decode_compact` / `decode_any` (Python), `RescueCodec.encodeCompact` / `decodeCompact` / `decodeAny` (Kotlin), `encodeCompact` / `decodeCompact` / `decodeAny` (TypeScript). Vectors: `compact_frames` and `compact_frames_invalid` in `vectors/codec.json` (hello world, a name with coordinates, a poem with line breaks, emoji, a 129-byte literal, a 385-byte text, exactly 200 bytes, dictionary 1, an unknown dictionary, empty, truncated, version 0, too large).
+
+**Measured** on the held-out sets of 3.6.8 (`tools/words_dict2.py measure`, chat that packs, compact on, no position):
+
+| | Conversational (Tatoeba test) | Disaster (test split) |
+|---|---|---|
+| Messages (up to 400 B typed) | 4998 | 2357 |
+| Words found in the dictionary: v1 / v2 | 93.9 % / 98.5 % | 89.6 % / 93.8 % |
+| Bytes per word: typed / words v1 in the Envelope / compact frame v2 | 5.21 / 3.67 / **2.04** | 6.14 / 3.42 / **2.40** |
+| Sent, 2.1 rule (DEFLATE, words v1, plain) | 137669 B, 31.1 % saved | 176659 B, 44.3 % saved |
+| Sent, 2.2 rule (strictly smallest) | 78139 B, **60.9 % saved** | 123914 B, **60.9 % saved** |
+| Median saving per message: 2.1 / 2.2 | 28.6 % / 61.5 % | 43.6 % / 62.2 % |
+| Sent compact, not plain: 2.1 / 2.2 | 86.8 % / 99.7 % | 98.4 % / 99.5 % |
+| Fits one packet (200 B): typed / 2.1 / 2.2 | 99.5 % / 99.9 % / 100 % | 82.6 % / 99.5 % / 100 % |
+
+The conversational test sentences come from the same collection as the training sentences (split by hash), so real chat with slang and typos will find fewer words than 98.5 %; the disaster set (real messages, many names and typos) is the harder case.
 
 ## 4. Canonical JSON
 
@@ -387,10 +430,11 @@ The first byte tells the version:
 | First byte | Meaning |
 |---|---|
 | `0x01` | v1 packet (the team's first prototype). Decode with the v1 rules. |
-| `0x00`, `0x02` to `0x07` | Reserved for future incompatible versions. Reject with `unsupported_version`. |
+| `0x02` | Compact frame (2.2, section 3.7): a chat text as word tokens without an Envelope. Readers before 2.2 reject it with `unsupported_version`. |
+| `0x00`, `0x03` to `0x07` | Reserved for future incompatible versions. Reject with `unsupported_version`. |
 | `0x08` to `0xFF` | v2 protobuf `Envelope`. |
 
-Why this works: a protobuf field starts with a tag byte `(field number << 3) | wire type`. Field numbers start at 1, so the first byte of any protobuf message is at least `0x08`. Bytes `0x00` to `0x07` would mean field 0, which protobuf forbids. So a v2 packet can never be mistaken for v1, and we keep seven markers for later versions. Tests: `tests/test_v2_compat.py`.
+Why this works: a protobuf field starts with a tag byte `(field number << 3) | wire type`. Field numbers start at 1, so the first byte of any protobuf message is at least `0x08`. Bytes `0x00` to `0x07` would mean field 0, which protobuf forbids. So a v2 packet can never be mistaken for v1 or a compact frame, and we keep six markers for later versions. Tests: `tests/test_v2_compat.py`.
 
 v1 packets are decoded, never produced. They map to canonical JSON with `"v": 1`:
 
@@ -416,7 +460,7 @@ The v1 vectors are in `vectors/codec.json` under `v1`.
 - **Minor version (2.1, 2.2)**: only additions. New fields, new message types (body fields 14, 15, then 16 and up), new enum values, new flag bits, new state bits (9 and up). Old readers keep working.
 - **Never** change the number, type or meaning of an existing field or value. Never reuse a removed number; mark it `reserved` in the proto.
 - **Readers** MUST ignore unknown fields, keep unknown enum values as `unknown_<n>`, keep unknown flag bits as `bit_<n>`, ignore reserved state bits, and show an unknown body type as "message of a newer type" instead of dropping it.
-- **Major version (v3)** only if something cannot be added. It will start with one of the reserved first bytes `0x02` to `0x07`.
+- **Major version (v3)** only if something cannot be added. It will start with one of the reserved first bytes `0x03` to `0x07` (`0x02` is the compact frame, 3.7).
 - Libraries use their own semantic versions and say which spec version they pass.
 
 ## 9. Sizes (measured)
@@ -568,10 +612,12 @@ Any other move is an `invalid_transition` error. A valid move produces an Ack to
 | `spec/rescuecodec/v2/rescuecodec.proto` | Wire format |
 | `spec/vocab/sar.yaml` | Codes, meanings, German and English words |
 | `spec/i18n/{en,de,uk,tr,ar}.json` | Words for readable text (uk, tr, ar are machine drafts) |
-| `spec/vectors/codec.json` | 190 conformance cases (43 valid, 15 decode-only, 89 invalid, 5 v1, 5 packed texts, 14 compact texts, 8 word streams, 11 invalid word streams) and the SHA-256 of each text and word dictionary |
+| `spec/vectors/codec.json` | 207 conformance cases (43 valid, 15 decode-only, 89 invalid, 5 v1, 5 packed texts, 14 compact texts, 8 word streams, 11 invalid word streams, 9 compact frames, 8 invalid compact frames) and the SHA-256 of each text and word dictionary |
 | `spec/vocab/text-dict-v1.txt` | Text dictionary 1 for packed texts (frozen) |
 | `spec/vocab/words-dict-v1.txt` | Word dictionary 1 for compact texts (frozen, section 3.6.8) |
-| `spec/tools/words_dict.py` | Builds, chooses and measures the word dictionary (corpora are downloaded, not in the repo) |
+| `spec/vocab/words-dict-v2.txt` | Word dictionary 2, 61440 entries (frozen, section 3.6.8) |
+| `spec/tools/words_dict.py` | Builds, chooses and measures word dictionary 1 (corpora are downloaded, not in the repo) |
+| `spec/tools/words_dict2.py` | Builds, chooses and measures word dictionary 2 and the compact frame |
 | `spec/tools/text_dict.py` | Builds and measures the text dictionary (`text-dict-words.txt`, `text-corpus.json`) |
 | `spec/vectors/extraction.json` | 73 extraction sentences |
 | `spec/api/openapi.yaml` | Gateway REST and WebSocket API |

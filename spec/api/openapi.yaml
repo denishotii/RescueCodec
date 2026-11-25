@@ -140,7 +140,8 @@ paths:
         Meshtastic text (port 1, TEXT_MESSAGE_APP, only the words), as the chat's text mode says (see "Packed texts"
         above and `GET /v2/channels/{name}/mode`). Both use the same queue, priority, airtime budget and `want_ack`.
         A normal text record has `codec.version: 0` and no `key`; a packed one has `codec.packed: true` and
-        `codec.form` (`deflate` or `words`). A `dict` or `words` in the text body is ignored: the chat's mode and
+        `codec.form` (`deflate`, `words` or `lean` = compact frame 0x02, SPEC 3.7, which has no id and so no `key`).
+        A `dict` or `words` in the text body is ignored: the chat's mode and
         `--compact-text` decide. The words may be up to 400 bytes in a chat that packs, else 180 (see "Text limits").
         With `dry_run: true` nothing is sent; you get the record as it would be queued.
         `channel` picks a channel by name (one of `GET /v2/health` -> `radio.channels`); without it the message goes
@@ -602,8 +603,9 @@ paths:
         - `text_bytes`: bytes on air for the same words sent as a plain text.
         - `fields`: the facts of the report as short labels in English and German (chips in a UI). Empty for a text.
         - With `channel` or `to`: `send_as` and `max_text_bytes` of that chat (400 when it packs, else 180), and for a
-          text `form` (`plain`, `deflate` or `words`), `cut` (it will be shortened to fit one radio message) and
-          `coded_bytes` of the form that would go out (with `--compact-text on` this can be `words`).
+          text `form` (`plain`, `deflate`, `words` or `lean`), `cut` (it will be shortened to fit one radio message)
+          and `coded_bytes` of the form that would go out (with `--compact-text on` this can be `words` or `lean`, the
+          compact frame: "hello world" is 6 bytes).
 
         Input is at most 1000 characters. Not limited by `--tx-per-minute`: nothing goes on air.
       requestBody:
@@ -893,7 +895,7 @@ components:
       properties:
         text: { type: string, minLength: 1, description: "1..180 bytes of UTF-8. In a record of a plain Meshtastic text (`codec.version: 0`) up to 233 bytes, as the sender typed it. In a packed text up to 1024 bytes." }
         dict: { type: integer, minimum: 1, description: "Set when the words came or went packed (DEFLATE with text dictionary `dict`, SPEC section 3.5). The words are always unpacked here." }
-        words: { type: integer, minimum: 1, description: "Set when the words came or went as a compact text (word tokens with word dictionary `words`, SPEC section 3.6). The words are always decoded here, exactly as typed." }
+        words: { type: integer, minimum: 1, description: "Set when the words came or went as a compact text (word tokens with word dictionary `words`, SPEC section 3.6, in the Envelope or as a compact frame 0x02, section 3.7; `codec.form` tells which). The words are always decoded here, exactly as typed." }
     Text2:
       type: object
       description: The message as one readable line, built from the spec templates.
@@ -972,7 +974,7 @@ components:
             size: { type: integer, description: "Payload bytes (measured)." }
             hex: { type: string }
             packed: { type: boolean, description: "Present and true for a packed text (DEFLATE with the shared dictionary, or compact word tokens). `message.text.text` holds the unpacked words." }
-            form: { type: string, enum: [deflate, words], description: "With packed: deflate (SPEC 3.5) or words (compact text, SPEC 3.6)." }
+            form: { type: string, enum: [deflate, words, lean], description: "With packed: deflate (SPEC 3.5), words (word tokens in the Envelope, SPEC 3.6) or lean (compact frame 0x02 without Envelope or id, SPEC 3.7)." }
         radio:
           type: [object, "null"]
           description: Radio facts for received packets (measured). Null for outgoing records.
@@ -1177,7 +1179,7 @@ components:
         text_bytes: { type: integer, description: "Bytes on air for the same words as a plain text." }
         send_as: { type: string, enum: [compressed, normal], description: "Only with channel or to: how a text goes out in that chat." }
         max_text_bytes: { type: integer, enum: [180, 400], description: "Only with channel or to: the text limit of that chat." }
-        form: { type: string, enum: [plain, deflate, words], description: "Only for a text with channel or to: the form that would go out." }
+        form: { type: string, enum: [plain, deflate, words, lean], description: "Only for a text with channel or to: the form that would go out (lean = compact frame, SPEC 3.7)." }
         cut: { type: boolean, description: "Only for a text with channel or to: the text is too long and will be cut to fit one radio message." }
     StreamEvent:
       type: object
