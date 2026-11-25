@@ -23,8 +23,8 @@ languages: [en, de]
 messages:
   found:
     meaning: A missing person was found.
-    en: [found, located, "we have her", "we have him", "got the missing", "found the missing", "fond", "foud"]
-    de: [gefunden, aufgefunden, "haben die person", "haben das kind", "vermisste person", "gefunen", "gefundn"]
+    en: [found, located, "we have her", "we have him", "got the missing", "found the missing", "fond", "foud", spotted]
+    de: [gefunden, aufgefunden, "haben die person", "haben das kind", "vermisste person", "gefunen", "gefundn", entdeckt, gesichtet, lokalisiert]
   track:
     meaning: A batch of GPS points from one searcher. Sent by the app, not spoken.
     en: []

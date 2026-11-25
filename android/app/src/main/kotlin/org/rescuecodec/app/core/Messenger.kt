@@ -428,8 +428,15 @@ class Messenger(
             reason is SendFailure.QueueRejected ->
                 requeue(rowId, "The radio queue is full. Trying again in a few seconds.", delayMs = 5_000)
             reason == SendFailure.Disconnected || reason == SendFailure.HandshakeFailed ->
-                if (sawSent) finish(rowId, MessageState.NOT_CONFIRMED, "The link to the radio dropped while sending. It may have gone out.", StatNames.TX_NOT_CONFIRMED)
-                else requeue(rowId, "The link to the radio dropped. Waiting.")
+                if (sawSent && attempts >= LINK_RESENDS) {
+                    finish(rowId, MessageState.NOT_CONFIRMED, "The link to the radio dropped while sending. It may have gone out.", StatNames.TX_NOT_CONFIRMED)
+                } else if (sawSent) {
+                    // A link that dies silently (Bluetooth out of range, Wi-Fi gone) takes the packets of the last
+                    // seconds with it. Send once more after the reconnect. If the first one did go out, receivers
+                    // drop the copy: they dedupe on (sender, id) or on the payload bytes (spec section 14).
+                    messages.get(rowId)?.let { messages.update(it.copy(attempts = attempts + 1)) }
+                    requeue(rowId, "The link to the radio dropped while sending. Sending it again when it is back.")
+                } else requeue(rowId, "The link to the radio dropped. Waiting.")
             reason == SendFailure.IdCollision -> requeue(rowId, "The radio had an id clash. Trying again.", delayMs = 1_000)
             reason == SendFailure.Cancelled -> finish(rowId, MessageState.CANCELLED, null, null)
             reason == SendFailure.MaxRetransmit || reason == SendFailure.AckTimeout || reason == SendFailure.Timeout ->
@@ -693,6 +700,9 @@ class Messenger(
     companion object {
         private val TASK_TYPES = setOf("found", "request", "hazard", "mayday")
         private const val DUTY_CYCLE_LIMIT_RES = 9
+
+        /** How often a message that was handed to a link that then dropped is sent again. */
+        private const val LINK_RESENDS = 1
 
         /** Own moves from spec section 15.1: current own status to allowed next statuses. */
         val ALLOWED_MOVES: Map<String, Set<String>> = mapOf(

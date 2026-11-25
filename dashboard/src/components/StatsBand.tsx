@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useData, useT } from "../state/hooks";
 import { airtimeSaving } from "../lib/airtime";
-import { fmtNum, textBytes } from "../lib/format";
+import { fmtNum, isNoRelay, textBytes } from "../lib/format";
 import { SourceTag } from "./bits";
 
 function secs(s: number): string {
@@ -18,12 +18,12 @@ export function StatsBand() {
     [messages],
   );
   const out = useMemo(() => {
-    let delivered = 0, sent = 0, queued = 0, failed = 0;
+    let delivered = 0, sent = 0, queued = 0, failed = 0, noRelay = 0;
     for (const m of messages) {
       if (m.direction !== "out") continue;
-      if (m.status === "delivered") delivered++; else if (m.status === "sent") sent++; else if (m.status === "queued") queued++; else if (m.status === "failed") failed++;
+      if (m.status === "delivered") delivered++; else if (m.status === "sent") sent++; else if (m.status === "queued") queued++; else if (isNoRelay(m)) noRelay++; else if (m.status === "failed") failed++;
     }
-    return { delivered, sent, queued, failed, total: delivered + sent + queued + failed };
+    return { delivered, sent, queued, failed, noRelay, total: delivered + sent + queued + failed + noRelay };
   }, [messages]);
 
   const onAir = stats ? (stats.bytes_in.value ?? 0) + (stats.bytes_out.value ?? 0) : 0;
@@ -52,7 +52,7 @@ export function StatsBand() {
       <div className="stat">
         <h3>{t("deliveredOfSent")} <SourceTag source="measured" /></h3>
         <p className="stat-big num">{out.delivered}<span className="stat-of"> {t("of")} {out.total}</span></p>
-        <p className="stat-note num">{out.sent} {t("sentShort")} · {out.queued} {t("waiting")} · {out.failed} {t("failedShort")}</p>
+        <p className="stat-note num">{out.sent} {t("sentShort")} · {out.queued} {t("waiting")} · {out.failed} {t("failedShort")}{out.noRelay > 0 ? ` · ${out.noRelay} ${t("noRelayShort")}` : ""}</p>
       </div>
 
       <div className="stat">

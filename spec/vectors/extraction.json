@@ -757,6 +757,229 @@
      "text": "No sign of the missing person in sector 2, moving to sector 3"
     }
    }
+  },
+  {
+   "name": "de-person-state-found",
+   "lang": "de",
+   "text": "Person bewusstlos, atmet nicht",
+   "unsupported": false,
+   "expect": {
+    "priority": "critical",
+    "found": {
+     "consciousness": "unconscious",
+     "breathing": "none"
+    }
+   },
+   "notes": "Generic person noun plus a state is a found cue. Breathing none sets critical priority."
+  },
+  {
+   "name": "en-victim-state-found",
+   "lang": "en",
+   "text": "Victim unconscious, not breathing",
+   "unsupported": false,
+   "expect": {
+    "priority": "critical",
+    "found": {
+     "consciousness": "unconscious",
+     "breathing": "none"
+    }
+   },
+   "notes": "Generic person noun plus a state is a found cue."
+  },
+  {
+   "name": "de-verletzter-found",
+   "lang": "de",
+   "text": "Verletzter ansprechbar, Bein gebrochen",
+   "unsupported": false,
+   "expect": {
+    "found": {
+     "consciousness": "conscious",
+     "injuries": [
+      "fracture"
+     ]
+    }
+   },
+   "notes": "Verletzter is a person noun."
+  },
+  {
+   "name": "en-person-no-state-text",
+   "lang": "en",
+   "text": "Person seen near the hut",
+   "unsupported": true,
+   "reason": "A person noun without a state stays text.",
+   "expect": {
+    "text": {
+     "text": "Person seen near the hut"
+    }
+   }
+  },
+  {
+   "name": "en-casualty-request-cue",
+   "lang": "en",
+   "text": "Casualty conscious, need a stretcher",
+   "unsupported": false,
+   "expect": {
+    "request": {
+     "resource": "stretcher"
+    }
+   },
+   "notes": "A request cue stops the generic person rule."
+  },
+  {
+   "name": "de-confused-beats-conscious",
+   "lang": "de",
+   "text": "Frau gefunden, ansprechbar aber verwirrt",
+   "unsupported": false,
+   "expect": {
+    "found": {
+     "age": "adult",
+     "consciousness": "confused"
+    }
+   },
+   "notes": "Confused beats conscious."
+  },
+  {
+   "name": "en-confused-beats-conscious",
+   "lang": "en",
+   "text": "Man found, conscious, confused, very cold",
+   "unsupported": false,
+   "expect": {
+    "found": {
+     "age": "adult",
+     "consciousness": "confused",
+     "injuries": [
+      "hypothermia"
+     ]
+    }
+   },
+   "notes": "Confused beats conscious."
+  },
+  {
+   "name": "de-filler-in-phrase",
+   "lang": "de",
+   "text": "Kind gefunden, kann selbst laufen",
+   "unsupported": false,
+   "expect": {
+    "found": {
+     "age": "child",
+     "mobility": "walks"
+    }
+   },
+   "notes": "One filler word may sit inside a phrase."
+  },
+  {
+   "name": "en-filler-in-phrase",
+   "lang": "en",
+   "text": "Child found, can still walk, hypothermia",
+   "unsupported": false,
+   "expect": {
+    "found": {
+     "age": "child",
+     "mobility": "walks",
+     "injuries": [
+      "hypothermia"
+     ]
+    }
+   },
+   "notes": "One filler word may sit inside a phrase."
+  },
+  {
+   "name": "de-avalanche-other",
+   "lang": "de",
+   "text": "Achtung Lawine, Bereich meiden",
+   "unsupported": false,
+   "expect": {
+    "hazard": {
+     "kind": "other"
+    }
+   },
+   "notes": "Avalanche words give hazard kind other."
+  },
+  {
+   "name": "en-landslide-rockfall",
+   "lang": "en",
+   "text": "Warning landslide on the trail, radius 100 m",
+   "unsupported": false,
+   "expect": {
+    "hazard": {
+     "kind": "rockfall",
+     "radius": 100
+    }
+   },
+   "notes": "Landslide words give rockfall, the radius is kept."
+  },
+  {
+   "name": "de-count-persons",
+   "lang": "de",
+   "text": "Wir haben zwei Kinder gefunden, beide ansprechbar",
+   "unsupported": false,
+   "expect": {
+    "found": {
+     "age": "child",
+     "consciousness": "conscious",
+     "count": 2
+    }
+   },
+   "notes": "Number plus person noun is found.count."
+  },
+  {
+   "name": "de-responders-more",
+   "lang": "de",
+   "text": "Kind gefunden, brauchen Trage und vier weitere Leute",
+   "unsupported": false,
+   "expect": {
+    "found": {
+     "age": "child",
+     "needs": [
+      "stretcher"
+     ],
+     "responders": 4
+    }
+   },
+   "notes": "Number plus 'weitere' plus helper noun is responders."
+  },
+  {
+   "name": "en-count-and-responders",
+   "lang": "en",
+   "text": "Found two hikers, hypothermia, need 4 more people",
+   "unsupported": false,
+   "expect": {
+    "found": {
+     "age": "adult",
+     "injuries": [
+      "hypothermia"
+     ],
+     "count": 2,
+     "responders": 4
+    }
+   },
+   "notes": "Persons and responders in different clauses."
+  },
+  {
+   "name": "de-two-persons-two-states",
+   "lang": "de",
+   "text": "Zwei Kinder gefunden, eines bewusstlos und eines ansprechbar",
+   "unsupported": true,
+   "reason": "Two states for two persons: text fallback.",
+   "expect": {
+    "text": {
+     "text": "Zwei Kinder gefunden, eines bewusstlos und eines ansprechbar"
+    }
+   }
+  },
+  {
+   "name": "en-breathing-none-critical",
+   "lang": "en",
+   "text": "Man found, not breathing",
+   "unsupported": false,
+   "expect": {
+    "priority": "critical",
+    "found": {
+     "age": "adult",
+     "breathing": "none"
+    }
+   },
+   "notes": "Breathing none sets critical priority."
   }
  ]
 }

@@ -3,7 +3,7 @@ import { MapPin } from "lucide-react";
 import type { MessageRecord } from "../api/types";
 import { useData, useNow, useT } from "../state/hooks";
 import { focusOn, setUi, useUi, type Filter } from "../state/ui";
-import { bytesLabel, clock, nodeLabel, relTime, typeName } from "../lib/format";
+import { bytesLabel, clock, isNoRelay, nodeLabel, relTime, typeName } from "../lib/format";
 import { utmLabel } from "../lib/geo";
 import { Panel, PriorityChip, StateChip, TypeTile } from "./bits";
 import type { Key } from "../lib/i18n";
@@ -33,6 +33,7 @@ export function ReportCard({ rec, fresh }: { rec: MessageRecord; fresh: boolean 
   const pos = rec.message.pos ?? rec.message.track?.points.at(-1) ?? null;
   const compact = rec.type === "ack" || rec.type === "track" || rec.type === "sector";
   const when = rec.event_time ?? rec.time;
+  const noRelay = isNoRelay(rec);
 
   return (
     <li className={`report report-${rec.type} dir-${rec.direction} ${fresh ? "fresh" : ""} ${compact ? "compact" : ""}`} data-seq={rec.seq}>
@@ -40,7 +41,9 @@ export function ReportCard({ rec, fresh }: { rec: MessageRecord; fresh: boolean 
         <TypeTile type={rec.type} size={20} />
         <span className="report-type">{typeName(lang, rec.type)}</span>
         <PriorityChip priority={rec.priority} />
-        {rec.direction === "out" && <span className={`chip out-chip status-${rec.status}`}>{t("reportOut")} · {t(STATUS_KEY[rec.status])}</span>}
+        {rec.direction === "out" && (
+          <span className={`chip out-chip status-${noRelay ? "norelay" : rec.status}`}>{t("reportOut")} · {t(noRelay ? "statusNoRelay" : STATUS_KEY[rec.status])}</span>
+        )}
         <span className="report-time num" title={rec.time}>{clock(when)}</span>
       </div>
       <p className="report-text">{rec.text[lang]}</p>
@@ -62,7 +65,7 @@ export function ReportCard({ rec, fresh }: { rec: MessageRecord; fresh: boolean 
         {task && task.state !== "open" && (
           <StateChip state={task.state}>{t(task.state)}</StateChip>
         )}
-        {rec.status === "failed" && rec.error && <span className="chip status-failed">{rec.error}</span>}
+        {rec.status === "failed" && rec.error && !noRelay && <span className="chip status-failed">{rec.error}</span>}
       </div>
     </li>
   );

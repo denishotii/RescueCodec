@@ -57,8 +57,12 @@ class Airtime(val preset: ModemPreset = ModemPreset.LONG_FAST, val overheadBytes
 
 /**
  * Rolling airtime budget. A node must stay under [Region.dutyCycle] of time on air in any window
- * (EU_868: 10 percent of one hour is 360 s). The budget also keeps [criticalReserve] of the limit
- * for the most important messages (rank 0, Mayday), so routine traffic cannot starve them.
+ * (EU_868: 10 percent of one hour is 360 s).
+ *
+ * Every message type has its own limit as a share of that budget (spec section 15.1, same as the
+ * Python engine): Mayday and Ack are never held (`share` null), Found, Request and Hazard may use
+ * 100 percent, Sector 90 percent, Track and Text 70 percent. So routine traffic cannot eat the
+ * budget that a find or a Mayday needs. See [BudgetLimits].
  *
  * Not thread-safe: call it from one thread, or lock outside.
  */
@@ -66,7 +70,6 @@ class AirtimeBudget(
     val airtime: Airtime = Airtime(),
     val region: Region = Region.EU_868,
     val windowMs: Long = 3_600_000,
-    val criticalReserve: Double = 0.2,
     /** Multiplies each message's airtime, for retries. 1.0 = send once. */
     val retryFactor: Double = 1.0,
 ) {
@@ -85,17 +88,15 @@ class AirtimeBudget(
         return log.sumOf { it.second }
     }
 
-    /** Airtime left for a message of [rank] (0 is allowed to use the reserve). */
-    fun remainingMs(now: Long, rank: Int): Double {
-        val cap = if (rank == 0) limitMs else limitMs * (1 - criticalReserve)
-        return cap - usedMs(now)
-    }
+    /** Airtime left for a message that may use [share] of the budget (null = never held: all of it). */
+    fun remainingMs(now: Long, share: Double?): Double = (limitMs * (share ?: 1.0)) - usedMs(now)
 
     /** Cost of one message of [payloadBytes], including the retry factor. */
     fun costMs(payloadBytes: Int): Double = airtime.millis(payloadBytes) * retryFactor
 
-    fun canSend(payloadBytes: Int, now: Long, rank: Int): Boolean =
-        region.dutyCycle >= 1.0 || remainingMs(now, rank) >= costMs(payloadBytes)
+    /** True when a message of [payloadBytes] with limit [share] may go out now. */
+    fun canSend(payloadBytes: Int, now: Long, share: Double?): Boolean =
+        share == null || region.dutyCycle >= 1.0 || remainingMs(now, share) + 1e-6 >= costMs(payloadBytes)
 
     /** Writes a transmission into the budget. */
     fun record(payloadBytes: Int, now: Long) {
@@ -103,18 +104,34 @@ class AirtimeBudget(
         log.addLast(now to costMs(payloadBytes))
     }
 
-    /** Milliseconds until a message of [payloadBytes] and [rank] fits, 0 if it fits now. */
-    fun waitMs(payloadBytes: Int, now: Long, rank: Int): Long {
-        if (canSend(payloadBytes, now, rank)) return 0
+    /** Milliseconds until a message of [payloadBytes] with limit [share] fits, 0 if it fits now. */
+    fun waitMs(payloadBytes: Int, now: Long, share: Double?): Long {
+        if (canSend(payloadBytes, now, share)) return 0
         expire(now)
-        val cap = if (rank == 0) limitMs else limitMs * (1 - criticalReserve)
+        val cap = limitMs * (share ?: 1.0)
         val need = costMs(payloadBytes)
         if (need > cap) return Long.MAX_VALUE // never fits
         var used = log.sumOf { it.second }
         for ((t, cost) in log) {
             used -= cost
-            if (cap - used >= need) return max(0L, t + windowMs - now)
+            if (cap - used + 1e-6 >= need) return max(0L, t + windowMs - now)
         }
         return 0
     }
+}
+
+/** Per message type: the share of the airtime budget that may be used before the type is held. */
+object BudgetLimits {
+    /** Message type name to limit. `null` means never held (Mayday and Ack: life safety, tiny packets). */
+    private val byType: Map<String, Double?> = mapOf(
+        "mayday" to null, "ack" to null,
+        "found" to 1.0, "request" to 1.0, "hazard" to 1.0,
+        "sector" to 0.9, "text" to 0.7, "track" to 0.7,
+    )
+
+    /** Limit for a message type. Unknown types count as text (70 percent). */
+    fun forType(type: String?): Double? = if (type != null && type in byType) byType.getValue(type) else 0.7
+
+    fun forMessage(message: Map<String, Any?>): Double? =
+        forType(message.keys.firstOrNull { it in org.rescuecodec.codec.Codes.BODY_TYPES })
 }

@@ -175,6 +175,20 @@ class GatewayService:
                 if record["direction"] == "in":
                     self.deduper.seen(record["from"], message, bytes.fromhex(record["codec"]["hex"]), when.timestamp())
                 self._apply_to_board(record, message, when)
+                self._restore_stats(record, when)
+
+    def _restore_stats(self, record: dict[str, Any], when: datetime) -> None:
+        """Count a stored record again after a restart, so the stats and the airtime budget do not start from zero.
+        `since` then names the first stored message."""
+        if self._counters["in"] + self._counters["out"] == 0:
+            self._stats_since = when
+        self._count(record)
+        if record["direction"] == "out" and record["status"] in ("sent", "delivered", "failed"):
+            airtime = message_airtime_seconds(record["codec"]["size"], self.queue.preset)
+            self._counters["airtime_s"] += airtime
+            age = (datetime.now(timezone.utc) - when).total_seconds()
+            if 0 <= age < self.queue.budget.window_s:
+                self.queue.budget.record(time.monotonic() - age, airtime)
 
     # ------------------------------------------------------------------ small helpers
     @property

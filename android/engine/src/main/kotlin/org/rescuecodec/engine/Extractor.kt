@@ -2,7 +2,10 @@
 package org.rescuecodec.engine
 
 import java.math.BigDecimal
+import java.math.RoundingMode
+import org.rescuecodec.codec.CodecException
 import org.rescuecodec.codec.Codes
+import org.rescuecodec.codec.RescueCodec
 
 /** One fact the extractor found, so the app can show why a field was set. */
 data class Evidence(val field: String, val value: String, val words: String)
@@ -15,24 +18,32 @@ data class Evidence(val field: String, val value: String, val words: String)
  *   fallback `{"text": {"text": "..."}}`, cut to 180 bytes.
  * @property unsupported true when the sentence cannot be coded safely. The app should offer the text
  *   fallback and let the person decide.
- * @property reasons short machine-readable notes ("type=found", "two_states", ...).
+ * @property reasons short machine-readable notes ("type=found", "conflicting_states", ...).
  * @property evidence which words set which field.
+ * @property pos spoken coordinates, kept even when the result is a text fallback.
  */
 data class Extraction(
     val message: Map<String, Any?>,
     val unsupported: Boolean,
     val reasons: List<String> = emptyList(),
     val evidence: List<Evidence> = emptyList(),
+    val pos: Map<String, Any?>? = null,
 )
 
 /**
  * Rule-based extractor: a spoken or typed German or English report becomes one RescueCodec message.
  *
- * It matches the words of [Vocab] (both languages at once, because volunteers mix them), handles
- * negation ("nicht unterkühlt"), uncertainty ("Atmung unklar"), number words ("zwo"), spoken
- * coordinates and typos. It follows spec section 11: only what the sentence says, one message per
- * report, and no guessing when a sentence holds facts one message cannot carry (two persons in
- * different states, an object found instead of a person).
+ * This is a port of the Python reference extractor (`rescuecodec/engine/extract.py`). Both read the
+ * same word list (`spec/vocab/sar.yaml`) and must give the same fields on `spec/vectors/extraction.json`.
+ * Rules in short:
+ *  - Words match on tokens after folding umlauts. A word may carry an ending (s, e, n, en, er, es, em),
+ *    one filler word may sit inside a phrase ("kann selbst laufen"), and words of 6+ letters allow one
+ *    typo unless the written word is a known word itself.
+ *  - The longest phrase wins ("nicht ansprechbar" beats "ansprechbar"). Negation and uncertainty words
+ *    act on the next three words of the same clause.
+ *  - Type order: Mayday, Sector (with a status), Found, Request, Hazard. A generic person noun
+ *    ("Person", "Verletzter") plus a state counts as Found when there is no request or hazard cue.
+ *  - Only what the sentence says. Two persons in different states or an object found give the text fallback.
  *
  * The extractor is pure and thread-safe. A person must always check the fields before sending.
  */
@@ -40,53 +51,68 @@ class Extractor(private val vocab: Vocab = Vocab.default) {
 
     // ------------------------------------------------------------ data types
 
-    private class Tok(val raw: String, val stem: String, val clause: Int)
+    private class Phrase(val field: String, val code: String, val tokens: List<String>)
 
-    private class Syn(val stems: List<String>, val group: String, val code: String, val raw: String)
-
-    private class Hit(val group: String, val code: String, val start: Int, val end: Int, val fuzzy: Boolean) {
-        val len get() = end - start
+    private class Match(val field: String, val code: String, val start: Int, val end: Int, val cost: Int) {
         var negated = false
         var uncertain = false
+        val len get() = end - start
     }
 
-    private class Sentence(val toks: List<Tok>, val hits: List<Hit>, val raw: String) {
-        fun of(group: String) = hits.filter { it.group == group }
-        fun of(group: String, code: String) = hits.filter { it.group == group && it.code == code }
-        fun has(group: String, code: String? = null) = hits.any { it.group == group && (code == null || it.code == code) && !it.negated }
-        fun words(h: Hit) = toks.subList(h.start, h.end).joinToString(" ") { it.raw }
+    /** One analysed sentence. */
+    private class Run(val text: String, val tokens: List<String>, val clauses: List<Int>, val matches: List<Match>, val pos: Map<String, Any?>?) {
+        fun words(m: Match) = tokens.subList(m.start, m.end).joinToString(" ")
+
+        /** Matches of one field after negation and uncertainty: uncertain drops, negated flips or drops. */
+        fun effective(field: String): List<Match> {
+            val out = ArrayList<Match>()
+            for (m in matches) {
+                if (m.field != field || m.uncertain) continue
+                if (m.negated) {
+                    FLIP[field to m.code]?.let { out.add(Match(field, it, m.start, m.end, m.cost)) }
+                    continue
+                }
+                out.add(m)
+            }
+            return out
+        }
+
+        fun cue(kind: String) = matches.filter { it.field == "msg" && it.code == kind && !it.negated }
     }
 
     // ----------------------------------------------------------- vocabulary
 
-    private val index = HashMap<String, MutableList<Syn>>()
-    private val fuzzyList = ArrayList<Syn>()
-    private val knownStems = HashSet<String>()
-    private val numberWords = HashMap<String, Int>()
-    private val radiusWords: Set<String>
+    private val phrases = ArrayList<Phrase>()
+    private val known: Set<String>
+    private val numberWords = ArrayList<Pair<List<String>, Int>>()
+    private val helperPhrases = ArrayList<List<String>>()
+    private val personPhrases = ArrayList<List<String>>()
+    private val personNounPhrases = ArrayList<List<String>>()
+    private val coverageFixed = ArrayList<Pair<List<String>, Int>>()
 
     init {
-        fun add(group: String, code: String, phrase: String) {
-            val toks = tokenize(phrase)
-            if (toks.isEmpty()) return
-            val syn = Syn(toks.map { it.stem }, group, code, toks.joinToString("") { it.raw })
-            index.getOrPut(syn.stems[0]) { ArrayList() }.add(syn)
-            knownStems.addAll(syn.stems)
-            // Typo matching only for content words, never for negation, uncertainty or counts.
-            if (toks.size == 1 && syn.raw.length >= 7 && group !in setOf("neg", "unc", "helper", "person")) fuzzyList.add(syn)
+        fun add(field: String, code: String, word: String) {
+            val t = tokenize(word).first
+            if (t.isNotEmpty()) phrases.add(Phrase(field, code, t))
         }
         for ((type, words) in vocab.messages) for (w in words) add("msg", type, w)
-        for ((group, codes) in vocab.fields) for ((code, words) in codes) for (w in words) add(group, code, w)
-        for (w in vocab.negation) add("neg", "", w)
-        for (w in vocab.uncertainty) add("unc", "", w)
-        for (w in vocab.helpers) add("helper", "", w)
-        for (w in vocab.persons) add("person", "", w)
-        for ((k, v) in vocab.numbers) numberWords[fold(k)] = v
-        for ((code, words) in EXTRAS) for (w in words) {
-            val (group, c) = code.split("=")
-            add(group, c, w)
+        for ((field, codes) in vocab.fields) for ((code, words) in codes) for (w in words) add(field, code, w)
+        for (w in vocab.negation) add("negation", "negation", w)
+        for (w in vocab.uncertainty) add("uncertainty", "uncertainty", w)
+        known = phrases.flatMap { it.tokens }.toSet()
+        for ((k, v) in vocab.numbers) {
+            val t = tokenize(k).first
+            if (t.isNotEmpty()) numberWords.add(t to v)
         }
-        radiusWords = vocab.radius.flatMap { tokenize(it).map { t -> t.stem } }.toSet() - RADIUS_STOP
+        fun plain(words: List<String>, into: MutableList<List<String>>) {
+            for (w in words) tokenize(w).first.takeIf { it.isNotEmpty() }?.let { into.add(it) }
+        }
+        plain(vocab.helpers, helperPhrases)
+        plain(vocab.persons, personPhrases)
+        plain(vocab.personNouns, personNounPhrases)
+        // Age words ("Kind", "Wanderer") also count as persons in "zwei Kinder".
+        personPhrases.addAll(phrases.filter { it.field == "age" }.map { it.tokens })
+        for ((k, v) in vocab.coverageFixed) tokenize(k).first.takeIf { it.isNotEmpty() }?.let { coverageFixed.add(it to v) }
     }
 
     // ------------------------------------------------------------ entry point
@@ -97,459 +123,485 @@ class Extractor(private val vocab: Vocab = Vocab.default) {
      */
     @Suppress("UNUSED_PARAMETER")
     fun extract(text: String, lang: String? = null): Extraction {
-        val original = text.trim()
-        if (original.isEmpty()) return Extraction(emptyMap(), true, listOf("empty"))
-        val evidence = ArrayList<Evidence>()
-        var normalized = fold(original.lowercase())
+        if (text.isBlank()) return Extraction(emptyMap(), true, listOf("empty"))
+        val run = analyse(text)
+        val cues = listOf("mayday", "sector", "found", "request", "hazard").filter { run.cue(it).isNotEmpty() }
+        var type: String? = null
+        var body: Map<String, Any?>? = null
+        var reason: String? = null
 
-        // Spoken coordinates: "50.69212, 7.21345" or "50.70001 7.19876".
-        var pos: Map<String, Any?>? = null
-        val m = COORDS.find(normalized)
-        if (m != null) {
-            val lat = BigDecimal(m.groupValues[1])
-            val lon = BigDecimal(m.groupValues[2])
-            if (lat.abs() <= BigDecimal(90) && lon.abs() <= BigDecimal(180)) {
-                pos = linkedMapOf("lat" to lat.toDouble(), "lon" to lon.toDouble(), "acc" to "estimated")
-                normalized = normalized.replaceRange(m.range, " ")
-                evidence.add(Evidence("pos", "${m.groupValues[1]}, ${m.groupValues[2]}", m.value))
+        val maydayReasons = run.effective("mayday.reason").filter { it.code != "other" }
+        if (run.cue("mayday").isNotEmpty() || maydayReasons.isNotEmpty()) {
+            type = "mayday"
+            body = buildMayday(run)
+        } else {
+            val sector = if (run.cue("sector").isNotEmpty()) buildSector(run) else null
+            if (sector?.first != null) {
+                type = "sector"
+                body = sector.first
+            } else {
+                val hasAge = run.effective("age").isNotEmpty()
+                val anyState = STATE_GROUPS.any { run.effective(it).isNotEmpty() }
+                val impliedFound = hasAge && anyState
+                val generic = run.cue("request").isEmpty() && run.cue("hazard").isEmpty() &&
+                    run.effective("hazard.kind").isEmpty() && anyState &&
+                    personNounPhrases.any { p -> run.tokens.indices.any { matchAt(run, it, p, false) != null } }
+                if (run.cue("found").isNotEmpty() || impliedFound || generic) {
+                    if (run.cue("found").isNotEmpty() && objectFound(run)) return fallback(run, text, "object_found", cues)
+                    val f = buildFound(run)
+                    type = "found"
+                    body = f.first
+                    reason = f.second
+                } else if (sector?.second == "ambiguous") {
+                    return fallback(run, text, "ambiguous", cues)
+                } else if (run.cue("request").isNotEmpty()) {
+                    type = "request"
+                    body = buildRequest(run)
+                    reason = "missing_field"
+                } else if (run.cue("hazard").isNotEmpty() || run.effective("hazard.kind").isNotEmpty()) {
+                    type = "hazard"
+                    body = buildHazard(run)
+                    reason = "missing_field"
+                }
             }
         }
+        if (type == null || body == null) return fallback(run, text, reason ?: "no_supported_type", cues)
 
-        val s = analyse(normalized, original)
-        val reasons = ArrayList<String>()
-
-        val liveKind = live(s, "hazard.kind").isNotEmpty()
-        val body: Pair<String, Map<String, Any?>>? = when {
-            isMayday(s) -> "mayday" to mayday(s, evidence)
-            sectorNumber(s) != null -> "sector" to sector(s, evidence)
-            isFound(s) -> "found" to found(s, evidence, reasons)
-            s.has("msg", "hazard") && liveKind -> "hazard" to hazard(s, evidence)
-            s.has("msg", "request") && firstHit(s, "request.resource") != null -> "request" to request(s, evidence)
-            liveKind -> "hazard" to hazard(s, evidence)
-            s.has("msg", "hazard") -> "hazard" to hazard(s, evidence)
-            else -> null
+        val msg = LinkedHashMap<String, Any?>()
+        priority(run, type, body)?.let { msg["priority"] = it }
+        run.pos?.let { msg["pos"] = LinkedHashMap(it) }
+        msg[type] = body
+        val probe = LinkedHashMap(msg)
+        if (type in Codes.ID_REQUIRED) probe["id"] = 1
+        try {
+            RescueCodec.encode(probe)
+        } catch (e: CodecException) {
+            return fallback(run, text, "invalid", cues)
         }
-
-        if (body == null || reasons.any { it in BLOCKERS }) {
-            if (body == null && reasons.isEmpty()) reasons.add("no_type")
-            return fallback(original, reasons, evidence)
-        }
-        val (type, content) = body
-        reasons.add("type=$type")
-        val out = LinkedHashMap<String, Any?>()
-        priority(s, type, evidence)?.let { out["priority"] = it }
-        if (pos != null) out["pos"] = pos
-        out[type] = content
-        return Extraction(out, false, reasons, evidence)
+        return Extraction(msg, false, listOf("type=$type"), evidence(run), run.pos)
     }
 
-    private fun fallback(original: String, reasons: List<String>, evidence: List<Evidence>): Extraction {
-        var t = original
-        while (t.toByteArray(Charsets.UTF_8).size > 180) t = t.dropLast(1)
-        return Extraction(linkedMapOf("text" to linkedMapOf("text" to t.trim())), true, reasons, evidence)
+    private fun evidence(run: Run) = run.matches.map { Evidence(it.field, it.code, run.words(it)) }
+
+    private fun fallback(run: Run, text: String, reason: String, cues: List<String>): Extraction {
+        var raw = text.trim().split(Regex("\\s+")).joinToString(" ").toByteArray(Charsets.UTF_8)
+        if (raw.size > Codes.MAX_TEXT_BYTES) raw = raw.copyOf(Codes.MAX_TEXT_BYTES)
+        // A cut inside a multi-byte character leaves a broken tail: drop it.
+        val cut = String(raw, Charsets.UTF_8).trimEnd('�')
+        if (cut.isEmpty()) return Extraction(emptyMap(), true, listOf("empty"), emptyList(), run.pos)
+        return Extraction(linkedMapOf("text" to linkedMapOf("text" to cut)), true, listOf(reason) + cues.map { "cue=$it" }, evidence(run), run.pos)
     }
 
     // ------------------------------------------------------------- analysis
 
-    private fun analyse(normalized: String, raw: String): Sentence {
-        val toks = tokenize(normalized)
-        val pool = ArrayList<Hit>()
-        for (i in toks.indices) {
-            index[toks[i].stem]?.forEach { syn ->
-                val n = syn.stems.size
-                if (i + n <= toks.size && (0 until n).all { toks[i + it].stem == syn.stems[it] && toks[i + it].clause == toks[i].clause }) {
-                    pool.add(Hit(syn.group, syn.code, i, i + n, false))
+    private fun analyse(original: String): Run {
+        // Spoken coordinates: "50.69212, 7.21345" or "50.70001 7.19876".
+        var clean = original
+        var pos: Map<String, Any?>? = null
+        val m = COORD.find(original)
+        if (m != null) {
+            val g = m.groupValues.drop(1).filter { it.isNotEmpty() }
+            val lat = g[0].replace(',', '.').toDouble()
+            val lon = g[1].replace(',', '.').toDouble()
+            if (lat in -90.0..90.0 && lon in -180.0..180.0) {
+                pos = linkedMapOf("lat" to round5(g[0]), "lon" to round5(g[1]), "acc" to "estimated")
+                clean = original.substring(0, m.range.first) + " " + original.substring(m.range.last + 1)
+            }
+        }
+        val (tokens, clauses) = tokenize(clean)
+        val run0 = Run(original, tokens, clauses, emptyList(), pos)
+        return Run(original, tokens, clauses, findMatches(run0), pos)
+    }
+
+    private fun round5(s: String): Double = BigDecimal(s.replace(',', '.')).setScale(5, RoundingMode.HALF_EVEN).toDouble()
+
+    private fun findMatches(run: Run): List<Match> {
+        val found = LinkedHashMap<List<Any>, Match>()
+        for (ph in phrases) {
+            if (ph.field in IGNORED_FIELDS) continue
+            val fuzzy = ph.field != "negation" && ph.field != "uncertainty"
+            for (i in run.tokens.indices) {
+                val hit = matchAt(run, i, ph.tokens, fuzzy) ?: continue
+                val key = listOf(ph.field, ph.code, i, hit.first)
+                val old = found[key]
+                if (old == null || old.cost > hit.second) found[key] = Match(ph.field, ph.code, i, hit.first, hit.second)
+            }
+        }
+        val all = found.values.toList()
+        val mods = all.filter { it.field == "negation" || it.field == "uncertainty" }
+        val cues = all.filter { it.field != "negation" && it.field != "uncertainty" }
+        // A longer phrase eats the shorter phrase inside it, except that message cue words never eat field words.
+        val kept = cues.filter { m ->
+            cues.none { n -> n !== m && n.field != "msg" && n.start <= m.start && m.end <= n.end && n.len > m.len }
+        }
+        // Exact beats typo on the same span and field.
+        val best = HashMap<Triple<String, Int, Int>, Int>()
+        for (m in kept) best.merge(Triple(m.field, m.start, m.end), m.cost) { a, b -> minOf(a, b) }
+        val keep = kept.filter { it.cost == best.getValue(Triple(it.field, it.start, it.end)) }
+            .sortedWith(compareBy({ it.start }, { it.end }))
+        annotate(run, keep, mods)
+        return keep
+    }
+
+    private fun annotate(run: Run, keep: List<Match>, mods: List<Match>) {
+        val covered = HashSet<Int>()
+        for (m in keep) for (t in m.start until m.end) covered.add(t)
+        val uncSpans = mods.filter { it.field == "uncertainty" }
+        val uncTokens = HashSet<Int>()
+        for (u in uncSpans) for (t in u.start until u.end) uncTokens.add(t)
+        val negTokens = HashSet<Int>()
+        for (n in mods) {
+            if (n.field == "negation" && (n.start until n.end).none { it in covered || it in uncTokens }) negTokens.add(n.end - 1)
+        }
+        for ((i, tok) in run.tokens.withIndex()) {
+            if (tok in EXTRA_NEGATION && i !in covered && i !in uncTokens) negTokens.add(i)
+        }
+        for (m in keep) {
+            for (ni in negTokens) {
+                if (ni >= m.start - 3 && ni < m.start && sameScope(run, ni, m.start)) {
+                    m.negated = true
+                    break
                 }
             }
-            val r = toks[i].raw
-            if (r.length >= 7 && toks[i].stem !in knownStems) {
-                for (syn in fuzzyList) {
-                    if (Math.abs(syn.raw.length - r.length) <= 1 && syn.raw != r && toks[i].stem != syn.stems[0] &&
-                        withinOneEdit(syn.raw, r)
-                    ) {
-                        pool.add(Hit(syn.group, syn.code, i, i + 1, true))
+            for (u in uncSpans) {
+                val before = u.end - 1 >= m.start - 3 && u.end - 1 < m.start
+                val after = u.start >= m.end && u.start <= m.end + 1
+                if ((before || after) && sameScope(run, minOf(u.start, m.start), maxOf(u.start, m.start))) {
+                    if (m.field != "msg") {
+                        m.uncertain = true
+                        break
                     }
                 }
             }
         }
-        // Longest match wins, so "nicht ansprechbar" beats "nicht" and "ansprechbar", and
-        // "nichts gefunden" beats "gefunden". Equal spans stay together (one word, two meanings).
-        val sorted = pool.sortedWith(compareBy<Hit>({ -it.len }, { it.fuzzy }, { it.start }))
-        val won = ArrayList<Hit>()
-        for (h in sorted) {
-            val clash = won.any { w -> w.start < h.end && h.start < w.end && !(w.start == h.start && w.end == h.end) }
-            if (!clash) won.add(h)
-        }
-        val hits = won.sortedBy { it.start }
-        val s = Sentence(toks, hits, raw)
-        for (h in hits) {
-            if (h.group == "neg" || h.group == "unc") continue
-            h.negated = hits.any { n ->
-                n.group == "neg" && n.clause(toks) == h.clause(toks) && h.start - n.end in 0..2 &&
-                    hits.none { o -> o !== h && o.group !in MODIFIER_GROUPS && o.start >= n.end && o.start < h.start }
-            }
-            h.uncertain = hits.any { u ->
-                u.group == "unc" && u.clause(toks) == h.clause(toks) && (h.start - u.end in 0..2 || u.start - h.end in 0..2)
-            }
-        }
-        return s
     }
 
-    private fun Hit.clause(toks: List<Tok>) = toks[start].clause
+    private fun sameScope(run: Run, a: Int, b: Int): Boolean {
+        val lo = minOf(a, b)
+        val hi = maxOf(a, b)
+        if (run.clauses[lo] != run.clauses[hi]) return false
+        return (lo until hi).none { run.tokens[it] in BOUNDARY_WORDS }
+    }
 
-    // ------------------------------------------------------------ type rules
+    // ------------------------------------------------------- token matching
 
-    private fun live(s: Sentence, group: String) = s.of(group).filter { !it.negated && !it.uncertain }
+    /** 0 for an exact or inflected match, 1 for a typo, null for no match. */
+    private fun tokenCost(tok: String, ptok: String, fuzzy: Boolean): Int? {
+        if (tok == ptok) return 0
+        if (tok.startsWith(ptok)) {
+            val rest = tok.substring(ptok.length)
+            if ((ptok.length >= 4 && rest in SUFFIXES) || (ptok.length == 3 && rest == "s")) return 0
+        }
+        if (fuzzy && ptok.length >= 6 && tok.length >= 6 && tok.take(2) == ptok.take(2) && !ptok[0].isDigit() &&
+            tok !in known && withinOneEdit(tok, ptok)
+        ) return 1
+        return null
+    }
 
-    private fun firstHit(s: Sentence, group: String) = live(s, group).firstOrNull()
+    /** Matches a phrase at token [i]. One filler word may sit between two phrase words. Returns (end, cost). */
+    private fun matchAt(run: Run, i: Int, ptoks: List<String>, fuzzy: Boolean): Pair<Int, Int>? {
+        var j = i
+        var cost = 0
+        for ((k, pt) in ptoks.withIndex()) {
+            if (j >= run.tokens.size || run.clauses[j] != run.clauses[i]) return null
+            var c = tokenCost(run.tokens[j], pt, fuzzy)
+            if (c == null && k > 0 && run.tokens[j] in FILLERS && j + 1 < run.tokens.size && run.clauses[j + 1] == run.clauses[i]) {
+                j++
+                c = tokenCost(run.tokens[j], pt, fuzzy)
+            }
+            if (c == null) return null
+            cost += c
+            j++
+        }
+        return j to cost
+    }
 
-    private fun isMayday(s: Sentence) = s.has("msg", "mayday") || live(s, "mayday.reason").isNotEmpty()
+    private fun matchesPlain(run: Run, i: Int, ptoks: List<String>) = matchAt(run, i, ptoks, false)
 
-    /** Sector word followed by a number, plus a status or a percentage. Returns the number. */
-    private fun sectorNumber(s: Sentence): Int? {
-        val words = s.of("msg", "sector")
-        for (w in words) {
-            var i = w.end
-            if (i < s.toks.size && s.toks[i].raw in NUMBER_PREFIX) i++
-            val n = digits(s, i) ?: continue
-            if (n !in 1..65535) continue
-            if (live(s, "sector.status").isNotEmpty() || percent(s) != null) return n
+    // ----------------------------------------------------------- numbers
+
+    /** A number at token [i]: digits or a number word (one or more tokens). Returns value and token count. */
+    private fun numberAt(run: Run, i: Int): Pair<Int, Int>? {
+        if (i !in run.tokens.indices) return null
+        val t = run.tokens[i]
+        if (t.isNotEmpty() && t.all { it in '0'..'9' }) return t.toIntOrNull()?.let { it to 1 }
+        for ((words, value) in numberWords) {
+            if (i + words.size <= run.tokens.size && words.indices.all { run.tokens[i + it] == words[it] }) return value to words.size
         }
         return null
     }
 
-    /** A found cue, or a described person with at least two facts ("Kind eingeklemmt, ansprechbar"). */
-    private fun isFound(s: Sentence): Boolean {
-        if (s.has("msg", "found")) return true
-        val facts = listOf("age", "consciousness", "breathing", "mobility", "injuries").count { live(s, it).isNotEmpty() }
-        return facts >= 2
+    /** The number whose last token is [i] (one or two tokens long), or null. */
+    private fun numberEndingAt(run: Run, i: Int): Int? {
+        if (i < 0) return null
+        for (n in listOf(2, 1)) {
+            val start = i - n + 1
+            if (start < 0) continue
+            val got = numberAt(run, start)
+            if (got != null && got.second == n) return got.first
+        }
+        return null
     }
 
-    // ----------------------------------------------------------- field rules
+    private class Qty(val value: Int, val helper: Boolean, val person: Boolean, val clause: Int, val more: Boolean)
 
-    private fun found(s: Sentence, ev: MutableList<Evidence>, reasons: MutableList<String>): Map<String, Any?> {
-        val out = LinkedHashMap<String, Any?>()
-        val single = LinkedHashMap<String, String>()
-        var conflict = false
-
-        fun pick(group: String, order: List<String>, flips: Map<String, String> = emptyMap()) {
-            val codes = LinkedHashMap<String, Hit>()
-            for (h in s.of(group)) {
-                if (h.uncertain) continue
-                if (h.negated) {
-                    val flipped = flips[h.code] ?: continue
-                    codes.putIfAbsent(flipped, h)
-                } else {
-                    codes.putIfAbsent(h.code, h)
-                }
-            }
-            if (codes.isEmpty()) return
-            val best = order.firstOrNull { it in codes } ?: codes.keys.first()
-            single[group] = best
-            ev.add(Evidence("found.$group", best, s.words(codes.getValue(best))))
-            if (group == "consciousness" && "unconscious" in codes && ("conscious" in codes)) conflict = true
-            if (group == "breathing" && "none" in codes && "normal" in codes) conflict = true
+    /** Every "number (more) noun" with a number of 2 or more and a helper or person noun, in text order. */
+    private fun quantities(run: Run): List<Qty> {
+        val out = ArrayList<Qty>()
+        for (i in run.tokens.indices) {
+            val (value, n) = numberAt(run, i) ?: continue
+            if (value < 2) continue
+            var j = i + n
+            var more = false
+            if (j < run.tokens.size && run.tokens[j] in MORE_WORDS) { more = true; j++ }
+            if (j >= run.tokens.size || run.clauses[j] != run.clauses[i]) continue
+            val helper = helperPhrases.any { matchesPlain(run, j, it) != null }
+            val person = personPhrases.any { matchesPlain(run, j, it) != null }
+            if (helper || person) out.add(Qty(value, helper, person, run.clauses[i], more))
         }
-        pick("age", listOf("senior", "teen", "child", "adult"))
-        pick("consciousness", listOf("unconscious", "confused", "conscious"), mapOf("conscious" to "unconscious", "unconscious" to "conscious"))
-        pick("breathing", listOf("none", "difficult", "normal"), mapOf("normal" to "none", "none" to "normal"))
-        pick("mobility", listOf("trapped", "cannot_walk", "walks"), mapOf("walks" to "cannot_walk", "cannot_walk" to "walks"))
+        return out
+    }
 
-        val injuries = flagList(s, "injuries", "found.injuries", ev, Codes.INJURIES)
-        val needs = flagList(s, "needs", "found.needs", ev, Codes.NEEDS)
+    /** True when the clause asks for something: a request cue or a need word. */
+    private fun clauseHasRequest(run: Run, clause: Int) = run.matches.any {
+        !it.negated && run.clauses[it.start] == clause && ((it.field == "msg" && it.code == "request") || it.field == "needs")
+    }
+
+    // ----------------------------------------------------------- builders
+
+    private fun flags(matches: List<Match>, table: Map<String, Int>): List<String> =
+        matches.map { it.code }.filter { it in table }.toSet().sortedBy { table.getValue(it) }
+
+    /** Returns the body, or null and a reason. */
+    private fun buildFound(run: Run): Pair<Map<String, Any?>?, String?> {
+        val body = LinkedHashMap<String, Any?>()
+        var conflict = false
+        // age: a specific group beats "adult" ("elderly man")
+        val ages = run.effective("age").map { it.code }.toCollection(LinkedHashSet())
+        if (ages.size > 1) ages.remove("adult")
+        if (ages.size > 1) conflict = true else ages.firstOrNull()?.let { body["age"] = it }
+        val cons = run.effective("consciousness").map { it.code }.toCollection(LinkedHashSet())
+        if (cons == setOf("conscious", "confused")) { cons.clear(); cons.add("confused") }
+        if (cons.size > 1) conflict = true else cons.firstOrNull()?.let { body["consciousness"] = it }
+        val breath = run.effective("breathing").map { it.code }.toSet()
+        if (breath.size > 1) conflict = true else breath.firstOrNull()?.let { body["breathing"] = it }
+        val mob = run.effective("mobility").map { it.code }.toCollection(LinkedHashSet())
+        if ("trapped" in mob) mob.remove("cannot_walk")
+        if (mob.size > 1) conflict = true else mob.firstOrNull()?.let { body["mobility"] = it }
+        val injuries = flags(run.effective("injuries"), Codes.INJURIES).toMutableList()
+        val needs = flags(run.effective("needs"), Codes.NEEDS).toMutableList()
+        // a vague "injured" adds nothing when a specific injury is named
+        if ("other" in injuries && injuries.size > 1) injuries.remove("other")
+        if ("other" in needs && needs.size > 1) needs.remove("other")
+        if (injuries.isNotEmpty()) body["injuries"] = injuries
+        if (needs.isNotEmpty()) body["needs"] = needs
 
         var count = 0
         var responders = 0
-        for (p in s.hits.filter { (it.group == "person" || it.group == "helper") && !it.negated }.distinctBy { it.start }) {
-            val n = numberBefore(s, p.start) ?: continue
-            val isHelper = s.hits.any { it.group == "helper" && it.start == p.start && it.end == p.end }
-            val isPerson = s.hits.any { it.group == "person" && it.start == p.start && it.end == p.end }
-            val asHelper = when {
-                isHelper && !isPerson -> true
-                isPerson && !isHelper -> false
-                else -> hasRequestBefore(s, p.start) || fillerBetween(s, p.start)
+        for (q in quantities(run)) {
+            val isResponders = (q.helper && !q.person) || (q.helper && q.person && (q.more || clauseHasRequest(run, q.clause)))
+            if (isResponders && responders == 0) responders = q.value
+            else if (q.person && !isResponders && count == 0) count = q.value
+        }
+        if (count >= 2) body["count"] = minOf(count, Codes.MAX_COUNT)
+        if (responders >= 2) body["responders"] = minOf(responders, Codes.MAX_COUNT)
+        // "one ... and one": two persons in different states, one message cannot say it safely.
+        if (count >= 2 && TWO_PERSONS.containsMatchIn(fold(run.text))) conflict = true
+        return if (conflict) null to "conflicting_states" else body to null
+    }
+
+    /** "Found a backpack" is not a person found: an object word next to the found cue. */
+    private fun objectFound(run: Run): Boolean {
+        for (cue in run.cue("found")) {
+            for (forward in listOf(true, false)) {
+                var idx = if (forward) cue.end else cue.start - 1
+                val step = if (forward) 1 else -1
+                while (idx in run.tokens.indices && run.tokens[idx] in DETERMINERS) idx += step
+                if (idx !in run.tokens.indices) continue
+                if (run.tokens[idx] in OBJECTS) return true
+                if (run.matches.any { it.start <= idx && idx < it.end && it.field in setOf("needs", "hazard.kind", "request.resource") }) return true
             }
-            if (asHelper && responders == 0) {
-                responders = n
-                ev.add(Evidence("found.responders", n.toString(), s.words(p)))
-            } else if (!asHelper && count == 0 && n >= 2) {
-                count = n
-                ev.add(Evidence("found.count", n.toString(), s.words(p)))
+        }
+        return false
+    }
+
+    /** Returns the body, or null and a reason ("no_supported_type", "ambiguous", "conflicting_states"). */
+    private fun buildSector(run: Run): Pair<Map<String, Any?>?, String?> {
+        val numbers = LinkedHashSet<Int>()
+        for (cue in run.cue("sector")) {
+            var i = cue.end
+            while (i < run.tokens.size && run.tokens[i] in SECTOR_PREFIX) i++
+            numberAt(run, i)?.let { numbers.add(it.first) }
+        }
+        if (numbers.isEmpty()) return null to "no_supported_type"
+        if (numbers.size > 1) return null to "ambiguous"
+        var status = run.effective("sector.status").map { it.code }.toCollection(LinkedHashSet())
+        var coverage = 0
+        var fromPercent = false
+        for ((i, tok) in run.tokens.withIndex()) {
+            if (tok in PERCENT_WORDS && i > 0) {
+                val n = numberEndingAt(run, i - 1)
+                if (n != null && n in 1..100) { coverage = n; fromPercent = true }
             }
         }
-
-        // Two persons in different states, or two "one ... and one": one message cannot say it safely.
-        val ones = s.toks.count { it.raw == "one" }
-        val others = s.toks.any { it.raw in OTHERS }
-        val objectFound = s.of("msg", "found").firstOrNull { !it.negated }?.let { c ->
-            (c.end until minOf(c.end + 4, s.toks.size)).any { s.toks[it].raw in OBJECTS } && live(s, "age").isEmpty()
-        } == true
-        if (conflict || ones >= 2 || others) reasons.add("two_states")
-        if (objectFound) reasons.add("object_found")
-
-        if (count > 0) out["count"] = count
-        for (k in listOf("age", "consciousness", "breathing", "mobility")) single[k]?.let { out[k] = it }
-        if (injuries.isNotEmpty()) out["injuries"] = injuries
-        if (needs.isNotEmpty()) out["needs"] = needs
-        if (responders > 0) out["responders"] = responders
-        return out
+        if (coverage == 0) {
+            for ((words, value) in coverageFixed) {
+                for (i in run.tokens.indices) if (matchesPlain(run, i, words) != null) coverage = value
+            }
+        }
+        if ("partial" in status) status = linkedSetOf("partial")
+        if (status.isEmpty() && coverage != 0 && fromPercent) status = linkedSetOf(if (coverage < 100) "partial" else "cleared")
+        if (status.size != 1) return null to (if (status.isEmpty()) "no_supported_type" else "conflicting_states")
+        var st = status.first()
+        if (coverage != 0 && coverage < 100 && st == "cleared") st = "partial"
+        val body = LinkedHashMap<String, Any?>()
+        body["sector"] = numbers.first()
+        body["status"] = st
+        if (coverage != 0 && st == "partial") body["coverage"] = coverage
+        return body to null
     }
 
-    private fun flagList(s: Sentence, group: String, field: String, ev: MutableList<Evidence>, table: Map<String, Int>): List<String> {
-        val codes = LinkedHashSet<String>()
-        for (h in s.of(group)) {
-            if (h.negated || h.uncertain) continue
-            if (codes.add(h.code)) ev.add(Evidence(field, h.code, s.words(h)))
-        }
-        return codes.sortedBy { table.getValue(it) }
+    private fun buildRequest(run: Run): Map<String, Any?>? {
+        val res = run.effective("request.resource")
+        val first = res.firstOrNull() ?: return null
+        val body = LinkedHashMap<String, Any?>()
+        body["resource"] = first.code
+        var count = numberEndingAt(run, first.start - 1)
+        if (count == null && first.start - 2 >= 0 && run.tokens[first.start - 1] in MORE_WORDS) count = numberEndingAt(run, first.start - 2)
+        if (count != null && count >= 2) body["count"] = minOf(count, Codes.MAX_COUNT)
+        run.effective("request.urgency").firstOrNull()?.let { body["urgency"] = it.code }
+        return body
     }
 
-    private fun sector(s: Sentence, ev: MutableList<Evidence>): Map<String, Any?> {
-        val number = sectorNumber(s)!!
-        val statuses = live(s, "sector.status").map { it.code }.toSet()
-        val pct = percent(s)
-        val fixed = fixedCoverage(s)
-        val status = when {
-            "blocked" in statuses -> "blocked"
-            "partial" in statuses -> "partial"
-            pct != null && pct in 1..99 -> "partial" // "40 Prozent abgesucht" is not "cleared"
-            "cleared" in statuses -> "cleared"
-            else -> "partial"
-        }
-        val out = LinkedHashMap<String, Any?>()
-        out["sector"] = number
-        out["status"] = status
-        ev.add(Evidence("sector.status", status, live(s, "sector.status").firstOrNull()?.let { s.words(it) } ?: "percent"))
-        val coverage = pct ?: fixed
-        if (coverage != null && coverage in 1..100 && status == "partial") out["coverage"] = coverage
-        return out
-    }
-
-    private fun request(s: Sentence, ev: MutableList<Evidence>): Map<String, Any?> {
-        val out = LinkedHashMap<String, Any?>()
-        val r = firstHit(s, "request.resource")!!
-        out["resource"] = r.code
-        ev.add(Evidence("request.resource", r.code, s.words(r)))
-        val n = numberBefore(s, r.start)
-        if (n != null && n >= 2) {
-            out["count"] = n
-            ev.add(Evidence("request.count", n.toString(), s.words(r)))
-        }
-        firstHit(s, "request.urgency")?.let {
-            out["urgency"] = it.code
-            ev.add(Evidence("request.urgency", it.code, s.words(it)))
-        }
-        return out
-    }
-
-    private fun hazard(s: Sentence, ev: MutableList<Evidence>): Map<String, Any?> {
-        val out = LinkedHashMap<String, Any?>()
-        val kind = firstHit(s, "hazard.kind")
-        out["kind"] = kind?.code ?: "other"
-        if (kind != null) ev.add(Evidence("hazard.kind", kind.code, s.words(kind)))
-        firstHit(s, "hazard.severity")?.let {
-            out["severity"] = it.code
-            ev.add(Evidence("hazard.severity", it.code, s.words(it)))
-        }
-        radius(s)?.let {
-            out["radius"] = it
-            ev.add(Evidence("hazard.radius", it.toString(), "radius"))
-        }
-        return out
-    }
-
-    private fun mayday(s: Sentence, ev: MutableList<Evidence>): Map<String, Any?> {
-        val out = LinkedHashMap<String, Any?>()
-        var reason = firstHit(s, "mayday.reason")?.code
-        if (reason == null) {
-            val fell = s.toks.any { it.raw in FELL } || live(s, "injuries").isNotEmpty()
-            if (fell) reason = "injured"
-        }
-        if (reason != null) {
-            out["reason"] = reason
-            ev.add(Evidence("mayday.reason", reason, s.of("mayday.reason").firstOrNull()?.let { s.words(it) } ?: "fell or hurt"))
-        }
-        for (p in s.hits.filter { (it.group == "person" || it.group == "helper") && !it.negated }) {
-            val n = numberBefore(s, p.start) ?: continue
-            if (n in 1..255) {
-                out["persons"] = n
-                ev.add(Evidence("mayday.persons", n.toString(), s.words(p)))
+    private fun buildHazard(run: Run): Map<String, Any?>? {
+        var kinds = run.effective("hazard.kind")
+        kinds = kinds.filter { it.code != "other" }.ifEmpty { kinds }
+        if (kinds.isEmpty()) return null
+        val body = LinkedHashMap<String, Any?>()
+        body["kind"] = kinds[0].code
+        val sev = run.effective("hazard.severity").map { it.code }.toSet()
+        if (sev.isNotEmpty()) body["severity"] = sev.maxBy { Codes.SEVERITY[it] ?: 0 }
+        for ((i, tok) in run.tokens.withIndex()) {
+            val km = tok in UNIT_KM
+            if (!km && tok !in UNIT_M) continue
+            if (i == 0 || !run.tokens[i - 1][0].isDigit()) continue
+            val value = run.tokens[i - 1].replace(',', '.').toDouble()
+            val metres = Math.round(value * (if (km) 1000 else 1)).toInt()
+            if (metres in 1..Codes.MAX_RADIUS_M) {
+                body["radius"] = metres
                 break
             }
         }
-        return out
+        return body
     }
 
-    // -------------------------------------------------------------- priority
-
-    private fun priority(s: Sentence, type: String, ev: MutableList<Evidence>): String? {
-        val claimed = HashSet<Int>()
-        // Words that already say something else (urgency of a request, severity of a hazard).
-        if (type == "request") s.of("request.urgency").forEach { claimed.add(it.start) }
-        if (type == "hazard") s.of("hazard.severity").forEach { claimed.add(it.start) }
-        val cues = s.of("priority").filter { !it.negated && !it.uncertain && it.start !in claimed }.map { it.code }.toMutableList()
-        if (type == "found" && s.of("breathing", "none").any { !it.negated }) cues.add("critical")
-        if (type == "found" && NOW_SHOUT.containsMatchIn(s.raw)) cues.add("critical")
-        val best = listOf("critical", "urgent", "normal", "routine").firstOrNull { it in cues } ?: return null
-        if (best == DEFAULT_PRIORITY[type]) return null
-        ev.add(Evidence("priority", best, "priority words"))
-        return best
-    }
-
-    // --------------------------------------------------------------- numbers
-
-    private fun digits(s: Sentence, i: Int): Int? {
-        if (i !in s.toks.indices) return null
-        val t = s.toks[i].raw
-        if (t.all { it.isDigit() }) return t.toIntOrNull()
-        return numberWords[t]
-    }
-
-    /** A whole number right before [start], allowing one filler word ("10 weitere Suchkräfte"). */
-    private fun numberBefore(s: Sentence, start: Int): Int? {
-        for (back in 1..2) {
-            val i = start - back
-            if (i < 0 || s.toks[i].clause != s.toks[start].clause) return null
-            val tok = s.toks[i].raw
-            val n = digits(s, i)
-            if (n != null) {
-                // "a couple" is two tokens: handled by the number words list ("couple" alone is not).
-                return n
+    private fun buildMayday(run: Run): Map<String, Any?> {
+        val body = LinkedHashMap<String, Any?>()
+        val reasons = run.effective("mayday.reason").filter { it.code != "other" }
+        if (reasons.isNotEmpty()) body["reason"] = reasons[0].code
+        else if (run.effective("injuries").isNotEmpty()) body["reason"] = "injured"
+        val q = quantities(run).firstOrNull { it.value >= 1 }
+        if (q != null) {
+            body["persons"] = minOf(q.value, Codes.MAX_COUNT)
+        } else {
+            for ((i, tok) in run.tokens.withIndex()) {
+                if (tok in setOf("of", "von") && i + 1 < run.tokens.size && run.tokens[i + 1] in setOf("us", "uns")) {
+                    val n = numberEndingAt(run, i - 1)
+                    if (n != null && n >= 1) body["persons"] = minOf(n, Codes.MAX_COUNT)
+                }
             }
-            if (i >= 1 && "${s.toks[i - 1].raw} $tok" in numberWords) return numberWords.getValue("${s.toks[i - 1].raw} $tok")
-            if (tok !in FILLERS) return null
         }
-        return null
+        return body
     }
 
-    private fun hasRequestBefore(s: Sentence, start: Int) =
-        s.of("msg", "request").any { it.end <= start && it.clause(s.toks) == s.toks[start].clause }
-
-    private fun fillerBetween(s: Sentence, start: Int) =
-        (maxOf(0, start - 2) until start).any { s.toks[it].raw in MORE_WORDS && s.toks[it].clause == s.toks[start].clause }
-
-    private fun percent(s: Sentence): Int? {
-        for (i in s.toks.indices) {
-            val t = s.toks[i].raw
-            if ((t == "%" || t == "percent" || t == "prozent") && i >= 1) digits(s, i - 1)?.let { if (it in 0..100) return it }
-        }
-        return null
-    }
-
-    private fun fixedCoverage(s: Sentence): Int? {
-        val text = s.toks.joinToString(" ") { it.raw }
-        return vocab.coverageFixed.entries.firstOrNull { (k, _) -> " ${fold(k)} " in " $text " }?.value
-    }
-
-    private fun radius(s: Sentence): Int? {
-        for (i in s.toks.indices) {
-            val t = s.toks[i].raw
-            if (t.isEmpty() || !(t[0].isDigit())) continue
-            val value = t.replace(',', '.').toDoubleOrNull() ?: continue
-            val unit = s.toks.getOrNull(i + 1)?.raw ?: continue
-            val factor = when (unit) {
-                "m", "meter", "metern", "metre", "metres", "meters" -> 1.0
-                "km", "kilometer", "kilometern", "kilometre", "kilometres", "kilometers" -> 1000.0
-                else -> continue
-            }
-            val clause = s.toks[i].clause
-            val near = (maxOf(0, i - 3)..minOf(s.toks.size - 1, i + 4)).any {
-                s.toks[it].clause == clause && s.toks[it].stem in radiusWords
-            }
-            if (near) return Math.round(value * factor).toInt().takeIf { it in 1..100_000 }
-        }
-        return null
+    private fun priority(run: Run, type: String, body: Map<String, Any?>): String? {
+        if (type == "mayday") return null
+        val urgencySpans = if (type == "request") run.matches.filter { it.field == "request.urgency" }.map { it.start to it.end }.toSet() else emptySet()
+        var level = run.effective("priority").filter { (it.start to it.end) !in urgencySpans }.maxOfOrNull { Codes.PRIORITY.getValue(it.code) } ?: 0
+        if (type == "found" && body["breathing"] == "none") level = maxOf(level, Codes.PRIORITY.getValue("critical"))
+        if (level == 0) return null
+        val name = Codes.PRIORITY.entries.first { it.value == level }.key
+        return if (name == Codes.DEFAULT_PRIORITY[type]) null else name
     }
 
     // ----------------------------------------------------------- tokenising
 
     companion object {
-        private val COORDS = Regex("""(-?\d{1,3}\.\d{3,})\s*[,;/]?\s*(-?\d{1,3}\.\d{3,})""")
-        private val TOKEN = Regex("""\d+(?:[.,]\d+)?|[a-z]+(?:'[a-z]+)?|%|[.,;!?:]""")
-        private val CLAUSE_WORDS = setOf("aber", "but", "however", "jedoch", "sondern", "although", "obwohl")
-        private val ABBREVIATIONS = setOf("ca", "evtl", "bzw", "ggf", "etc", "nr", "no", "approx", "z", "b")
-        private val MODIFIER_GROUPS = setOf("neg", "unc", "helper", "person")
-        private val RADIUS_STOP = setOf("m", "metres", "meters", "im", "von", "um", "metre")
-        private val NUMBER_PREFIX = setOf("nr", "no", "number", "nummer", "n")
-        private val FILLERS = setOf(
-            "more", "weitere", "weiteren", "extra", "additional", "zusaetzliche", "noch", "another", "further", "other",
+        /** Spoken coordinates, with optional degree signs and N/E letters. Same expression as the Python engine. */
+        private val COORD = Regex(
+            """(?<![\d.,])(-?\d{1,2}[.,]\d{3,8})\s*°?\s*[nN]?\s*[,;/]?\s+(-?\d{1,3}[.,]\d{3,8})\s*°?\s*[eE]?(?![\d])""" +
+                """|(?<![\d.,])(-?\d{1,2}[.,]\d{3,8})\s*°?\s*[nN]?\s*[,;/]\s*(-?\d{1,3}[.,]\d{3,8})\s*°?\s*[eE]?(?![\d])""",
         )
-        private val MORE_WORDS = setOf("more", "weitere", "weiteren", "extra", "additional", "zusaetzliche", "further")
+        private val TOKEN = Regex("""\d+(?:[.,]\d+)?|[a-z]+(?:'[a-z]+)?|%""")
+        private val CLAUSE_BREAK = Regex("""[.,;:!?\n()]""")
+
+        private val SUFFIXES = setOf("s", "e", "n", "en", "er", "es", "em")
+        /** One of these may sit inside a phrase ("kann selbst laufen"). */
+        private val FILLERS = setOf("selbst", "auch", "noch", "wieder", "sehr", "ganz", "very", "still", "just", "really", "quite")
+        private val MORE_WORDS = setOf("more", "weitere", "weiteren", "weiterer", "mehr", "extra", "additional", "zusaetzliche")
+        private val DETERMINERS = setOf("a", "an", "the", "some", "ein", "eine", "einen", "einem", "der", "die", "das", "den", "dem")
+        private val EXTRA_NEGATION = setOf("nobody", "noone", "niemand", "nothing", "nichts")
+        private val BOUNDARY_WORDS = setOf("aber", "but", "sondern", "however", "jedoch", "doch")
         private val OBJECTS = setOf(
-            "backpack", "rucksack", "jacket", "jacke", "bag", "tasche", "phone", "handy", "shoe", "shoes", "schuh",
-            "schuhe", "hat", "muetze", "clothes", "kleidung", "tracks", "spuren", "footprints", "trace", "traces",
+            "backpack", "rucksack", "jacket", "jacke", "phone", "handy", "smartphone", "hat", "muetze", "cap", "glove", "gloves",
+            "handschuh", "handschuhe", "boot", "boots", "stiefel", "shoe", "shoes", "schuh", "schuhe", "tracks", "spur", "spuren",
+            "fussspuren", "footprints", "footprint", "clothing", "kleidung", "equipment", "ausruestung", "wallet", "bag",
+            "tasche", "car", "wagen", "item", "items", "gegenstand", "sachen",
         )
-        private val OTHERS = setOf("andere", "anderen", "anderer", "another", "other")
-        private val FELL = setOf("fell", "fall", "fallen", "gestuerzt", "sturz", "abgestuerzt", "stuerzte", "ausgerutscht")
-        private val NOW_SHOUT = Regex("""\bNOW\b""")
-        private val BLOCKERS = setOf("two_states", "object_found")
+        private val UNIT_M = setOf("m", "meter", "metern", "metre", "metres", "meters")
+        private val UNIT_KM = setOf("km", "kilometer", "kilometern", "kilometre", "kilometres", "kilometers")
+        private val PERCENT_WORDS = setOf("%", "percent", "prozent")
+        private val SECTOR_PREFIX = setOf("nr", "no", "nummer", "number")
+        private val IGNORED_FIELDS = setOf("acc", "ack.status")
+        private val STATE_GROUPS = listOf("consciousness", "breathing", "mobility", "injuries")
 
-        /** Default priority per message type (spec section 2). */
-        private val DEFAULT_PRIORITY = mapOf(
-            "mayday" to "critical", "found" to "urgent", "hazard" to "urgent", "request" to "normal",
-            "sector" to "routine",
+        /** A negated value with an opposite meaning flips; every other negated value is dropped. */
+        private val FLIP = mapOf(
+            ("consciousness" to "conscious") to "unconscious", ("consciousness" to "unconscious") to "conscious",
+            ("breathing" to "normal") to "none", ("mobility" to "walks") to "cannot_walk",
         )
-
-        /**
-         * Small additions to the vocabulary, as `group=code` to words. They cover phrasing seen in
-         * practice that the shared word list does not have yet. Everything else comes from sar.yaml.
-         */
-        private val EXTRAS = mapOf(
-            "msg=found" to listOf("entdeckt", "gesichtet", "spotted", "lokalisiert"),
-            "mobility=walks" to listOf("kann selbst laufen", "kann selbst gehen", "selbst laufen"),
-            "request.urgency=soon" to listOf("half an hour", "halbe stunde", "halben stunde"),
-            "person=" to listOf("of us", "von uns", "mitglieder", "members", "kollegen", "retter", "rescuers"),
+        private val TWO_PERSONS = Regex(
+            """\bone\b.{0,60}\b(?:and one|the other|and the other|another)\b|""" +
+                """\b(?:eine|einer|einen|ein)\b.{0,60}\b(?:die|der|den) ander\w*|\bund (?:eine|einer)\b""",
         )
 
         /** Lowercase text without umlauts: ä to ae, ö to oe, ü to ue, ß to ss. */
         private fun fold(s: String): String = s.lowercase()
-            .replace('’', '\'').replace('`', '\'').replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")
+            .replace('’', '\'').replace('`', '\'').replace('´', '\'')
+            .replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")
 
-        /** Light stemming so "Tragen" matches "Trage" and "injuries" matches "injury". */
-        private fun stem(w: String): String {
-            if (w.isEmpty() || !w[0].isLetter()) return w
-            if (w.endsWith("ies") && w.length > 5) return w.dropLast(3) + "y"
-            for (suffix in listOf("en", "er", "es", "e", "n", "s")) {
-                if (suffix == "n" && w.endsWith("en")) continue // "teen" is not "tee"
-                if (w.endsWith(suffix) && w.length - suffix.length >= 3) return w.dropLast(suffix.length)
-            }
-            return w
-        }
-
-        /** Splits text into word tokens. Punctuation and "aber"/"but" start a new clause. */
-        private fun tokenize(text: String): List<Tok> {
+        /** Tokens and the clause number of each token. A clause starts after . , ; : ! ? ( ) or a line break. */
+        private fun tokenize(text: String): Pair<List<String>, List<Int>> {
             val folded = fold(text)
-            val toks = ArrayList<Tok>()
+            val tokens = ArrayList<String>()
+            val clauses = ArrayList<Int>()
             var clause = 0
-            var prev = ""
+            var lastEnd = 0
             for (m in TOKEN.findAll(folded)) {
-                val t = m.value
-                if (t.length == 1 && t[0] in ".,;!?:") {
-                    val isAbbr = t == "." && prev in ABBREVIATIONS
-                    if (!isAbbr) clause++
-                } else {
-                    if (t in CLAUSE_WORDS) clause++
-                    toks.add(Tok(t, stem(t), clause))
-                    if (t in CLAUSE_WORDS) clause++
-                }
-                prev = t
+                if (CLAUSE_BREAK.containsMatchIn(folded.substring(lastEnd, m.range.first))) clause++
+                tokens.add(m.value)
+                clauses.add(clause)
+                lastEnd = m.range.last + 1
             }
-            return toks
+            return tokens to clauses
         }
 
         /** True when [a] and [b] differ by one insertion, deletion, substitution or swap. */
         private fun withinOneEdit(a: String, b: String): Boolean {
-            if (a == b) return false
+            if (a == b) return true
             val la = a.length
             val lb = b.length
             if (Math.abs(la - lb) > 1) return false
-            var i = 0
-            while (i < la && i < lb && a[i] == b[i]) i++
             if (la == lb) {
-                if (a.substring(i + 1) == b.substring(i + 1)) return true
-                return i + 1 < la && a[i] == b[i + 1] && a[i + 1] == b[i] && a.substring(i + 2) == b.substring(i + 2)
+                val diff = (0 until la).filter { a[it] != b[it] }
+                if (diff.size == 1) return true
+                return diff.size == 2 && diff[1] == diff[0] + 1 && a[diff[0]] == b[diff[1]] && a[diff[1]] == b[diff[0]]
             }
-            return if (la > lb) a.substring(i + 1) == b.substring(i) else b.substring(i + 1) == a.substring(i)
+            val (long, short) = if (la > lb) a to b else b to a
+            for (i in 0..short.length) {
+                if (long.substring(0, i) == short.substring(0, i) && long.substring(i + 1) == short.substring(i)) return true
+            }
+            return false
         }
     }
 }

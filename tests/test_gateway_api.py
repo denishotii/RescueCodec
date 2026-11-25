@@ -432,7 +432,12 @@ class Persistence(unittest.TestCase):
                 own = gw.post("/v2/messages", message=FOUND).json()
                 self.assertEqual(own["message"]["id"], 1)
                 wait_for(lambda: gw.client.get(f"/v2/messages/{own['seq']}").json()["status"] == "delivered")
+                before = gw.client.get("/v2/stats").json()
             with gateway(db=db) as gw:
+                after = gw.client.get("/v2/stats").json()
+                for key in ("messages_in", "messages_out", "bytes_in", "bytes_out", "text_equivalent_bytes"):
+                    self.assertEqual(after[key]["value"], before[key]["value"], key)   # stats do not restart from zero
+                self.assertGreater(after["airtime_last_hour_pct"]["value"], 0)
                 self.assertEqual(len(gw.client.get("/v2/messages").json()["items"]), 3)
                 self.assertEqual(gw.client.get("/v2/tasks/0000e002-7").json()["state"], "accepted")
                 self.assertEqual(gw.client.get("/v2/tasks/0000e001-1").json()["state"], "open")

@@ -3,6 +3,8 @@ import { toUtm, utmLabel, circlePolygon } from "../src/lib/geo";
 import { airtimeSaving, loraAirtimeSeconds, packetAirtime } from "../src/lib/airtime";
 import { applyStatus, lastSeq, mergeMessages, upsertMessage } from "../src/state/store";
 import type { MessageRecord } from "../src/api/types";
+import { isNoRelay } from "../src/lib/format";
+import { t } from "../src/lib/i18n";
 
 const rec = (seq: number, over: Partial<MessageRecord> = {}): MessageRecord => ({
   seq, key: null, direction: "in", from: "!a1b2c3d4", type: "text", priority: "normal", status: "received", error: null,
@@ -74,5 +76,16 @@ describe("team label", () => {
     expect(clampBytes("Einsatzleitung", 12)).toBe("Einsatzleitu");
     expect(new TextEncoder().encode(clampBytes("Bergwacht Köln Süd", 12)).length).toBeLessThanOrEqual(12);
     expect(clampBytes("ääääääääää", 12)).toBe("ääääää");
+  });
+});
+
+describe("outgoing status wording", () => {
+  it("calls a broadcast that no relay repeated 'no relay confirmed', not failed", () => {
+    expect(isNoRelay(rec(1, { direction: "out", status: "failed", error: "max_retransmit" }))).toBe(true);
+    expect(isNoRelay(rec(2, { direction: "out", status: "failed", error: "radio_error" }))).toBe(false);
+    expect(isNoRelay(rec(3, { direction: "out", status: "delivered" }))).toBe(false);
+    expect(isNoRelay(rec(4, { direction: "in", status: "received" }))).toBe(false);
+    expect(t("en", "statusNoRelay")).toBe("No relay confirmed");
+    expect(t("de", "statusNoRelay")).toBe("Kein Relais bestätigt");
   });
 });

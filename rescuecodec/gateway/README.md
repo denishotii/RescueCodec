@@ -49,7 +49,7 @@ Each received record carries the radio facts: `radio.rssi`, `radio.snr` and `rad
 
 Sending is asynchronous. A record goes `queued`, then `sent`, then `delivered` or `failed`. Mayday goes first. The airtime budget is 10 percent per hour. When it is used up, you get `429` with `retry_after_s`. A Mayday is never held back.
 
-About `failed` with `max_retransmit`: for a broadcast, Meshtastic counts a packet as delivered when it hears a neighbour repeat it. If no radio in range repeats packets, the status ends as `failed` even though the other side got it. The Accept that comes back is the real proof.
+About `failed` with `max_retransmit`: for a broadcast, Meshtastic counts a packet as delivered when it hears a neighbour repeat it. If no radio in range repeats packets, the status ends as `failed` even though the other side got it. The API keeps the status `failed` with error `max_retransmit` (that is the contract). The dashboard words it as "no relay confirmed" and does not count it as a failure. The Accept that comes back is the real proof.
 
 ## Connectors
 

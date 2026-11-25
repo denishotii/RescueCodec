@@ -54,3 +54,12 @@ export function fmtNum(n: number | null | undefined, digits = 0): string {
   if (n == null || Number.isNaN(n)) return "–";
   return n.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
+
+/**
+ * How an outgoing message ended. The gateway reports `failed` with error `max_retransmit` when a broadcast
+ * was sent but no neighbour radio repeated it. That is normal when no relay is in range, and the other side
+ * may well have heard it, so the dashboard says "no relay confirmed" and not "failed".
+ */
+export function isNoRelay(rec: Pick<MessageRecord, "direction" | "status" | "error">): boolean {
+  return rec.direction === "out" && rec.status === "failed" && rec.error === "max_retransmit";
+}

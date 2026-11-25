@@ -9,6 +9,10 @@ class QueuedMessage internal constructor(
     val message: Map<String, Any?>,
     val bytes: ByteArray,
     val rank: Int,
+    /** Share of the airtime budget this type may use (null = never held), see [BudgetLimits]. */
+    val share: Double?,
+    /** Priority level, 4 critical to 1 routine. Inside one rank the higher level goes first. */
+    val level: Int,
     val queuedAtMs: Long,
     /** Same key means "newer version of the same thing": it replaces the older one in the queue. */
     val key: String?,
@@ -17,10 +21,11 @@ class QueuedMessage internal constructor(
 /**
  * Priority send queue with an airtime budget.
  *
- * Order: Mayday, then Found, Request and Ack, then Hazard, then Sector, then Track, then Text. An
- * explicit `critical` priority on a message moves it to the top. Inside one rank the oldest goes
- * first. Strict order: if the best message does not fit the airtime budget yet, nothing else goes
- * before it (so a big Found cannot be overtaken by small Text forever).
+ * Order (spec section 15.1, same as the Python engine): Mayday, then Found, Request and Ack, then
+ * Hazard, then Sector, then Track, then Text. Inside one rank the higher priority (critical, urgent,
+ * normal, routine) goes first, then the oldest. A message that does not fit its airtime limit yet
+ * (Mayday and Ack never wait; Found, Request, Hazard 100 percent; Sector 90; Track and Text 70)
+ * is held, and the next message that fits may go before it.
  *
  * Messages that carry a version of the same thing replace each other: same `(type, id)`, or the
  * same sector number. Rank 3 and lower (Sector, Track, Text) expire after [staleAfterMs].
@@ -45,34 +50,37 @@ class SendQueue(
     fun enqueue(message: Map<String, Any?>, bytes: ByteArray = RescueCodec.encode(message)): QueuedMessage {
         val key = keyOf(message)
         if (key != null) items.removeAll { it.key == key }
-        val q = QueuedMessage(seq++, message, bytes, rankOf(message), clock(), key)
+        val q = QueuedMessage(seq++, message, bytes, rankOf(message), BudgetLimits.forMessage(message), levelOf(message), clock(), key)
         items.add(q)
         return q
     }
 
+    private val order = compareBy<QueuedMessage>({ it.rank }, { -it.level }, { it.seq })
+
     /** What would be sent next if the budget allowed, or null. */
     fun peek(): QueuedMessage? {
         dropStale()
-        return items.minWithOrNull(compareBy({ it.rank }, { it.seq }))
+        return items.minWithOrNull(order)
     }
 
     /** Milliseconds until the next message may go: null if empty, 0 if now, Long.MAX_VALUE if it never fits. */
     fun waitMs(): Long? {
-        val next = peek() ?: return null
+        dropStale()
+        if (items.isEmpty()) return null
         val now = clock()
         val gap = max0(lastSendMs + minGapMs - now)
-        return maxOf(gap, budget.waitMs(next.bytes.size, now, next.rank))
+        return items.minOf { maxOf(gap, budget.waitMs(it.bytes.size, now, it.share)) }
     }
 
     /**
-     * Takes the next message if the airtime budget and the gap allow it now, and records its
+     * Takes the best message that the airtime budget and the gap allow now, and records its
      * airtime. Returns null otherwise.
      */
     fun poll(): QueuedMessage? {
-        val next = peek() ?: return null
+        dropStale()
         val now = clock()
         if (now < lastSendMs + minGapMs) return null
-        if (!budget.canSend(next.bytes.size, now, next.rank)) return null
+        val next = items.sortedWith(order).firstOrNull { budget.canSend(it.bytes.size, now, it.share) } ?: return null
         budget.record(next.bytes.size, now)
         lastSendMs = now
         items.remove(next)
@@ -83,7 +91,7 @@ class SendQueue(
     fun cancel(seq: Long): Boolean = items.removeAll { it.seq == seq }
 
     /** The waiting messages in sending order. */
-    fun snapshot(): List<QueuedMessage> = items.sortedWith(compareBy({ it.rank }, { it.seq }))
+    fun snapshot(): List<QueuedMessage> = items.sortedWith(order)
 
     fun clear() = items.clear()
 
@@ -105,8 +113,22 @@ class SendQueue(
                 "track" -> 4
                 else -> 5
             }
-            return if (message["priority"] == "critical") 0 else base
+            return base
         }
+
+        /** Priority level of a message: 4 critical, 3 urgent, 2 normal, 1 routine. Without `priority` the type default. */
+        fun levelOf(message: Map<String, Any?>): Int {
+            val explicit = message["priority"] as? String
+            if (explicit != null) return LEVELS[explicit] ?: 2
+            return when (message.keys.firstOrNull { it in org.rescuecodec.codec.Codes.BODY_TYPES }) {
+                "mayday" -> 4
+                "found", "hazard", "ack" -> 3
+                "request", "text" -> 2
+                else -> 1
+            }
+        }
+
+        private val LEVELS = mapOf("critical" to 4, "urgent" to 3, "normal" to 2, "routine" to 1)
 
         private fun keyOf(message: Map<String, Any?>): String? {
             val type = message.keys.firstOrNull { it in org.rescuecodec.codec.Codes.BODY_TYPES } ?: return null

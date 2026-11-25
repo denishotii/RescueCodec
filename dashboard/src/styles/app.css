@@ -87,6 +87,7 @@
 .out-chip { background: var(--accepted-soft); color: var(--accepted); }
 .out-chip.status-failed { background: var(--mayday-soft); color: var(--mayday); }
 .out-chip.status-delivered { background: var(--done-soft); color: var(--done); }
+.out-chip.status-norelay { background: var(--surface-3); color: var(--ink); }
 
 .type-tile { width: 2.1rem; height: 2.1rem; flex: none; display: inline-grid; place-items: center; border-radius: var(--r-ctl); background: var(--surface-3); color: var(--ink); }
 .type-mayday { background: var(--mayday); color: #fff; }

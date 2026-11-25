@@ -44,18 +44,19 @@ class SendQueueTest {
             val m = q.poll() ?: break
             order.add(m.message.keys.first { it != "id" })
         }
-        assertEquals(listOf("mayday", "request", "found", "hazard", "sector", "track", "text"), order)
+        assertEquals(listOf("mayday", "found", "request", "hazard", "sector", "track", "text"), order)
     }
 
     @Test
-    fun criticalPriorityJumpsTheQueue() {
+    fun priorityOrdersInsideOneRankAndTypeStillComesFirst() {
         val q = queue()
+        q.enqueue(mapOf("id" to 4, "priority" to "normal", "found" to emptyMap<String, Any?>()))
         q.enqueue(mayday(1))
         q.enqueue(hazard(2))
         q.enqueue(mapOf("id" to 3, "priority" to "critical", "found" to emptyMap<String, Any?>()))
-        assertEquals(1, q.poll()!!.message["id"])
-        assertEquals(3, q.poll()!!.message["id"])
-        assertEquals(2, q.poll()!!.message["id"])
+        q.enqueue(mapOf("id" to 5, "found" to emptyMap<String, Any?>()))
+        // Mayday first, then rank 1 by priority (critical, urgent default, normal), then the hazard.
+        assertEquals(listOf(1, 3, 5, 4, 2), generateSequence { q.poll() }.map { it.message["id"] }.toList())
     }
 
     @Test
@@ -70,21 +71,40 @@ class SendQueueTest {
     }
 
     @Test
-    fun budgetStopsRoutineTrafficButNotMayday() {
-        // 10 percent of 100 s = 10 s limit, 2 s reserved for rank 0, so 8 s for the rest.
+    fun budgetHoldsEachTypeAtItsOwnLimitButNeverMaydayOrAck() {
+        // 10 percent of 100 s = 10 s. Text and track: 7 s. Sector: 9 s. Found, request, hazard: 10 s.
         val budget = AirtimeBudget(windowMs = 100_000)
         val q = queue(budget)
+        repeat(40) { q.enqueue(text("t$it")) }
         var sent = 0
-        repeat(30) { q.enqueue(request(it + 1)); }
         while (q.poll() != null) sent++
-        // each request is about 0.5 s on air (retryFactor 1)
-        assertTrue(sent in 13..16, "sent $sent")
-        assertTrue(budget.usedMs(now) <= 8_000)
+        assertTrue(budget.usedMs(now) <= 7_000, "text stays under 70 percent: ${budget.usedMs(now)}")
+        assertTrue(sent > 5, "sent $sent")
+        // A sector report may still use up to 90 percent, a found report up to 100.
+        repeat(40) { q.enqueue(sector(it + 1, "partial")) }
+        while (q.poll() != null) { /* drain */ }
+        assertTrue(budget.usedMs(now) in 7_000.0..9_000.0, "sector stops at 90 percent: ${budget.usedMs(now)}")
+        repeat(40) { q.enqueue(request(it + 1)) }
+        while (q.poll() != null) { /* drain */ }
+        assertTrue(budget.usedMs(now) in 9_000.0..10_000.0, "request stops at 100 percent: ${budget.usedMs(now)}")
         assertTrue((q.waitMs() ?: 0) > 0)
-        // Mayday still goes through, using the reserve.
+        // Mayday and Ack are never held, even over the limit.
         q.enqueue(mayday(100))
-        val m = q.poll()
-        assertEquals(100, m!!.message["id"])
+        assertEquals(100, q.poll()!!.message["id"])
+        q.enqueue(mapOf("ack" to mapOf("ref" to 3, "status" to "accepted", "node" to "!0badf00d")))
+        assertTrue(q.poll() != null)
+    }
+
+    @Test
+    fun aHeldMessageDoesNotBlockOneThatStillFits() {
+        val budget = AirtimeBudget(windowMs = 100_000)
+        val q = queue(budget)
+        repeat(40) { q.enqueue(text("t$it")) }
+        while (q.poll() != null) { /* text is now at its 70 percent limit */ }
+        q.enqueue(text("held"))
+        q.enqueue(request(500))
+        assertEquals(500, q.poll()!!.message["id"])
+        assertNull(q.poll())
     }
 
     @Test

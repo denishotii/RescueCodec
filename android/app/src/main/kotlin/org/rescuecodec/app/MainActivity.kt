@@ -3,6 +3,8 @@ package org.rescuecodec.app
 
 import android.content.Intent
 import android.os.Bundle
+import android.util.Base64
+import androidx.lifecycle.ViewModelProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -11,6 +13,8 @@ import org.rescuecodec.app.radio.LinkState
 import org.rescuecodec.app.radio.RadioTarget
 import org.rescuecodec.app.service.RadioService
 import org.rescuecodec.app.ui.Permissions
+import org.rescuecodec.app.ui.AppViewModelFactory
+import org.rescuecodec.app.ui.ReportViewModel
 import org.rescuecodec.app.ui.RescueRoot
 import org.rescuecodec.app.ui.Screen
 
@@ -33,6 +37,18 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         screenFrom(intent)?.let { navRequest.value = ++navCounter to it }
+        injectReportText(intent)
+    }
+
+    /**
+     * Debug builds only: type a sentence into the Report screen from the command line, with real umlauts
+     * (adb cannot type them). `--es report_text_b64 <base64 of the UTF-8 sentence>`.
+     */
+    private fun injectReportText(intent: Intent?) {
+        if (!BuildConfig.DEBUG) return
+        val b64 = intent?.getStringExtra("report_text_b64") ?: return
+        val text = String(Base64.decode(b64, Base64.DEFAULT), Charsets.UTF_8)
+        ViewModelProvider(this, AppViewModelFactory(application))[ReportViewModel::class.java].onText(text)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -59,5 +75,6 @@ class MainActivity : ComponentActivity() {
         }
         val initial = screenFrom(intent) ?: Screen.REPORT
         setContent { RescueRoot(graph, initial, navRequest.value) }
+        injectReportText(intent)
     }
 }

@@ -37,6 +37,9 @@ class Vocab private constructor(private val root: Map<String, Any?>) {
     /** Words that mark a count of persons ("Wanderer", "kids"). */
     val persons: List<String> = modWords("persons")
 
+    /** Generic nouns for one casualty ("person", "Verletzter"). With a state code they count as a found cue. */
+    val personNouns: List<String> = modWords("person_nouns")
+
     /** Words around a hazard radius ("Umkreis", "around"). */
     val radius: List<String> = modWords("radius")
 
@@ -45,7 +48,7 @@ class Vocab private constructor(private val root: Map<String, Any?>) {
         ?.entries?.associate { (k, v) -> k.toString() to (v as Number).toInt() } ?: emptyMap()
 
     /** Number words to values ("zwo" = 2). */
-    val numbers: Map<String, Int> = HashMap<String, Int>().also { m ->
+    val numbers: Map<String, Int> = LinkedHashMap<String, Int>().also { m ->
         val n = modifiers["numbers"] as Map<*, *>
         for (lang in listOf("en", "de")) (n[lang] as? Map<*, *>)?.forEach { (k, v) -> m[k.toString()] = (v as Number).toInt() }
     }
