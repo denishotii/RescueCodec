@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from rescuecodec.v2 import codes as C
+from rescuecodec.v2.textdomain import SETTINGS as VOCABULARY_SETTINGS
 
 
 @dataclass
@@ -37,6 +38,10 @@ class GatewayConfig:
     # compact text (SPEC section 3.6), opt-in: on a chat that packs, also build the word-token form and send it when its
     # whole payload is smaller than what the rule above picked. Receiving compact texts works either way.
     compact_text: bool = False
+    # team vocabulary (SPEC section 3.8), only with compact_text: auto = also try every domain frame (0x03) and send
+    # the strictly smallest form; general = no domain frame; a domain (emergency, sar, fire, hiking, medical) = try
+    # only that one. Receiving domain frames works either way: every vocabulary is bundled.
+    vocabulary: str = "auto"
 
     # connectors
     mqtt: str | None = None               # "host:port"
@@ -68,6 +73,8 @@ class GatewayConfig:
             raise ValueError("--text-over-air must be off, out, in or both")
         if self.text_mode not in ("auto", "compressed", "normal"):
             raise ValueError("--text-mode must be auto, compressed or normal")
+        if self.vocabulary not in VOCABULARY_SETTINGS:
+            raise ValueError(f"--vocabulary must be one of {', '.join(VOCABULARY_SETTINGS)}")
         if self.channel_index is not None and not 0 <= self.channel_index <= 7:
             raise ValueError("--channel must be 0..7")
         if self.tx_per_minute < 0:

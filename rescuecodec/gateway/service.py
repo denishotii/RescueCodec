@@ -30,7 +30,9 @@ from rescuecodec.gateway.radio.base import (BROADCAST, PORT_PRIVATE_APP, PORT_TE
                                             RadioAdapter, RadioPacket)
 from rescuecodec.gateway.store import Store
 from rescuecodec.v2 import codes as C
-from rescuecodec.v2.codec import (CodecError, decode, effective_priority, encode, is_compact_frame, message_type,
+from rescuecodec.v2 import textdomain
+from rescuecodec.v2.codec import (CodecError, decode, effective_priority, encode, is_compact_frame, is_domain_frame,
+                                  message_type,
                                   node_from_json,
                                   resolve_time)
 from rescuecodec.v2.compat import decode_any
@@ -125,17 +127,38 @@ def is_plain(record: dict[str, Any]) -> bool:
 
 
 def packed_words(message: dict[str, Any]) -> str | None:
-    """The words of a packed text message (one that came or went with `deflate` or as compact `words`), else None."""
+    """The words of a packed text message (one that came or went with `deflate`, as compact `words` or with a team
+    `vocab`), else None."""
     body = message.get("text")
-    return body.get("text") if isinstance(body, dict) and (body.get("dict") or body.get("words")) else None
+    return body.get("text") if isinstance(body, dict) and (body.get("dict") or body.get("words")
+                                                             or body.get("vocab")) else None
 
 
 def text_form(message: dict[str, Any]) -> str | None:
-    """"words" for a compact text, "deflate" for a DEFLATE packed one, else None."""
+    """"words" for a compact text, "deflate" for a DEFLATE packed one, "domain" for a domain frame, else None."""
     body = message.get("text")
     if not isinstance(body, dict):
         return None
-    return "words" if body.get("words") else "deflate" if body.get("dict") else None
+    return "domain" if body.get("vocab") else "words" if body.get("words") else "deflate" if body.get("dict") else None
+
+
+def is_frame(payload: bytes) -> bool:
+    """A compact frame (0x02) or a domain frame (0x03): a chat text without Envelope and without id."""
+    return is_compact_frame(payload) or is_domain_frame(payload)
+
+
+def vocab_fields(vid: int) -> dict[str, Any]:
+    """`codec` fields of a domain frame: vocab ("sar", null when this gateway does not have the vocabulary),
+    vocab_id (the byte on the air) and vocab_label (the short name for a tag, "S&R")."""
+    v = textdomain.VOCABS.get(vid) if textdomain.available(vid) else None
+    return {"vocab": v.domain if v else None, "vocab_id": vid, "vocab_label": v.short if v else None}
+
+
+def vocabularies() -> list[dict[str, Any]]:
+    """The team vocabularies this gateway has (health): id, domain, labels, code width, entries, SHA-256 checked."""
+    return [{"id": v.id, "domain": v.domain, "label": v.label, "short": v.short, "version": v.version,
+             "bits": v.bits, "entries": v.entries, "available": textdomain.available(v.id)}
+            for v in textdomain.VOCABS.values()]
 
 
 @dataclass
@@ -221,7 +244,7 @@ class GatewayService:
                 if record["direction"] == "in" and is_plain(record):
                     self._text_seen_before(record["from"], (record.get("radio") or {}).get("packet_id"),
                                            bytes.fromhex(record["codec"]["hex"]), when.timestamp())
-                elif record["direction"] == "in" and record["codec"].get("form") == "lean":
+                elif record["direction"] == "in" and record["codec"].get("form") in ("lean", "domain"):
                     self._text_seen_before(record["from"], (record.get("radio") or {}).get("packet_id"),
                                            bytes.fromhex(record["codec"]["hex"]), when.timestamp())
                 elif record["direction"] == "in":
@@ -281,6 +304,9 @@ class GatewayService:
             codec["form"] = text_form(message)   # "deflate" or "words" (compact text)
             if is_compact_frame(payload):
                 codec["form"] = "lean"           # compact frame 0x02: the word stream without an Envelope (no id)
+        if is_domain_frame(payload) and len(payload) > 1:
+            codec["form"] = "domain"             # domain frame 0x03 (SPEC 3.8): a team vocabulary, no Envelope, no id
+            codec.update(vocab_fields(payload[1]))
         return {"key": key, "direction": direction, "from": sender, "type": kind, "priority": priority, "status": status,
                 "error": None, "time": iso(now), "event_time": event_time, "codec": codec,
                 "radio": radio, "channel": channel, "to": to, "message": public, "text": readable(message),
@@ -495,9 +521,9 @@ class GatewayService:
         self._note_node(packet.sender, channel["name"], PORT_PRIVATE_APP)
         now = datetime.now(timezone.utc)
         with self.lock:
-            # A compact frame (0x02) has no id: like a normal text, the Meshtastic packet id finds repeats.
+            # A compact (0x02) or domain frame (0x03) has no id: like a normal text, the packet id finds repeats.
             if (self._text_seen_before(packet.sender, packet.packet_id, packet.payload, now.timestamp())
-                    if is_compact_frame(packet.payload)
+                    if is_frame(packet.payload)
                     else self.deduper.seen(packet.sender, message, packet.payload, now.timestamp())):
                 self._counters["duplicates"] += 1
                 log.debug("duplicate from %s dropped", packet.sender)
@@ -628,7 +654,7 @@ class GatewayService:
         # that the official app and radio screens show. The chat's mode decides (SPEC section 2.3), not the client.
         is_text = kind == "text" and isinstance(message.get("text"), dict)
         if is_text:
-            message["text"] = {k: v for k, v in message["text"].items() if k not in ("dict", "words")}
+            message["text"] = {k: v for k, v in message["text"].items() if k not in ("dict", "words", "vocab")}
         plain = False
         with self.lock:
             assigned = None
@@ -667,12 +693,13 @@ class GatewayService:
                 packs = route["send_as"] == "compressed"
                 check_text_words(words, C.MAX_PACKED_TEXT_BYTES if packs else C.MAX_TEXT_BYTES)
                 form = choose_form({**canonical, "text": {"text": words}}, packs, route["reason"],
-                                   compact=self.config.compact_text)
+                                   compact=self.config.compact_text, vocab=self.config.vocabulary)
                 plain, payload, canonical = not form.packed, form.payload, form.message
                 if plain:
                     words, port = canonical["text"]["text"], PORT_TEXT_MESSAGE
-                log.debug("text for %s: %s (%s, %d B normal, %s B deflate, %s B words%s)", to or target_json["name"],
-                          form.form, form.reason, form.plain_size, form.packed_size, form.words_size,
+                log.debug("text for %s: %s%s (%s, %d B normal, %s B deflate, %s B words, %s B frame, %s domain%s)",
+                          to or target_json["name"], form.form, f" {form.vocab}" if form.vocab else "", form.reason,
+                          form.plain_size, form.packed_size, form.words_size, form.lean_size, form.domain_sizes,
                           ", cut to fit" if form.cut else "")
 
             def build(status: str) -> dict[str, Any]:
@@ -698,7 +725,7 @@ class GatewayService:
                 raise ApiError(409, "bad_request", "the same message is already queued")
             record = self.store.insert(build("queued"))
             self._queued[item.seq] = _Out(record["seq"], want_ack, port, target_json["index"], to)
-            if assigned and not plain and not is_compact_frame(payload):    # a compact frame carries no id
+            if assigned and not plain and not is_frame(payload):    # a compact or domain frame carries no id
                 self.store.commit_message_id(assigned)
             self._count(record)
             task = self._apply_to_board(record, canonical, now)
@@ -895,6 +922,7 @@ class GatewayService:
                 "uptime_s": int((datetime.now(timezone.utc) - self.started).total_seconds()),
                 "radio": radio, "mqtt": {"connected": self.mqtt_connected},
                 "compact_text": self.config.compact_text,
+                "vocabulary": self.config.vocabulary, "vocabularies": vocabularies(),
                 "text_limits": {"text": C.MAX_TEXT_BYTES, "packed": C.MAX_PACKED_TEXT_BYTES}}
 
     def stats(self) -> dict[str, Any]:

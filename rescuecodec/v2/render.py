@@ -147,6 +147,8 @@ def render(msg: Mapping, lang: str = "en") -> str:
         parts.append(body.get("text", ""))
     elif "words" in body and "unknown_dict" in data["head"]:
         head = w.head("unknown_dict", n=body["words"])     # compact text with a word dictionary we do not have
+    elif "vocab" in body and "unknown_vocab" in data["head"]:
+        head = w.head("unknown_vocab", n=body["vocab"])    # domain frame with a team vocabulary we do not have
     else:
         head = w.head("unknown")
 

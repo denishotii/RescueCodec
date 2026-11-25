@@ -8,7 +8,7 @@ import sys
 from typing import Any
 
 from rescuecodec.gateway import __version__
-from rescuecodec.gateway.config import GatewayConfig, parse_channels, split_host_port
+from rescuecodec.gateway.config import VOCABULARY_SETTINGS, GatewayConfig, parse_channels, split_host_port
 
 
 def env(name: str, default: Any = None) -> Any:
@@ -58,6 +58,11 @@ def build_parser() -> argparse.ArgumentParser:
                      help="compact encoding for text messages (word tokens, SPEC section 3.6). on = in a chat that packs "
                      "(RescueCodec users only, never public channels), also build the word-token form and send it when "
                      "its whole packet is smaller. Receiving compact texts works either way (default off)")
+    svc.add_argument("--vocabulary", choices=list(VOCABULARY_SETTINGS), default=env("VOCABULARY", "auto"),
+                     help="team vocabulary for compact texts (SPEC section 3.8, needs --compact-text on). auto = also "
+                     "try every domain frame (Emergency, Search & Rescue, Firefighting, Hiking, Medical) and send the "
+                     "smallest form; general = only the general word dictionary; a domain = try only that one. Never "
+                     "larger than the normal text. Receiving works for every vocabulary (default auto)")
     con = p.add_argument_group("connectors")
     con.add_argument("--mqtt", metavar="HOST[:PORT]", default=env("MQTT"), help="publish JSON to this MQTT broker (needs paho-mqtt)")
     con.add_argument("--mqtt-user", default=env("MQTT_USER"))
@@ -89,7 +94,7 @@ def config_from_args(args: argparse.Namespace) -> GatewayConfig:
         db_path=args.db, team=args.team, preset=args.preset, ack_timeout_s=args.ack_timeout,
         text_over_air=args.text_over_air, text_lang=args.text_lang, text_mode=args.text_mode,
         text_as_meshtastic=str(args.text_as_meshtastic).lower() in ("on", "1", "true", "yes"),
-        compact_text=str(args.compact_text).lower() in ("on", "1", "true", "yes"),
+        compact_text=str(args.compact_text).lower() in ("on", "1", "true", "yes"), vocabulary=args.vocabulary,
         mqtt=args.mqtt, mqtt_user=args.mqtt_user, mqtt_password=args.mqtt_password, mqtt_prefix=args.mqtt_prefix,
         cot=args.cot or bool(args.cot_tcp), cot_udp=args.cot_udp, cot_iface=args.cot_iface, cot_tcp=args.cot_tcp,
         cot_stale_min=args.cot_stale_min, host=args.host, http_port=args.port, static_dir=args.static_dir,
