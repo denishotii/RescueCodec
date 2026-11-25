@@ -33,6 +33,10 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE atMs >= :sinceMs AND json IS NOT NULL AND state NOT IN ('queued','held','refused_airtime','cancelled','expired','invalid') ORDER BY atMs ASC, id ASC")
     suspend fun replaySince(sinceMs: Long): List<MessageEntity>
 
+    /** The newest received message that carries a signal reading (RSSI and SNR are measured by the radio). */
+    @Query("SELECT * FROM messages WHERE dir = 'in' AND rssi IS NOT NULL AND rssi != 0 ORDER BY id DESC LIMIT 1")
+    fun observeLastSignal(): Flow<MessageEntity?>
+
     @Query("SELECT COUNT(*) FROM messages")
     suspend fun count(): Int
 

@@ -19,6 +19,8 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // Vosk ships a native library per ABI. Phones are arm64 or armv7; the emulator on Apple silicon is arm64.
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
     }
 
     buildTypes {
@@ -55,6 +57,23 @@ kotlin {
     jvmToolchain(17)
 }
 
+// Speech models (Vosk). The default APK is slim: it has no models, and the phone gets them with
+// scripts/install-vosk-models.sh (adb push into the app's own folder) or from a file in Settings.
+// `./gradlew :app:assembleDebug -PbundleVosk=true` builds the full APK (about +85 MB) with both
+// small models inside, so it works offline right after install. See docs/VOICE.md.
+val bundleVosk = providers.gradleProperty("bundleVosk").map { it.toBoolean() }.orElse(false).get()
+if (bundleVosk) {
+    val voskSrc = layout.projectDirectory.dir("../../assets-offline/vosk")
+    val voskOut = layout.buildDirectory.dir("generated/voskAssets")
+    val prepareVosk = tasks.register<Sync>("prepareVoskAssets") {
+        from(voskSrc.dir("vosk-model-small-de-0.15")) { into("vosk/de") }
+        from(voskSrc.dir("vosk-model-small-en-us-0.15")) { into("vosk/en") }
+        into(voskOut)
+    }
+    android.sourceSets.getByName("main").assets.srcDir(voskOut)
+    tasks.matching { it.name.matches(Regex("(merge|generate).*Assets")) }.configureEach { dependsOn(prepareVosk) }
+}
+
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
 }
@@ -83,6 +102,12 @@ dependencies {
     implementation(libs.meshtastic.sdk.storage)
     implementation(libs.kable.core)
 
+    implementation(libs.vosk.android)
+    implementation(libs.camera.camera2)
+    implementation(libs.camera.lifecycle)
+    implementation(libs.camera.view)
+    implementation(libs.zxing.core)
+
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
@@ -92,6 +117,9 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.meshtastic.sdk.testing)
 
+    androidTestImplementation(platform(libs.compose.bom))
+    androidTestImplementation(libs.compose.ui.test.junit4)
+    debugImplementation(libs.compose.ui.test.manifest)
     androidTestImplementation(libs.kotlin.test.junit)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.core)

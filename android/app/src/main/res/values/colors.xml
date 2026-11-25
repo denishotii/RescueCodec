@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Window background before Compose draws (day paper). -->
+    <color name="rc_window_bg">#E6EADF</color>
+    <color name="ic_launcher_bg">#17231C</color>
+</resources>

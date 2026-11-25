@@ -2,18 +2,19 @@
 
 Licence: GPL-3.0-or-later (it links the official Meshtastic Kotlin SDK, which is GPL-3.0). `:codec` and `:engine` stay Apache-2.0.
 
-This module holds the radio and data layer. The screens are minimal on purpose. The UI job replaces `ui/MinimalScreen.kt` and keeps the view models.
+This module holds the radio and data layer, and the screens and voice on top of it. Design notes: `DESIGN.md` in this folder. Voice: `docs/VOICE.md`.
 
 ## Layers
 
 | Package | What it does |
 |---|---|
 | `radio/` | `ConnectionManager` (states `Disconnected`, `Scanning`, `Connecting`, `Connected`, `Error`; retry with backoff 1 s to 60 s), `RadioTarget` (TCP or Bluetooth address), `LastRadioStore`, transports and the Bluetooth scanner. |
-| `core/` | `Messenger` (send queue from `:engine`, packet handling, tasks, Accept and Done), `AppSettings`. |
+| `core/` | `Messenger` (send queue from `:engine`, packet handling, tasks, Accept and Done), `AppSettings`, `UiPrefs` (language, day/night), `ReportFields` (chip editing), `Labels` (words from spec/i18n), `LocationHelper`. |
 | `data/` | Room database: `messages` (every packet with its state), `tasks`, `stats`. |
 | `service/` | `RadioService`: foreground service, type `connectedDevice`, keeps the link alive with the screen off. |
 | `intent/` | Public Intent API `org.rescuecodec.action.SEND_REPORT`. See `docs/INTEGRATE.md`, section "Android Intent". |
-| `ui/` | View models (`StateFlow`), permission plan, minimal screen. |
+| `ui/` | `RescueRoot` (theme, language, top bar, SOS strip, navigation), `screens/` (Report, Actions, Feed, Stats, Connect, Settings, QR scanner), `components/` (cards, chips, hold-to-confirm, tags), `theme/`, view models (`StateFlow`), permission plan. |
+| `voice/` | `SpeechInput` (Vosk, hold to talk), `VoskModels` and `ModelImporter` (where the models are, import from a zip), `Speaker` (Android TextToSpeech). |
 
 `AppGraph` creates and holds all of it. `RescueApp` owns one.
 
@@ -47,6 +48,15 @@ So name the team channel `RescueCodec` on every radio (same name, same key). A c
 
 A radio over the network (TCP) needs none of these. `ui/Permissions.kt` has the plan and the plain-English reasons.
 
+## Screens, voice and screenshots
+
+Build and run: `cd android && . ../scripts/env.sh && ./gradlew :app:assembleDebug`, then `adb install -r app/build/outputs/apk/debug/app-debug.apk`.
+
+- English is the default. One tap on EN / DE in the top bar switches the app and the decoded text. Strings are in `res/values` and `res/values-de`.
+- `adb shell am start -n org.rescuecodec.app/.MainActivity --es screen STATS` opens a screen directly (REPORT, ACTIONS, FEED, STATS, RADIO, SETTINGS). Debug builds also take `--es connect 10.0.2.2:4403` to connect to the simulator.
+- Speech models: see `docs/VOICE.md`. Install with `scripts/install-vosk-models.sh`, or import a zip in Settings, or build the full APK with `-PbundleVosk=true`.
+- Screenshots of every screen, light and dark, English and German: `scripts/app-screenshots.sh` (starts the simulator and the emulator, writes `.overnight/gallery/app/`, stops them again; `--keep` leaves them running).
+
 ## Tests
 
 Unit tests (JVM, SDK fake radio, no emulator):
@@ -63,6 +73,8 @@ End to end on the emulator against the Meshtastic simulator (Docker), plus the R
 scripts/android-e2e.sh          # starts sim and emulator, runs everything, stops them
 scripts/android-e2e.sh --keep   # leaves them running
 ```
+
+`AppUiTest` (Compose UI tests: Report then Send, Accept then Done, SOS needs a hold, the language toggle) runs in the same task. `VoiceModelTest` runs the real Vosk models on recorded speech and is skipped when the models are not installed on the device (run `scripts/install-vosk-models.sh` first and start it with `adb shell am instrument`, because Gradle uninstalls the app and its models after a run).
 
 `SimulatorE2ETest` sends a Found report over TCP (`10.0.2.2:4403`, SIM-FIELD). The Python peer `sim/android_e2e_peer.py` on SIM-BASE must receive identical bytes, answers Accept and Done, sends its own report and must receive the app's Accept.
 

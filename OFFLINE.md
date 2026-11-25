@@ -14,6 +14,16 @@ Run `scripts/fetch-offline-assets.sh` once with internet. It skips files that ex
 | vosk-model-small-de-0.15 (zip + unpacked) | 45 MB zip, about 50 MB unpacked | https://alphacephei.com/vosk/models/vosk-model-small-de-0.15.zip | Apache 2.0 |
 | vosk-model-small-en-us-0.15 (zip + unpacked) | 40 MB zip, about 40 MB unpacked | https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip | Apache 2.0 |
 
+Speech models are **not** inside the default APK. See `docs/VOICE.md` for the three ways onto the phone: `scripts/install-vosk-models.sh`, Settings > Import model (zip), or `./gradlew :app:assembleDebug -PbundleVosk=true` (full APK, about +85 MB).
+
+## Android app resources (committed in the repo, no download needed at runtime)
+| Asset | Size | Source | Licence |
+|---|---|---|---|
+| Barlow and Barlow Condensed (6 TTF files in `android/app/src/main/res/font/`) | 0.6 MB | https://github.com/google/fonts/tree/main/ofl/barlow | SIL OFL 1.1 (`android/app/licenses/Barlow-OFL.txt`) |
+| Material icons (35 vector drawables in `res/drawable/ic_*.xml`) | 30 KB | https://github.com/google/material-design-icons | Apache-2.0 |
+| Vosk Android library 0.3.75 (Maven, linked into the APK) | 13 MB | https://repo1.maven.org/maven2/com/alphacephei/vosk-android/ | Apache-2.0 |
+| CameraX 1.7.0 and ZXing core 3.5.4 (Maven, QR scanner) | 1.5 MB | Google Maven, Maven Central | Apache-2.0 |
+
 ## Map data (assets-offline/map/, bbox 6.85,50.60,7.35,50.80)
 | Asset | Size | Source | Licence and attribution |
 |---|---|---|---|

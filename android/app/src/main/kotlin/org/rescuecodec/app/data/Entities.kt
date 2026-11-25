@@ -123,4 +123,12 @@ object StatNames {
     const val RX_BYTES = "rx_bytes"
     const val RX_DUPLICATES = "rx_duplicates"
     const val RX_INVALID = "rx_invalid"
+
+    /** Reports typed or spoken in the app that went into the send queue: bytes of the text, bytes of the coded message. */
+    const val REPORT_TEXT_BYTES = "report_text_bytes"
+    const val REPORT_CODED_BYTES = "report_coded_bytes"
+
+    /** Estimated airtime saved by coding those reports instead of sending their text (LoRa formula). */
+    const val REPORT_AIRTIME_SAVED_MS = "report_airtime_saved_ms"
+    const val REPORT_COUNT = "report_count"
 }

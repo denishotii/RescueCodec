@@ -13,6 +13,7 @@ import org.rescuecodec.app.core.AppSettings
 import org.rescuecodec.app.core.KeyValueStore
 import org.rescuecodec.app.core.Messenger
 import org.rescuecodec.app.core.PrefsKeyValueStore
+import org.rescuecodec.app.core.UiPrefs
 import org.rescuecodec.app.data.AppDatabase
 import org.rescuecodec.app.radio.BleRadioScanner
 import org.rescuecodec.app.radio.ConnectionManager
@@ -39,6 +40,9 @@ class AppGraph(
     val appContext: Context = context.applicationContext
     val settings = AppSettings(keyValue)
     val lastRadio = LastRadioStore(keyValue)
+
+    /** Language and day/night, watched by the screens. */
+    val ui = UiPrefs(settings, keyValue)
 
     val link: ConnectionManager = ConnectionManager(
         scope = scope,

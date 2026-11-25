@@ -1,30 +1,42 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package org.rescuecodec.app
 
+import android.content.Intent
 import android.os.Bundle
+import androidx.compose.runtime.mutableStateOf
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.viewModels
+import androidx.activity.enableEdgeToEdge
 import org.rescuecodec.app.radio.LinkState
 import org.rescuecodec.app.radio.RadioTarget
 import org.rescuecodec.app.service.RadioService
-import org.rescuecodec.app.ui.AppViewModelFactory
 import org.rescuecodec.app.ui.Permissions
-import org.rescuecodec.app.ui.ConnectionViewModel
-import org.rescuecodec.app.ui.MessagesViewModel
-import org.rescuecodec.app.ui.StatsViewModel
-import org.rescuecodec.app.ui.TasksViewModel
-import org.rescuecodec.app.ui.MinimalScreen
+import org.rescuecodec.app.ui.RescueRoot
+import org.rescuecodec.app.ui.Screen
 
-/** A minimal screen to drive the radio layer. The next job replaces it with the real UI. */
+/**
+ * The one screen host. Everything on screen is Compose, see `ui/RescueRoot.kt`.
+ *
+ * `adb shell am start -n org.rescuecodec.app/.MainActivity --es screen STATS` opens a screen
+ * directly (REPORT, ACTIONS, FEED, STATS, RADIO, SETTINGS). The screenshot script uses it.
+ * Debug builds also accept `--es connect host:port` to connect to a network radio (the simulator).
+ */
 class MainActivity : ComponentActivity() {
-    private val factory by lazy { AppViewModelFactory(application) }
-    private val connection: ConnectionViewModel by viewModels { factory }
-    private val tasks: TasksViewModel by viewModels { factory }
-    private val messages: MessagesViewModel by viewModels { factory }
-    private val stats: StatsViewModel by viewModels { factory }
+    /** A screen asked for by an intent while the app is already open (counter, screen). */
+    private val navRequest = mutableStateOf<Pair<Int, Screen>?>(null)
+    private var navCounter = 0
+
+    private fun screenFrom(intent: Intent?): Screen? =
+        intent?.getStringExtra("screen")?.let { n -> Screen.entries.firstOrNull { it.name.equals(n, true) } }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        screenFrom(intent)?.let { navRequest.value = ++navCounter to it }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         val graph = AppGraph.from(this)
         graph.start()
@@ -36,6 +48,16 @@ class MainActivity : ComponentActivity() {
         ) {
             RadioService.start(this)
         }
-        setContent { MinimalScreen(connection, tasks, messages, stats) }
+        // Debug builds only: connect to a network radio from the command line (screenshots, tests).
+        // adb shell am start -n org.rescuecodec.app/.MainActivity --es connect 10.0.2.2:4403
+        if (BuildConfig.DEBUG) {
+            intent?.getStringExtra("connect")?.let { addr ->
+                val host = addr.substringBefore(':')
+                val port = addr.substringAfter(':', "4403").toIntOrNull() ?: 4403
+                RadioService.start(this, RadioTarget.Tcp(host, port))
+            }
+        }
+        val initial = screenFrom(intent) ?: Screen.REPORT
+        setContent { RescueRoot(graph, initial, navRequest.value) }
     }
 }
