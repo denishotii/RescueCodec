@@ -1,6 +1,8 @@
-# Offline assets
+# Offline assets and downloads
 
-Things to download once while online. Big files live in gitignored folders.
+Things to download once while online. After that the product runs with no internet. Big files live in gitignored folders (`assets-offline/`, `models/`, `dist/`).
+
+Quick check that this Mac is ready: `hil/preflight.sh`.
 
 ## Docker images
 - `meshtastic/meshtasticd:2.7.26.54e0d8d` (simulator, `sim/`). Pull with `docker pull`. About 100 MB.
@@ -44,9 +46,9 @@ Labels use the local glyphs above (Latin only). No sprite sheet: the dashboard d
 ## Local services
 - Mosquitto (Homebrew, 2.1.4): `scripts/mqtt-up.sh` and `scripts/mqtt-down.sh`. Listens on 127.0.0.1:1883 only. Not a background service.
 - pmtiles CLI (Homebrew, 1.31.2).
-# Offline downloads
+# Build toolchain downloads
 
-Things to download once while online. Everything else runs with no internet.
+Only needed to build the Android app and the libraries again. Not needed to run the gateway, the dashboard or an installed APK.
 
 ## Android toolchain (outside the repo, in ~/Library/Android/sdk)
 
@@ -71,3 +73,21 @@ add a package.xml for the emulator).
 
 ## Gateway API docs (committed in rescuecodec/gateway/docs/)
 - Swagger UI `swagger-ui-dist@5.32.1` (swagger-ui-bundle.js, swagger-ui.css, favicon, LICENSE, NOTICE), about 1.7 MB, Apache-2.0. Source: npm `swagger-ui-dist@5.32.1`. Served by the gateway at `/docs`, no CDN.
+
+## Build outputs (gitignored)
+
+| File | Size | How it is made |
+|---|---|---|
+| `dist/RescueCodec-debug.apk` | 51 MB | `. scripts/env.sh && cd android && ./gradlew :app:assembleDebug`, then copy `android/app/build/outputs/apk/debug/app-debug.apk` to `dist/RescueCodec-debug.apk`. Install: `adb install -r dist/RescueCodec-debug.apk`. No speech models inside (see above). |
+| `rescuecodec/gateway/static/` | 2.5 MB without map, 42 MB with | `cd dashboard && npm install && npm run build`. The copied map files in `static/map/` are gitignored. |
+| `ts/dist/` | small | `cd ts && npm install && npm run build` |
+
+## Python and Node packages
+
+- Python: `pip install -e '.[gateway,test]'` (fastapi, uvicorn, pydantic, websockets, pyyaml, protobuf, meshtastic, paho-mqtt, pytest). Everything is cached in `.venv/` after the first install.
+- Node: `npm install` in `dashboard/` and `ts/` (cached in `node_modules/`, gitignored).
+- `protoc` (Homebrew) is only needed to regenerate protobuf code (`scripts/gen-proto.sh`, `ts/scripts/gen.sh`). The generated files are committed.
+
+## Licence texts
+
+`LICENSE` (Apache-2.0, repo root and in `spec/`, `ts/`, `android/codec/`, `android/engine/`) and `android/app/LICENSE` (GPL-3.0) are the official texts (Apache text from the Swagger UI copy in `rescuecodec/gateway/docs/`, GPL text from gnu.org). The Meshtastic Kotlin SDK is GPL-3.0, which is why the app is GPL-3.0 (see `README.md`).

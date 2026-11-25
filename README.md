@@ -1,64 +1,156 @@
 # RescueCodec
 
-**Transmit meaning, not words.** RescueCodec is a local hackathon prototype for converting an emergency report into a compact, versioned binary packet, moving it over a transport abstraction, and tracking whether a responder accepted responsibility.
+**Transmit meaning, not words.** A rescuer says one sentence in German or English. RescueCodec turns it into about 23 bytes, sends them over a Meshtastic LoRa radio with no internet, and shows the command post a readable line.
+The command post taps Accept. 22 bytes go back, so the whole team sees who took the task.
+It is an open spec with libraries (Python, Kotlin, TypeScript), a gateway (REST, WebSocket, MQTT, TAK, GeoJSON), a web dashboard and an Android app. Everything runs offline.
 
-This is a synthetic demonstration, not a certified emergency or medical system. The default mesh is an in-memory emulator and does not transmit RF.
+Built for the Hackathon at PMRExpo 2026, Koeln. This is a prototype. It is not a certified emergency or medical system. Do not rely on it for a real rescue yet.
 
-## Run locally
+Example: `Kind gefunden, ansprechbar, stark unterkühlt, Knöchel verletzt. Wir brauchen eine Trage und zwei Leute.` is 105 bytes as text. As a RescueCodec message it is 23 bytes with a position. The command post reads: *Person found: child, conscious, hypothermia, fracture, needs stretcher, 2 more helpers needed.*
+
+## How it fits together
+
+```
+ FIELD                                                    COMMAND POST
+
+ Phone + RescueCodec app                                  Mac or Pi
+ (speech or typing -> 23 bytes)                           +------------------------------+
+        |  Bluetooth                                      | rescuecodec-gateway          |
+        v                                                 |   SQLite, task board,        |
+ Meshtastic radio                                         |   airtime budget             |
+ (T1000-E, T-Watch S3)                                    |                              |
+        |                                                 |  REST + WebSocket :8000 -----+--> web dashboard (offline map)
+        |  LoRa 868 MHz, private channel,                 |  MQTT ------------------------> Node-RED, Home Assistant
+        |  port 256 (PRIVATE_APP)                         |  TAK CoT (UDP / TCP) ---------> ATAK, WinTAK, iTAK
+        v                                                 |  GeoJSON export --------------> QGIS, any GIS
+ Meshtastic radio  <--------- USB serial ------------>   |  readable text ---------------> logs, bots, pagers
+ (Heltec V3)                                              +------------------------------+
+                                                                      ^
+ Same bytes, same rules, three libraries:  Python  |  Kotlin/JVM  |  TypeScript   (spec/ and its test vectors)
+```
+
+Details: `docs/ARCHITECTURE.md`. The wire format and every rule: `spec/SPEC.md`.
+
+## What is in the repo
+
+| Folder | What | Licence |
+|---|---|---|
+| `spec/` | The open spec: protobuf file, JSON shape, vocabulary, translations, test vectors, OpenAPI | Apache-2.0 |
+| `rescuecodec/` | Python package: codec, rule-based extractor, send queue, gateway | Apache-2.0 |
+| `ts/` | TypeScript library `@rescuecodec/core` | Apache-2.0 |
+| `android/codec`, `android/engine` | Kotlin/JVM libraries | Apache-2.0 |
+| `android/app` | The Android app (Compose, Meshtastic SDK, offline speech) | GPL-3.0 |
+| `dashboard/` | Web dashboard (React, MapLibre) | Apache-2.0 |
+| `sim/` | Three real Meshtastic nodes in Docker, no radio needed | Apache-2.0 |
+| `hil/`, `HARDWARE_CHECK.md` | Checklist and scripts for the real radios | Apache-2.0 |
+
+## Licences
+
+Libraries, spec, gateway and dashboard are **Apache-2.0**, so anyone can use them in closed or open products. See `LICENSE`.
+
+The Android app is **GPL-3.0** (`android/app/LICENSE`) because the Meshtastic Kotlin SDK it links is GPL-3.0. The app uses our Apache-2.0 libraries (`android/codec`, `android/engine`), which is allowed. If you want to build your own closed-source Android app, use those two libraries and talk to a radio yourself, or call our app with an Intent (see `docs/INTEGRATE.md`). If you ship a changed version of the app, you must publish its source under GPL-3.0.
+
+Third-party parts are listed in `OFFLINE.md` with their licences (map data ODbL, Barlow and Noto fonts OFL, Vosk models Apache-2.0, Swagger UI Apache-2.0).
+
+## Quick start
+
+You need Python 3.10 or newer. For the simulator also Docker. All steps work with no internet once the downloads in `OFFLINE.md` are done.
 
 ```bash
 python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -e '.[test]'
-uvicorn rescuecodec.api:app --host 127.0.0.1 --port 8000
+.venv/bin/pip install -e '.[gateway,test]'
 ```
 
-Open http://127.0.0.1:8000. Choose **Extract meaning**, check or correct fields, then send from A to C. Accept responsibility and mark the task completed in the inbox. The A–B–C path and link partition controls are synthetic.
+### 1. The simulator (no radio needed)
 
-For offline Ollama extraction, set `RESCUECODEC_OLLAMA_MODEL` to an already installed model name before starting the app. If the endpoint/model is unavailable, the API reports that it used a conservative deterministic fallback. A structured preview is editable before sending. Latitude and longitude can be entered separately; text such as “I am here” does not fabricate coordinates. Unsupported reports can use `/api/text` (single-packet text fallback).
-
-## Protocol v1
-
-All multi-byte integers use network byte order. The application packet is capped at 200 bytes by default. `codec_id` and `schema_id` are separate namespaces.
-
-| Offset | Size | Meaning |
-|---:|---:|---|
-| 0 | 1 | Protocol version (`1`) |
-| 1 | 1 | Codec (`0` UTF-8, `1` semantic report, `7` confirmation) |
-| 2 | 1 | Schema (`6` person found; `0` for text/confirmation) |
-| 3 | 4 | Request/message ID, unsigned |
-| 7 | 1 | Four 2-bit enums: consciousness, breathing, urgency, location quality (high-to-low bits) |
-| 8 | 1 | Equipment bit mask (bits 0–7 follow `Equipment` enum order) |
-| 9 | 1 | Assistance request enum |
-| 10 | 1 | Flags: bit 0 coordinates, bit 1 Unix timestamp, bit 2 found-person count, bit 3 minimum additional responders; upper bits reserved |
-| 11 | 0/8 | Optional signed latitude and longitude integers, degrees × 100,000 |
-| 11 or 19 | 0/4 | Optional Unix timestamp, unsigned 32-bit |
-| After preceding optionals | 0/1 | Optional found-person count (1–15), then minimum additional responders (1–15), in that order |
-
-The semantic packet is 11 bytes without optional fields, 19 with coordinates, 15 with timestamp, or 25 with all four optional fields (coordinates, timestamp, people found, and minimum additional responders). Each count is one byte with valid values 1–15. The counts have distinct meanings: `person_count` counts found people; `responders_needed_min` is the minimum additional team size requested. Enum value zero means unknown where defined. Coordinate quantization is about 1.11 m north/south per step; east/west spacing scales by cosine(latitude). This is encoding precision, not GPS measurement accuracy. `confirmation` is 8 bytes: 3-byte common header, 4-byte request ID, and 1-byte status (`1` accepted, `2` completed). Text fallback is common header + 4-byte message ID + UTF-8. Unsupported versions, codec/schema pairs, flags and malformed lengths are rejected.
-
-Prototype schema IDs 1, 2, 3, and 6 are project-local identifiers, not official emergency standards. Current wire encoding implements schema 6.
-
-## Measurements
-
-Run the reproducible synthetic benchmark:
+Three real Meshtastic firmware nodes in Docker (SIM-FIELD 4403, SIM-BASE 4404, SIM-RELAY 4405), on a private channel, port 256.
 
 ```bash
-rescuecodec-benchmark
+sim/up.sh                         # start, configure, verify
+.venv/bin/python sim/smoke.py     # FIELD -> BASE and RELAY: "SMOKE PASS"
+sim/down.sh                       # stop
 ```
 
-It writes `results/benchmark.json`, per-case `results/benchmark.csv`, a 42-case synthetic ground-truth set, and `results/compression.svg`. Binary length is measured on ground-truth structured data; semantic accuracy is reported separately for the deterministic offline fallback. For local model evaluation, start Ollama, set `RESCUECODEC_OLLAMA_MODEL=llama3:8b`, then run `python -m rescuecodec.benchmark.llm_eval`. Current results are saved in `results/llama3_8b_evaluation.json` and `.csv`. The reported 100% exact match is on 31 synthetic schema-supported reports and uses deterministic validation/evidence grounding; it is not a real-world accuracy claim. Airtime is estimated with the LoRa symbol-time equation (SF11, 250 kHz, CR 4/5 defaults) and an explicit 16-byte radio-overhead assumption. It is not measured packet airtime. Synthetic mesh timings/loss are not physical measurements.
+More: `sim/README.md`. The simulator tests protocol and software. It has no radio range and no airtime.
 
-## Transport and radio safety
+### 2. Gateway and dashboard
 
-`Transport` defines raw-byte send, subscription, lifecycle, and capability reporting. `MeshEmulator` supports configurable topology, latency, loss, duplicates, node availability, deterministic seed, and multihop routing. `MeshtasticTransport` is optional and imported lazily. The dashboard's **Start USB receive gateway** opens the connected radio and forwards only valid RescueCodec schema 6 packets into the laptop mesh; it does not send or change radio configuration. Stop any other process using the serial device (such as `receiver.py`) first. This is an application-layer bridge, not RF connectivity for virtual nodes. The virtual mesh has no radio, and the laptop does not retransmit virtual traffic over RF. A separate transmitting physical node and an authorized test channel are needed to verify actual over-the-air ingress. No physical RF transmission was performed.
+```bash
+.venv/bin/rescuecodec-gateway --tcp 127.0.0.1:4404          # the simulator
+.venv/bin/rescuecodec-gateway --serial auto                 # a Heltec V3 on USB
+.venv/bin/rescuecodec-gateway --emulator --emulator-demo    # no radio at all, a pretend team
+```
 
-The separate `Meshtasticator` checkout has existing uncommitted user changes. Its fixes were preserved. Docker access remains blocked in this environment, so simulator runtime paths remain unverified. The local Ollama service and llama3:8b were subsequently started and tested on synthetic reports.
+Open http://127.0.0.1:8000/ for the dashboard and http://127.0.0.1:8000/docs for the API. Add `--mqtt 127.0.0.1` for MQTT and `--cot` for TAK. All flags: `rescuecodec-gateway --help`. More: `rescuecodec/gateway/README.md`.
 
-## Current limits
+The built dashboard is in `rescuecodec/gateway/static/`. To rebuild it: `cd dashboard && npm install && npm run build`. The offline map is not in git. Fetch it once with internet: `scripts/fetch-offline-assets.sh`.
 
-- Fallback extraction is intentionally small and rule based; it is not a substitute for a configured local model or human review.
-- The fixed semantic codec models one found person and a small enumerated field set. Unsupported or multi-person reports should fall back to text.
-- The emulator routes packets over graph paths and applies synthetic packet loss, but is not a detailed LoRa propagation, collision, regulatory, or routing-stack simulation.
-- Fragmentation is provided as a bounded utility but the browser demo currently sends single-packet semantic reports only.
-- Audio and image codecs, physical gateway, real radio measurements, broad localization, and schema evolution tooling are not implemented yet.
+Check the gateway against a radio, without transmitting: `python3 hil/check_gateway.py`.
+
+### 3. Android app
+
+The debug APK is `dist/RescueCodec-debug.apk` (about 51 MB, not in git). Install it on a phone with USB debugging on:
+
+```bash
+. scripts/env.sh
+adb install -r dist/RescueCodec-debug.apk
+```
+
+Build it yourself (JDK 17, Android SDK, see `OFFLINE.md`):
+
+```bash
+. scripts/env.sh
+cd android && ./gradlew :app:assembleDebug
+mkdir -p ../dist && cp app/build/outputs/apk/debug/app-debug.apk ../dist/RescueCodec-debug.apk
+```
+
+In the app: Radio screen, Search, pick your Meshtastic radio (Bluetooth), then Report. Offline speech models are not inside the APK: see `docs/VOICE.md`. App details: `android/app/README.md`.
+
+No phone at hand: `scripts/emulator-up.sh` starts an Android emulator that reaches the simulator at `10.0.2.2`. Stop it with `scripts/emulator-down.sh`.
+
+### 4. Libraries
+
+```python
+from rescuecodec.v2 import encode, decode_any, render
+data = encode({"id": 7, "pos": {"lat": 50.69212, "lon": 7.21345},
+               "found": {"age": "child", "consciousness": "conscious", "needs": ["stretcher"]}})
+print(len(data), render(decode_any(data), "de"))
+```
+
+Kotlin, TypeScript, REST, MQTT, TAK, GeoJSON and the Android Intent are in `docs/INTEGRATE.md`. Every example there was run.
+
+### 5. Real radios
+
+`HARDWARE_CHECK.md` is the Wednesday-morning checklist (about 10 minutes): private channel, Heltec on USB, app on the phone, Bluetooth pairing, the same scenario as the simulator test, and what to write down. Start with `hil/preflight.sh`.
+
+## Tests
+
+```bash
+.venv/bin/python -m pytest -q                     # Python: codec, vectors, engine, gateway
+(cd ts && npm install && npm test)                # TypeScript conformance
+(cd android && ./gradlew :codec:test :engine:test) # Kotlin conformance
+scripts/e2e-gateway.sh                            # two gateways on the simulator, MQTT and TAK observed
+scripts/e2e-full.sh --runs 3                      # app on the emulator, simulator, gateway, dashboard
+```
+
+All three libraries run the same vectors in `spec/vectors/` and must give the same bytes.
+
+## Docs
+
+| File | What |
+|---|---|
+| `docs/INTEGRATE.md` | Integrate in 10 minutes: Python, TypeScript, Kotlin, REST, WebSocket, MQTT, TAK, GeoJSON, readable text, Android Intent |
+| `docs/ARCHITECTURE.md` | How the parts work together and why |
+| `spec/SPEC.md` | The spec: wire format, JSON, rules, test vectors, security |
+| `HARDWARE_CHECK.md` | Real-device checklist |
+| `OFFLINE.md` | Every download, its size and licence |
+| `docs/VOICE.md` | Offline speech models |
+| `docs/PLAN.md` | The team plan |
+
+## Known limits
+
+- Not tested on real radios yet. That is what `HARDWARE_CHECK.md` is for.
+- A broadcast has no delivery proof. "Relayed by a neighbour" means a radio repeated it. Only a person's Accept proves that someone has it.
+- Anyone who holds the channel key can send as a team member. Share the key by QR code only with your team.
+- German and English are checked. Ukrainian, Turkish and Arabic texts are machine drafts.
+- Old v1 packets from the first prototype can still be read (`decode_any`). Some first-prototype code stays in `rescuecodec/` (`protocol/`, `transport/`, `encoding/`, `api.py`). v2 uses it only to read v1 packets, for the airtime formula and for the in-memory radio. The old v1 web demo (`rescuecodec` command) is not part of the v2 product.
