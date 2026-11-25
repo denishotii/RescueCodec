@@ -1,6 +1,6 @@
 # RescueCodec v2 specification
 
-Version 2.2.0, 25 Nov 2026 (2.1 adds compact texts, section 3.6; 2.2 adds the compact frame, section 3.7, and word dictionary 2). Licence: Apache-2.0 (spec, vocabulary, test vectors and libraries).
+Version 2.3.0, 25 Nov 2026 (2.1 adds compact texts, section 3.6; 2.2 adds the compact frame, section 3.7, and word dictionary 2; 2.3 adds the domain frame with team vocabularies, section 3.8). Licence: Apache-2.0 (spec, vocabulary, test vectors and libraries).
 
 ## 1. Purpose
 
@@ -14,6 +14,7 @@ What this spec fixes:
 - the wire format (one protobuf file, `rescuecodec/v2/rescuecodec.proto`),
 - one JSON shape for the same data (used by the REST API, MQTT and the test vectors),
 - the codes and their words (`vocab/sar.yaml`, `i18n/*.json`),
+- the shared dictionaries and team vocabularies (`vocab/`),
 - test vectors that every library must pass (`vectors/codec.json`, `vectors/extraction.json`),
 - the gateway API (`api/openapi.yaml`).
 
@@ -27,7 +28,7 @@ The key words MUST, SHOULD and MAY have their usual meaning (RFC 2119).
 | Destination | Broadcast (`^all`) on a private channel, so every team sees reports and who took them. |
 | Channel | A private channel with its own random 256-bit key (AES-256). Never the default `LongFast` key. |
 | Region and preset | EU_868, LONG_FAST on our radios. The format does not depend on them. |
-| Payload | One serialized `Envelope`, or one compact frame (first byte `0x02`, section 3.7). Nothing before or after it. |
+| Payload | One serialized `Envelope`, one compact frame (first byte `0x02`, section 3.7) or one domain frame (first byte `0x03`, section 3.8). Nothing before or after it. |
 | Sender | The Meshtastic packet's `from` node number. It is not repeated in the payload. |
 | Delivery check | Senders SHOULD set `want_ack`. Meshtastic then retries and reports delivery to a neighbour. The RescueCodec `Ack` is the real "a person took it" answer. |
 | Size | Encoders MUST NOT produce more than 200 bytes. Decoders MUST accept up to 233 bytes (Meshtastic's payload limit). |
@@ -101,14 +102,14 @@ A node not heard for 24 hours is forgotten. Readable copies (`[RC] ` texts) do n
 3. Auto, direct chat: packed when the peer runs RescueCodec, else normal text.
 4. Auto, channel: packed when at least one RescueCodec node and no Meshtastic user was heard on that channel in the last 24 hours. Otherwise normal text, also when nobody is known yet (reason `nobody_known`), so a new or foreign channel (for example a partner's) always gets text everyone can read.
 5. Packed only when it saves at least **3 bytes**: the packed packet (with id, `pos`, `time`, priority) must be at least 3 bytes smaller than the normal text (the words, cut to 200 bytes like `fit_plain`). Else normal text. A GPS position costs 11 bytes, so short texts with a position stay normal.
-6. **Compact text** (opt-in, off by default: app setting "Use compact encoding for text messages", gateway `--compact-text on`). Only when rules 1 to 4 say packed. Rule 5 is then replaced: the sender builds every complete payload, the normal text (port 1), the DEFLATE packet (3.5), the word tokens in the Envelope (3.6) and the compact frame (3.7, only when the message has no `pos` and no `time`), and sends the **strictly smallest**. The normal text when it is smaller or equal. Ties between packed forms: compact frame, then words, then DEFLATE. Sizes are complete payloads (envelope, id, `pos`, dictionary fields included). Example: "hello world" is 11 bytes as a normal text and 6 bytes as a compact frame, so it goes compact; "Ok" is 2 bytes as a normal text and stays normal.
+6. **Compact text** (opt-in, off by default: app setting "Use compact encoding for text messages", gateway `--compact-text on`). Only when rules 1 to 4 say packed. Rule 5 is then replaced: the sender builds every complete payload, the normal text (port 1), the DEFLATE packet (3.5), the word tokens in the Envelope (3.6), the compact frame (3.7) and the domain frames of the team vocabulary setting (3.8.6; both frames only when the message has no `pos` and no `time`), and sends the **strictly smallest**. The normal text when it is smaller or equal. Ties between packed forms: compact frame, then words, then DEFLATE, then domain frames by lowest vocabulary id. Sizes are complete payloads (envelope, id, `pos`, dictionary fields included). Example: "hello world" is 11 bytes as a normal text and 6 bytes as a compact frame, so it goes compact; "Apply a tourniquet." is 19 bytes as a normal text, 22 as a compact frame and 7 as a Medical domain frame, so it goes as a domain frame; "Ok" is 2 bytes as a normal text and stays normal.
 7. **Length.** A chat that packs (rules 2 to 4 say packed) takes up to **400 bytes** of typed text (`MAX_PACKED_TEXT_BYTES`); any other chat 180 bytes. The packet stays at most 200 bytes. A text that no form keeps whole in 200 bytes is cut (section 3.6.6) and the composer says "Too long: will be cut to fit one radio message". There is no multipart message.
 
 Examples: "Ok" is 2 bytes as a normal text and 12 packed: normal. "We are at the hut, two people with us, waiting for the vehicle on the forest road" is 81 bytes as a normal text and 42 packed with an id (53 with a GPS position): packed on a RescueCodec channel. As soon as someone with the official app writes on that channel, the next text goes normal, so that person can read it.
 
 The old setting "Send plain text as normal Meshtastic text" (app) and `--text-as-meshtastic` (gateway) are replaced by the mode. Migration: if the setting was off, channels start as Always compressed.
 
-Libraries: `rescuecodec.engine.textmode` (`wants_packed`, `choose_form(..., compact)`, `fit_packed`) in Python and `TextMode` / `TextFit.fitPacked` in the Kotlin engine give the same answers.
+Libraries: `rescuecodec.engine.textmode` (`wants_packed`, `choose_form(..., compact, vocab)`, `fit_packed`) in Python and `TextMode` / `TextFit.fitPacked` in the Kotlin engine give the same answers.
 
 ## 3. Wire format
 
@@ -364,6 +365,151 @@ Libraries: `encode_compact` / `decode_compact` / `decode_any` (Python), `RescueC
 
 The conversational test sentences come from the same collection as the training sentences (split by hash), so real chat with slang and typos will find fewer words than 98.5 %; the disaster set (real messages, many names and typos) is the harder case.
 
+### 3.8 Domain frame (team vocabularies)
+
+Added in 2.3. A chat text in a team's own words. Each team vocabulary holds the 1016 most useful words and short phrases of one domain: Emergency, Search & Rescue, Firefighting, Hiking / Mountain, Medical. A word of the vocabulary costs **10 bits** instead of 16. Any other word of word dictionary 2 costs 26 bits (an escape plus its 16-bit token). Names, numbers, coordinates, emoji and other languages go as exact **literals**. The receiver gets the text back **byte for byte**: `decode(encode(text)) == text` for every text. Nothing is ever replaced by a similar word.
+
+"Apply a tourniquet." = `03 05 e3 00 60 9c 00` = **7 bytes** (19 as a normal text, 22 as a compact frame 0x02).
+
+#### 3.8.1 Frame
+
+```
+byte 0     0x03            marker (a reserved first byte before 2.3, section 7)
+byte 1     1..255          vocabulary id: domain and version; the code width N follows from the id (3.8.7)
+byte 2..   bit stream      N-bit codes, most significant bit first, the last byte filled up with 0 bits
+```
+
+| Rule | Value |
+|---|---|
+| What it carries | Only a chat text, like the compact frame (3.7). No id, no `pos`, no `time`, no priority. A text with a position or time goes in the Envelope (3.6). |
+| Port, duplicates, delivery, priority | As the compact frame (3.7): port 256; the same (sender node, Meshtastic packet id) within 24 hours is a repeat; the priority is only the radio's `MeshPacket.priority`. |
+| Size | Encoders: at most 200 bytes. Decoders accept up to 233. An empty text has no frame (`missing_field`). |
+| Canonical JSON | `{"text": {"text": "Apply a tourniquet.", "vocab": 5}}` (no `id`). `decode_any` adds `"v": 2`. `vocab` is the id on the air. `encode` rejects `vocab` (`invalid_value`, `text.vocab`): there is no Envelope form; `encode_domain(text, vocab)` builds the frame. |
+| Libraries | `encode_domain` / `decode_domain` / `decode_any` (Python, `rescuecodec/v2/codec.py`; the stream in `rescuecodec/v2/textdomain.py`), the same names in Kotlin and TypeScript. |
+
+#### 3.8.2 Codes
+
+Every code has N bits. The top 8 codes of the code space are controls; `base` = 2^N − 8 (1016 for N = 10).
+
+| Code | N = 10 | Name | Meaning |
+|---|---|---|---|
+| 0 .. base − 1 | 0 .. 1015 | entry | Vocabulary entry: line number minus 1 of the vocabulary file. |
+| base + 0 | 1016 | ESC16 | The next **16 bits** are a token of word dictionary 2 (`0x0000`..`0xEFFF`, 3.6.8). It is written like an entry. `0xF000` and above: `malformed`. |
+| base + 1 | 1017 | CAP | The next entry (or escaped token) with its first character `a`..`z` changed to `A`..`Z`. |
+| base + 2 | 1018 | UPPER | The next entry (or escaped token) with every `a`..`z` changed to `A`..`Z`. |
+| base + 3 | 1019 | GLUE | No space before the next entry (where 3.6.3 would put one). |
+| base + 4 | 1020 | LIT | The next **8 bits** are a length L = 1..255, then L bytes of UTF-8, copied exactly. Each literal is valid UTF-8 on its own. L = 0: `malformed`. |
+| base + 5 .. base + 7 | 1021 .. 1023 | reserved | `malformed`. |
+
+Costs: an entry N bits, an escaped token N + 16, CAP, UPPER and GLUE N each, a literal N + 8 bits plus 8 per byte.
+
+**End of the stream.** The decoder reads codes while at least N bits are left. The bits left after that are padding: they MUST be fewer than 8 and all 0. So there is no length field and no end code. Case changes are ASCII only, as in 3.6.
+
+#### 3.8.3 Spaces, punctuation and capitals
+
+Exactly as 3.6.3. An entry and an escaped token are both "entries". The decoder puts one space before an entry only when the unit before it is an entry, no GLUE was given, the entry does not start with `.` `,` `;` `:` `!` `?` `)` `]` `}` `…`, and the entry before does not end with `(` `[` `{`. **A literal carries its own spaces**: "Patient Aylin Demir is conscious." is `CAP [patient] [LIT " Aylin Demir "] [is] [conscious] [.]`.
+
+#### 3.8.4 Encoder (identical bytes in every library)
+
+The shortest stream, found exactly as in 3.6.4 (same pieces, same two states, same order, a step wins only when strictly shorter, the TOK ending wins a tie at the end), with three changes:
+1. **Matches.** A span first matches the vocabulary (the equal entry, else CAP + entry, else UPPER + entry, as in 3.6.4 step 2). Only when the vocabulary has no match, word dictionary 2 is tried the same way, as ESC16 + token. The vocabulary always wins because it is cheaper: at most 2N = 20 bits against at least N + 16 = 26.
+2. **Costs in bits** (3.8.2): a new literal costs N + 8 + 8 per byte; adding to the open literal 8 per byte; GLUE N.
+3. **Write.** Controls in this order: GLUE, then CAP or UPPER, then ESC16 + token or the entry. A literal run is written when an entry follows or at the end. A run longer than 255 bytes is written as several LIT codes, each the longest piece of at most 255 bytes that ends on a whole character (`Q` × 254 + `é` = LIT 254, LIT 2). The search counts one LIT per run; such runs only occur in streams too long for one packet. The last byte is filled up with 0 bits.
+
+`rescuecodec/v2/textdomain.py` is the reference (`encode_stream`, `decode_stream`). Its sizes match the independent bit model of `tools/domain_vocab.py` on 7265 random texts.
+
+#### 3.8.5 Decoder and errors
+
+- `malformed` (field `text.vocab`): only the marker (no vocabulary id), no codes, a reserved code, ESC16 cut off or a token `0xF000` or above, a LIT length cut off, a literal of length 0, a literal cut off, a literal that is not UTF-8, two case controls or two GLUEs before one entry, a control before a literal or at the end, 8 or more bits left at the end, or a 1 bit in the padding.
+- `too_large`: a frame over 233 bytes, or a stream that decodes to more than 1024 bytes (stop decoding there).
+- **Unknown vocabulary is visible.** An id this library does not have (0 and 6..255 in 2.3), **or whose bundled file does not match its SHA-256** (3.8.7), or a damaged word dictionary 2, is not an error and never shown as words: the body is `unknown` with `{"vocab": n}`, and the readable line is the head `unknown_vocab`: "Message encoded with a team vocabulary this app does not have (unsupported vocabulary n), please update the app".
+- **Cut packets**, as in 3.7: a cut inside an escape or a literal is `malformed`. A cut between two codes whose leftover bits are 0 reads as a shorter text. The radio never delivers a cut packet (LoRa CRC and Meshtastic's packet length).
+
+#### 3.8.6 Which form goes out: the team vocabulary setting
+
+With compact text on (2.3, rule 6) the sender also builds the domain frames and sends the **strictly smallest** complete payload; the normal text when it is smaller or equal. Like the compact frame, no domain frame for a message with `pos` or `time`.
+
+| Setting | App "Team vocabulary" | Gateway `--vocabulary` | Domain frames built |
+|---|---|---|---|
+| Auto (default) | Auto | `auto` | every vocabulary |
+| General | General | `general` | none (only the 0x02 frame and the Envelope forms) |
+| Pinned | Search & Rescue, Firefighting, Hiking, Medical, Emergency | `sar`, `fire`, `hiking`, `medical`, `emergency` | only that one |
+
+The normal text, DEFLATE, the words in the Envelope and the compact frame are always built, so a pinned vocabulary never makes a message larger. Ties between packed forms: compact frame, then words, then DEFLATE, then the domain frame with the lowest vocabulary id. Every app and the gateway bundle **every** vocabulary, so receiving works whatever the setting is.
+
+Examples (complete payloads, a message with id 3, `vectors/domain.json` → `choice`):
+
+| Text | Setting | Normal | 0x02 frame | Best domain frame | Goes out |
+|---|---|---|---|---|---|
+| Patient is conscious, bleeding from the leg, apply a tourniquet. | Auto | 64 B | 38 B | Medical 19 B | **domain, Medical, 19 B** |
+| SAR team 2 at the trailhead | Auto | 27 B | 26 B | Hiking 18 B (S&R 20 B) | **domain, Hiking, 18 B** |
+| SAR team 2 at the trailhead | Search & Rescue | 27 B | 26 B | S&R 20 B | **domain, S&R, 20 B** |
+| Fire is spreading up the ridge, need two more engines and water. | Auto | 64 B | 24 B | Fire 25 B | **0x02 frame, 24 B** |
+| Patient is conscious, bleeding from the leg, apply a tourniquet. | Search & Rescue | 64 B | 38 B | S&R 38 B | **0x02 frame, 38 B** (tie) |
+| Ok | Auto | 2 B | 4 B | 6 B | **normal text, 2 B** |
+| (fire) | Auto | 6 B | 8 B | Fire 6 B | **normal text, 6 B** (tie) |
+
+**Labels.** UIs show the vocabulary of a received or sent domain frame, for example "compact · S&R · 9 B". Gateway records have `codec.form: "domain"`, `codec.vocab: "sar"`, `codec.vocab_id: 2` and `codec.vocab_label: "S&R"`; `GET /v2/health` shows `vocabulary` and `vocabularies`.
+
+#### 3.8.7 The vocabularies
+
+| Id | Domain | Label (short) | N | Entries | File | SHA-256 |
+|---|---|---|---|---|---|---|
+| 1 | `emergency` | Emergency (Emergency) | 10 | 1016 | `vocab/domain-emergency-v1.txt` | `e98e8c9026b9f75b29a681dfaee2a49ebac39fbbea4d1471e60949ac71164664` |
+| 2 | `sar` | Search & Rescue (S&R) | 10 | 1016 | `vocab/domain-sar-v1.txt` | `444798678a105827cf783b990c0ceda05b4cf927b4846c15e0345213f60092ee` |
+| 3 | `fire` | Firefighting (Fire) | 10 | 1016 | `vocab/domain-fire-v1.txt` | `d37f489ed55a944d59fcc3b53c985da2facf3aefa81cf9053240d80cf62dc9a2` |
+| 4 | `hiking` | Hiking / Mountain (Hiking) | 10 | 1016 | `vocab/domain-hiking-v1.txt` | `3e03a004a0696afc41738d71280e13125390eff85f3ab073d6b9c7b510e6464a` |
+| 5 | `medical` | Medical / First aid (Medical) | 10 | 1016 | `vocab/domain-medical-v1.txt` | `21a76e1f01d3aac7291875f6b863244fc873d724cdae4afddd7a3cfcade6be3b` |
+
+Ids 0 and 6..255 are not assigned. The same table, with sources, licences and measurements, is `vocab/domains.yaml`. Files: one entry per line, printable ASCII, LF, ending with LF, no leading or trailing space, no repeats; entry = line number minus 1; 2^N − 8 entries. They are **frozen**: a better vocabulary gets a new id (the code width comes with the id, so a later one may use 8 or 9 bits). Libraries check the SHA-256 when they load a file. `tools/domain_vocab.py` builds them reproducibly from openly licensed and public-domain text (US federal manuals and web pages, Disaster Response Messages CC BY 4.0, Tatoeba CC BY 2.0 FR); raw text is never in the repo, and a privacy filter drops rare entries, names and numbers.
+
+**Why 10 bits.** 8, 9 and 10 bits were measured on held-out text (never used to build). 10 bits saved the most in every domain (mean of sent ÷ plain over the sources, lower is better):
+
+| Domain | 8 bits | 9 bits | 10 bits |
+|---|---|---|---|
+| Emergency | 0.3779 | 0.3750 | **0.3694** |
+| S&R | 0.3830 | 0.3829 | **0.3791** |
+| Fire | 0.4161 | 0.4141 | **0.4090** |
+| Hiking | 0.3867 | 0.3841 | **0.3791** |
+| Medical | 0.3993 | 0.3930 | **0.3837** |
+
+**Measured** (held-out units; "base" = the best of the normal text and the 0x02 frame; "sent" = the best of the normal text, the 0x02 frame and this domain frame):
+
+| Domain | Units | Words in the vocabulary | Bytes per word: normal → base → sent | Saved against base |
+|---|---|---|---|---|
+| Emergency | 4737 | 51.7 % | 5.99 → 2.29 → 2.24 | 2.1 % |
+| S&R | 1607 | 61.4 % | 5.61 → 2.21 → 2.14 | 3.0 % |
+| Fire | 2287 | 60.7 % | 5.96 → 2.58 → 2.44 | 5.5 % |
+| Hiking | 1848 | 61.2 % | 5.56 → 2.23 → 2.16 | 3.0 % |
+| Medical | 3963 | 60.5 % | 5.99 → 2.52 → 2.33 | 7.5 % |
+
+The domain frame helps most on domain language: 5 to 20 % against base on manual sentences, 0 to 3 % on chat messages. An escaped word costs N + 16 = 26 bits, more than its 16 bits in the 0x02 frame, so the domain frame wins only when enough words are in the vocabulary. The send rule picks the smaller one, so a message never gets larger.
+
+#### 3.8.8 Byte by byte
+
+One example per domain, plus an escape, a literal and GLUE (`vectors/domain.json` → `frames`; codes in decimal, `[x]` = entry, `ESC16 [x]` = escaped token of word dictionary 2):
+
+| Vocabulary | Text | Codes | Frame | Bytes (normal / 0x02) |
+|---|---|---|---|---|
+| 1 Emergency | Evacuate now, the river is flooding. | CAP `[evacuate]`560 `[now]`477 `[,]`2 `[the]`1 `[river]`455 `[is]`11 `[flooding]`129 `[.]`0 | `0301fe63077402005c702c810000` | **14** (36 / 18) |
+| 2 S&R | Missing person found, alive. | CAP `[missing]`31 `[person]`125 `[found]`57 `[,]`2 `[alive]`889 `[.]`0 | `0302fe41f1f43900b79000` | **11** (28 / 16) |
+| 3 Fire | Smoke on the ridge, wildfire. | `[Smoke]`81 `[on the]`91 ESC16 `[ridge]`0x958B `[,]`2 `[wildfire]`22 `[.]`0 | `03031445bfe2562c02058000` | **12** (29 / 16) |
+| 4 Hiking | Trail closed, avalanche danger. | `[Trail]`516 `[closed]`254 `[,]`2 `[avalanche]`11 `[danger]`360 `[.]`0 | `0304810fe0080b5a0000` | **10** (31 / 16) |
+| 5 Medical | Apply a tourniquet. | `[Apply]`908 `[a]`6 `[tourniquet]`39 `[.]`0 | `0305e300609c00` | **7** (19 / 22) |
+| 3 Fire | RIDGE closed. | UPPER ESC16 `[ridge]`0x958B `[closed]`363 `[.]`0 | `0303febf8958b5ac00` | **9** (13 / 10) |
+| 2 S&R | Missing person found at 50.69212, 7.21345. | CAP `[missing]` `[person]` `[found]` `[at]`30 LIT 19 `" 50.69212, 7.21345."` | `0302fe41f1f43907bfc132035302e36393231322c20372e32313334352e0` (the literal bytes are not on byte boundaries) | **30** (42 / 32) |
+| 3 Fire | "Fire" on the ridge | `["]`47 GLUE `[Fire]`54 GLUE `["]`47 `[on the]`91 ESC16 `[ridge]` | `03030bffb0dbfb0bc5bfe2562c` | **13** (19 / 15) |
+
+Bit by bit, "Apply a tourniquet." in vocabulary 5: the codes 908, 6, 39, 0 are `1110001100 0000000110 0000100111 0000000000`, 40 bits, read 8 at a time: `11100011 00000000 01100000 10011100 00000000` = `e3 00 60 9c 00`. No padding. With the marker and the id: `03 05 e3 00 60 9c 00`.
+
+"Smoke on the ridge, wildfire." in vocabulary 3: `0001010001` (81) `0001011011` (91) `1111111000` (ESC16) `1001010110001011` (0x958B) `0000000010` (2) `0000010110` (22) `0000000000` (0) = 76 bits, plus 4 padding bits `0000` = 10 bytes `14 45 bf e2 56 2c 02 05 80 00`.
+
+#### 3.8.9 Older readers
+
+Apps and gateways before 2.3 treat `0x03` as a reserved version: `unsupported_version`. The app shows an unreadable-message line, the gateway counts the packet as rejected. **Never wrong words.** Compact text is off by default. If someone in the chat has an older app, set Team vocabulary to General (the 0x02 frame needs 2.2), leave compact text off, or set the chat to Always normal.
+
+Vectors: `vectors/domain.json` (`tools/gen_domain_vectors.py`): each vocabulary's SHA-256, 24 frames (each domain, escapes with CAP and UPPER, literals, GLUE, line breaks, emoji, a 190-byte literal), 5 long streams (literals of 254, 255, 256 and 600 bytes, a split before a 2-byte character), 40 seeded random texts, 21 invalid frames (cut escape, cut literal, length 0, reserved codes, bad padding, controls at the end, too large), 5 invalid encodes (empty text, unknown vocabulary, over 200 bytes), 3 unknown vocabularies (0, 6, 255) and 10 send-rule choices (domain wins, the 0x02 frame wins, plain wins, pinned, general, ties).
+
 ## 4. Canonical JSON
 
 Every library, the gateway API, MQTT and the test vectors use one JSON shape. Rules:
@@ -377,7 +523,7 @@ Every library, the gateway API, MQTT and the test vectors use one JSON shape. Ru
 - `time` is `"HH:MM"` (UTC, two digits each).
 - `track` is `{"points": [{"lat", "lon", "s"}]}` with absolute positions. `s` is seconds after the `time` minute, cumulative (never goes down). Give `s` on every point or on none.
 - `ack.node` is the Meshtastic id string `"!a1b2c3d4"` (8 lowercase hex digits).
-- `text` is always the unpacked words. A compact text (section 3.6) adds `"words": 1` (encoders build word tokens when `words` is given); an unknown word dictionary decodes as `{"unknown": {"words": 2}}`. A packed text (section 3.5) adds `"dict": 1`: `{"text": {"text": "Bin unterwegs", "dict": 1}}`. Encoders pack when `dict` is given. Example of a decoded packed text: `{"id": 3, "text": {"text": "We are at the hut, ...", "dict": 1}}`.
+- `text` is always the unpacked words. A compact text (section 3.6) adds `"words": 1` (encoders build word tokens when `words` is given); an unknown word dictionary decodes as `{"unknown": {"words": 2}}`. A domain frame (section 3.8) decodes as `{"text": {"text": "...", "vocab": 5}}`, an unknown team vocabulary as `{"unknown": {"vocab": 9}}`. A packed text (section 3.5) adds `"dict": 1`: `{"text": {"text": "Bin unterwegs", "dict": 1}}`. Encoders pack when `dict` is given. Example of a decoded packed text: `{"id": 3, "text": {"text": "We are at the hut, ...", "dict": 1}}`.
 - Decoders of old v1 packets add `"v": 1` (section 7). v2 decoders MAY add `"v": 2`.
 
 Example (the found report from section 3.2):
@@ -396,8 +542,8 @@ Encoders and decoders apply the same value rules. A decoder MUST reject a packet
 |---|---|
 | `empty` | Zero bytes. |
 | `too_large` | Encoder output over 200 bytes, decoder input over 233 bytes, or a packed text that unpacks to more than 1024 bytes (`text.deflate`). |
-| `unsupported_version` | First byte 0x00 or 0x02..0x07 (reserved), or 0x01 given to a v2-only decoder. |
-| `malformed` | Not valid protobuf (cut-off varint, length past the end, invalid UTF-8 in a string), a packed text that is not a complete DEFLATE stream of UTF-8 (`text.deflate`), or a broken word-token stream (`text.words`, section 3.6.5). |
+| `unsupported_version` | First byte 0x00 or 0x04..0x07 (reserved), 0x02 or 0x03 given to an Envelope decoder (`decode`; `decode_any` reads them, sections 3.7 and 3.8), or 0x01 given to a v2-only decoder. |
+| `malformed` | Not valid protobuf (cut-off varint, length past the end, invalid UTF-8 in a string), a packed text that is not a complete DEFLATE stream of UTF-8 (`text.deflate`), or a broken word-token stream (`text.words`, section 3.6.5), or a broken domain frame (`text.vocab`, section 3.8.5). |
 | `no_body` | No body field at all, and no unknown field that could be a newer body type. |
 | `multiple_bodies` | JSON with more than one body key. (On the wire protobuf keeps the last one.) |
 | `unknown_key` | JSON key that the spec does not define. |
@@ -417,6 +563,8 @@ Forward compatibility comes first: unknown enum numbers, unknown flag bits, rese
 | Text | 1..180 bytes UTF-8 |
 | Packed text | 1..1024 bytes UTF-8 after unpacking, packet still at most 200 bytes |
 | Compact text (word tokens) | 1..1024 bytes UTF-8 after decoding, packet still at most 200 bytes |
+| Domain frame | 1..1024 bytes UTF-8 after decoding, frame at most 200 bytes (decoders: 233), a literal 1..255 bytes |
+| Team vocabulary | 2^N − 8 entries, N = 8, 9 or 10 (every version 1 vocabulary: N = 10, 1016 entries) |
 | Typed text in a chat that packs | 1..400 bytes UTF-8 (`MAX_PACKED_TEXT_BYTES`), cut to fit one packet (3.6.6) |
 | Word dictionary | at most 61440 entries (v1: 8192) |
 | Text dictionary | under 16 KB |
@@ -431,10 +579,11 @@ The first byte tells the version:
 |---|---|
 | `0x01` | v1 packet (the team's first prototype). Decode with the v1 rules. |
 | `0x02` | Compact frame (2.2, section 3.7): a chat text as word tokens without an Envelope. Readers before 2.2 reject it with `unsupported_version`. |
-| `0x00`, `0x03` to `0x07` | Reserved for future incompatible versions. Reject with `unsupported_version`. |
+| `0x03` | Domain frame (2.3, section 3.8): a chat text as N-bit codes of a team vocabulary without an Envelope. Readers before 2.3 reject it with `unsupported_version`. |
+| `0x00`, `0x04` to `0x07` | Reserved for future incompatible versions. Reject with `unsupported_version`. |
 | `0x08` to `0xFF` | v2 protobuf `Envelope`. |
 
-Why this works: a protobuf field starts with a tag byte `(field number << 3) | wire type`. Field numbers start at 1, so the first byte of any protobuf message is at least `0x08`. Bytes `0x00` to `0x07` would mean field 0, which protobuf forbids. So a v2 packet can never be mistaken for v1 or a compact frame, and we keep six markers for later versions. Tests: `tests/test_v2_compat.py`.
+Why this works: a protobuf field starts with a tag byte `(field number << 3) | wire type`. Field numbers start at 1, so the first byte of any protobuf message is at least `0x08`. Bytes `0x00` to `0x07` would mean field 0, which protobuf forbids. So a v2 packet can never be mistaken for v1, a compact frame or a domain frame, and we keep five markers for later versions. Tests: `tests/test_v2_compat.py`.
 
 v1 packets are decoded, never produced. They map to canonical JSON with `"v": 1`:
 
@@ -460,7 +609,8 @@ The v1 vectors are in `vectors/codec.json` under `v1`.
 - **Minor version (2.1, 2.2)**: only additions. New fields, new message types (body fields 14, 15, then 16 and up), new enum values, new flag bits, new state bits (9 and up). Old readers keep working.
 - **Never** change the number, type or meaning of an existing field or value. Never reuse a removed number; mark it `reserved` in the proto.
 - **Readers** MUST ignore unknown fields, keep unknown enum values as `unknown_<n>`, keep unknown flag bits as `bit_<n>`, ignore reserved state bits, and show an unknown body type as "message of a newer type" instead of dropping it.
-- **Major version (v3)** only if something cannot be added. It will start with one of the reserved first bytes `0x03` to `0x07` (`0x02` is the compact frame, 3.7).
+- **Major version (v3)** only if something cannot be added. It will start with one of the reserved first bytes `0x04` to `0x07` (`0x02` is the compact frame, 3.7, `0x03` the domain frame, 3.8).
+- **A new team vocabulary**, or a better version of one, gets a new vocabulary id (3.8.7). Old ids stay readable forever.
 - Libraries use their own semantic versions and say which spec version they pass.
 
 ## 9. Sizes (measured)
@@ -503,7 +653,7 @@ Algorithm for a message `m` and language file `L`:
    - mayday: head `mayday`. Parts: reason value; `mayday.persons_1` or `mayday.persons`.
    - ack: head `ack.<status>` with `{ref}` (or `ack.other`). Parts: `ack.node`, `ack.team`, `ack.eta`.
    - text: head `text`. Parts: the text itself.
-   - unknown body: head `unknown`, no parts.
+   - unknown body: head `unknown`, no parts (`unknown_dict` with `{n}` for `{"words": n}`, `unknown_vocab` with `{n}` for `{"vocab": n}`).
 2. A value is `L.value["<group>.<code>"]`. Groups: age, consciousness, breathing, mobility, injuries, needs, sector, resource, urgency, hazard, severity, mayday, priority, acc. A value `unknown_<n>` or `bit_<n>` gives `part.unknown_value` with `{n}`.
 3. A list is joined with `punct.list_sep`, the last two with `punct.list_last` ("stretcher, medic and water").
 4. `line = head`, plus `punct.head_sep` and the parts joined with `punct.part_sep` if there are parts. Add `punct.end` unless the line already ends with `.`, `!` or `?`.
@@ -543,6 +693,7 @@ Rules for extractors:
    - `compact_text`: `encode(input)` gives `hex` exactly, `decode(hex)` gives `decoded`, `encode_words(text, 1)` gives `words` exactly, `decode_words(words, 1)` gives `text`, and `render` gives `render.en` / `render.de`.
    - `word_streams`: token streams only (no packet), both ways. `word_streams_invalid`: rejected with `error`.
    - `word_dicts`: the SHA-256 and entry count of your bundled word dictionary match.
+   - `vectors/domain.json` (section 3.8): `frames`: `encode_domain(text, vocab)` gives `hex` exactly and `decode_domain(hex)` gives `decoded`; `streams` and `random`: the bit stream both ways; `invalid_decode` / `invalid_encode`: rejected with `error`; `unknown`: decodes to `{"unknown": {"vocab": n}}`; `choice`: your send rule picks the same `form`, `vocab` and bytes; `vocabularies`: the SHA-256 of each bundled vocabulary matches.
 4. Level 2 (optional): `render(decoded, "en")` and `"de"` give the `text` strings exactly.
 5. Level 3 (optional): your extractor passes `vectors/extraction.json`.
 6. State in your README: "Passes RescueCodec 2.0.0 conformance Level 1 (and 2, 3)". That is the proof. Never edit the vectors to make a library pass; report a bug instead.
@@ -616,6 +767,11 @@ Any other move is an `invalid_transition` error. A valid move produces an Ack to
 | `spec/vocab/text-dict-v1.txt` | Text dictionary 1 for packed texts (frozen) |
 | `spec/vocab/words-dict-v1.txt` | Word dictionary 1 for compact texts (frozen, section 3.6.8) |
 | `spec/vocab/words-dict-v2.txt` | Word dictionary 2, 61440 entries (frozen, section 3.6.8) |
+| `spec/vocab/domain-{emergency,sar,fire,hiking,medical}-v1.txt` | Team vocabularies 1 to 5, 1016 entries each (frozen, section 3.8.7) |
+| `spec/vocab/domains.yaml` | Vocabulary ids, code widths, SHA-256, sources, licences and measurements |
+| `spec/vectors/domain.json` | 108 domain frame cases (24 frames, 5 streams, 40 random, 21 invalid decodes, 5 invalid encodes, 3 unknown vocabularies, 10 send-rule choices) and the SHA-256 of each vocabulary |
+| `spec/tools/domain_vocab.py` | Builds, chooses and measures the team vocabularies (corpora are downloaded, not in the repo) |
+| `spec/tools/gen_domain_vectors.py` | Regenerates `domain.json` from the reference |
 | `spec/tools/words_dict.py` | Builds, chooses and measures word dictionary 1 (corpora are downloaded, not in the repo) |
 | `spec/tools/words_dict2.py` | Builds, chooses and measures word dictionary 2 and the compact frame |
 | `spec/tools/text_dict.py` | Builds and measures the text dictionary (`text-dict-words.txt`, `text-corpus.json`) |

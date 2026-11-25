@@ -64,6 +64,25 @@ A second text with a name, a German place and coordinates, `Team 3 at Löwenburg
 
 On a phone: two phones with the new APK, the same private channel (a chat that packs), the setting on in the sender. The composer's byte line shows the form, for example "Compact words · 48 B (as text 136 B)". The sent message carries the tag "compact · 48 B"; Details say "Compact frame (no envelope), word dictionary 2". With the setting on, the app no longer attaches the phone's GPS fix to free texts (reports keep it), so texts can go as compact frames. A text that carries a position (for example from another app through the intent API) goes as word tokens in the envelope (about 11 bytes more).
 
+## Team vocabularies (spec 2.3)
+
+A small word list per field of work, so the most common words cost **10 bits** instead of 2 bytes. Five lists of 1016 entries: Emergency, Search & Rescue, Firefighting, Hiking / Mountain, Medical. The wire format is a **domain frame**: `0x03`, the vocabulary id, then 10-bit codes (SPEC 3.8).
+
+| Typed | Normal text | Compact frame | Domain frame |
+|---|---|---|---|
+| `Apply a tourniquet.` | 19 B | 22 B | **7 B** (Medical) |
+| `Missing person found, alive.` | 28 B | 16 B | **11 B** (S&R) |
+| `Patient is conscious, bleeding from the leg, apply a tourniquet.` | 64 B | 38 B | **19 B** (Medical) |
+| `Fire is spreading up the ridge, need two more engines and water.` | 64 B | **24 B** | 25 B (Fire): the compact frame goes out |
+
+- A word that is not in the team list but in the big word list costs 26 bits. A name or a number is copied exactly, as before.
+- The sender still sends the **strictly smallest** form. So a team list never makes a message bigger.
+- Setting: **Auto** (default: try every list), **General** (no team list), or one list ("pinned"). Gateway: `--vocabulary auto|general|emergency|sar|fire|hiking|medical`.
+- Every app and the gateway have all five lists, so receiving always works.
+- The message tag shows the list: "compact · S&R · 11 B".
+- It helps most with field language (5 to 20 % smaller than the compact frame on manual sentences), little with everyday chat (0 to 3 %). Sources, licences and measurements: `spec/vocab/domains.yaml`.
+- An app from before 2.3 rejects a domain frame (unreadable-message line), never wrong words. With such apps in the team, choose **General**.
+
 ## Older apps
 
 An app or gateway from before spec 2.2 cannot read a compact frame. It **never shows wrong words**: the first byte `0x02` was reserved, so it rejects the packet as `unsupported_version`. The old app shows an unreadable-message line, the old gateway counts it as rejected. A 2.1 app that gets word tokens with dictionary 2 in the envelope shows "Message encoded with a dictionary this app does not have (word dictionary 2), please update the app". Apps before 2.1 show "Unreadable message". If some team members still have an old app: leave the setting off, or set that chat to "Always normal".
