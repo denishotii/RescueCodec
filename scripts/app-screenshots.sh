@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Takes screenshots of every screen of the Android app on the emulator, light and dark, English and German.
-# Output: .overnight/gallery/app/<screen>-<light|dark>.png
+# Output: docs/screenshots/app/<screen>-<light|dark>.png
 #
 #   scripts/app-screenshots.sh            builds nothing: install the debug APK first, or pass --build
 #   scripts/app-screenshots.sh --build    runs gradle assembleDebug first
@@ -11,7 +11,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 . "$ROOT/scripts/env.sh"
-OUT="$ROOT/.overnight/gallery/app"
+OUT="$ROOT/docs/screenshots/app"
 TMP="${TMPDIR:-/tmp}/rc-shots"
 APK="$ROOT/android/app/build/outputs/apk/debug/app-debug.apk"
 KEEP=0; BUILD=0

@@ -8,10 +8,11 @@ __pycache__/
 build/
 dist/
 
-# OS / editors
+# OS / editors / design tools
 .DS_Store
 .idea/
 .vscode/
+.impeccable/
 
 # Android / Gradle
 .gradle/
@@ -49,7 +50,10 @@ dashboard/node_modules/
 # Gateway database
 rescuecodec-gateway.db*
 
-# Gateway databases from test runs (SETUP.md uses demo.db, hardware tests hwtest.db)
+# Gateway databases from test runs (docs/SETUP.md uses demo.db, hardware tests hwtest.db)
 *.db
 *.db-shm
 *.db-wal
+
+# v1 benchmark output (rescuecodec-benchmark). The old results are in legacy/v1/results/
+/results/
