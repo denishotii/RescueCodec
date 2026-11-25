@@ -14,9 +14,9 @@ import { clampBytes } from "./AckControl";
 import { ChannelChip, Panel } from "./bits";
 import { STATUS_KEY } from "./Feed";
 
+// the three a command post uses most; reports (requests, hazards) are typed in plain words
 const QUICK_BUTTONS: { id: QuickId; label: Key }[] = [
-  { id: "recall", label: "quickRecall" }, { id: "status", label: "quickStatus" }, { id: "meet", label: "quickMeet" },
-  { id: "request", label: "quickRequest" }, { id: "hazard", label: "quickHazard" },
+  { id: "status", label: "quickStatus" }, { id: "recall", label: "quickRecall" }, { id: "meet", label: "quickMeet" },
 ];
 const DEBOUNCE_MS = 250;
 
@@ -126,7 +126,7 @@ export function SendPanel() {
       <form className="send-body" onSubmit={(e) => { e.preventDefault(); void send(); }}>
         <div className="quick-row" role="group" aria-label={t("quickGroup")}>
           {QUICK_BUTTONS.map((q) => (
-            <button key={q.id} type="button" className={`quick ${q.id === "request" || q.id === "hazard" ? "quick-report" : ""}`} onClick={() => quick(q.id)}>
+            <button key={q.id} type="button" className="quick" onClick={() => quick(q.id)}>
               {t(q.label)}
             </button>
           ))}
@@ -159,7 +159,7 @@ export function SendPanel() {
               )}
               {counter.cut && <p className="send-warn">{t("willBeCut")}</p>}
             </>
-          ) : <p className="send-as muted">{t("sendShortcut")}</p>}
+          ) : null}
         </div>
         <div className="send-foot">
           <label className={`plain-toggle ${plainReason ? "locked" : ""}`}>
