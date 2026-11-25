@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RescueCodec app mockup v3</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --accent: #2F7DE1; --accent-soft: #E3EEFC; --out: #DDEBFF;
+    --red: #D93025; --red-soft: #FDECEA; --amber: #B26A00; --amber-soft: #FFF3D6;
+    --green: #1E9E57; --green-soft: #E3F5EA; --ink: #111418; --muted: #6B7785;
+    --line: #E6E9ED; --chat-bg: #EEF1F5; --surface: #FFFFFF;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #2B2F36; font-family: Roboto, system-ui, sans-serif; color: var(--ink); }
+  header.page { color: #fff; padding: 24px 32px 0; }
+  header.page h1 { margin: 0 0 4px; font-size: 22px; font-weight: 500; }
+  header.page p { margin: 0; color: #B8C0CC; font-size: 14px; max-width: 900px; line-height: 1.5; }
+  .row { display: flex; gap: 28px; padding: 24px 32px 40px; overflow-x: auto; align-items: flex-start; }
+  .frame { flex: 0 0 auto; }
+  .frame h2 { color: #DDE3EA; font-size: 13px; font-weight: 500; margin: 0 0 8px 4px; letter-spacing: .02em; }
+  .phone { width: 360px; height: 760px; background: var(--surface); border-radius: 28px; overflow: hidden; position: relative; display: flex; flex-direction: column; box-shadow: 0 20px 50px rgb(0 0 0 / .45); }
+  .status { height: 26px; padding: 0 18px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--ink); flex: none; }
+  .appbar { height: 56px; display: flex; align-items: center; gap: 12px; padding: 0 8px 0 16px; border-bottom: 1px solid var(--line); flex: none; background: var(--surface); }
+  .appbar .t { flex: 1; min-width: 0; }
+  .appbar .t b { display: block; font-size: 19px; font-weight: 500; }
+  .appbar .t small { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); display: inline-block; }
+  .ib { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; color: var(--muted); }
+  .sos { height: 32px; padding: 0 12px; border-radius: 16px; background: var(--red); color: #fff; font-weight: 700; font-size: 13px; display: flex; align-items: center; letter-spacing: .04em; }
+  .av { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-weight: 500; font-size: 17px; flex: none; }
+  .av.s { width: 38px; height: 38px; font-size: 14px; }
+  /* chat list */
+  .alertrow { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: var(--red-soft); border-bottom: 1px solid #F5C6C2; color: var(--red); font-size: 14px; }
+  .alertrow b { font-weight: 700; }
+  .alertrow .go { margin-left: auto; font-weight: 500; }
+  .list { flex: 1; overflow: hidden; }
+  .item { display: flex; gap: 12px; padding: 10px 16px; align-items: center; }
+  .item .mid { flex: 1; min-width: 0; border-bottom: 1px solid var(--line); padding-bottom: 10px; margin-bottom: -10px; }
+  .item .top { display: flex; align-items: baseline; gap: 6px; }
+  .item .name { font-weight: 500; font-size: 16px; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .item .time { font-size: 12px; color: var(--muted); }
+  .item .bot { display: flex; align-items: center; gap: 6px; margin-top: 3px; }
+  .item .prev { flex: 1; font-size: 14px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .item .prev em { font-style: normal; color: var(--ink); }
+  .badge { min-width: 22px; height: 22px; border-radius: 11px; background: var(--accent); color: #fff; font-size: 12px; font-weight: 500; display: grid; place-items: center; padding: 0 6px; }
+  .badge.red { background: var(--red); }
+  .tag { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+  .fab { position: absolute; right: 16px; bottom: 76px; width: 56px; height: 56px; border-radius: 16px; background: var(--accent); display: grid; place-items: center; box-shadow: 0 4px 12px rgb(47 125 225 / .4); }
+  .nav { height: 64px; border-top: 1px solid var(--line); display: flex; flex: none; background: var(--surface); }
+  .nav div { flex: 1; display: grid; place-items: center; font-size: 12px; color: var(--muted); position: relative; padding-top: 6px; }
+  .nav div.on { color: var(--accent); font-weight: 500; }
+  .nav .nb { position: absolute; top: 6px; left: calc(50% + 6px); min-width: 18px; height: 18px; border-radius: 9px; background: var(--accent); color: #fff; font-size: 11px; display: grid; place-items: center; padding: 0 5px; }
+  /* chat */
+  .pinned { display: flex; gap: 10px; align-items: center; padding: 8px 12px 8px 16px; border-bottom: 1px solid var(--line); background: var(--surface); flex: none; }
+  .pinned .bar { width: 3px; align-self: stretch; background: var(--red); border-radius: 2px; }
+  .pinned .tx { flex: 1; font-size: 13px; line-height: 1.35; min-width: 0; }
+  .pinned .tx b { color: var(--red); }
+  .pinned .tx span { color: var(--muted); }
+  .pinned .acc { color: var(--red); font-weight: 500; font-size: 14px; padding: 6px 10px; border: 1px solid #F0B7B2; border-radius: 16px; }
+  .chat { flex: 1; background: var(--chat-bg); padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; overflow: hidden; }
+  .day { align-self: center; background: rgb(0 0 0 / .18); color: #fff; font-size: 12px; padding: 3px 10px; border-radius: 12px; margin: 6px 0; }
+  .svc { align-self: center; background: rgb(0 0 0 / .18); color: #fff; font-size: 12.5px; padding: 4px 12px; border-radius: 12px; margin: 4px 0; display: flex; align-items: center; gap: 6px; }
+  .msg { max-width: 82%; padding: 6px 10px 6px; border-radius: 14px; font-size: 15px; line-height: 1.38; position: relative; box-shadow: 0 1px 1px rgb(0 0 0 / .08); }
+  .in { align-self: flex-start; background: var(--surface); border-top-left-radius: 4px; }
+  .out { align-self: flex-end; background: var(--out); border-top-right-radius: 4px; }
+  .from { font-size: 13px; font-weight: 500; margin-bottom: 1px; }
+  .meta { float: right; margin: 6px 0 -4px 10px; font-size: 11.5px; color: var(--muted); display: inline-flex; gap: 3px; align-items: center; }
+  .out .meta { color: #4F7BB0; }
+  .rep .title { display: flex; align-items: center; gap: 6px; font-weight: 500; }
+  .rep .det { color: #2A3138; font-size: 14px; }
+  .rep .loc { display: flex; align-items: center; gap: 4px; font-size: 13px; color: var(--accent); margin-top: 2px; }
+  .st { font-size: 11.5px; font-weight: 500; border-radius: 8px; padding: 1px 7px; margin-left: 4px; }
+  .st.open { background: var(--amber-soft); color: var(--amber); }
+  .st.acc { background: var(--accent-soft); color: var(--accent); }
+  .st.done { background: var(--green-soft); color: var(--green); }
+  .st.red { background: var(--red-soft); color: var(--red); }
+  .kb { align-self: flex-start; display: flex; gap: 4px; width: 82%; margin-top: -1px; }
+  .kb div { flex: 1; text-align: center; padding: 8px 0; border-radius: 10px; background: rgb(255 255 255 / .75); font-size: 14px; font-weight: 500; color: var(--accent); }
+  .kb div.no { color: var(--muted); }
+  .composer { display: flex; align-items: flex-end; gap: 6px; padding: 6px 8px 8px; background: var(--chat-bg); flex: none; }
+  .field { flex: 1; min-height: 46px; background: var(--surface); border-radius: 23px; display: flex; align-items: center; gap: 4px; padding: 0 6px; font-size: 16px; color: #9AA4AF; box-shadow: 0 1px 1px rgb(0 0 0 / .06); }
+  .field .ib { width: 36px; height: 36px; }
+  .field .txt { flex: 1; color: var(--ink); line-height: 1.3; padding: 11px 0; }
+  .field .ph { flex: 1; }
+  .round { width: 46px; height: 46px; border-radius: 50%; background: var(--accent); display: grid; place-items: center; flex: none; }
+  .preview { margin: 0 8px; background: var(--surface); border-radius: 14px; padding: 8px 10px; display: flex; gap: 8px; align-items: flex-start; box-shadow: 0 1px 2px rgb(0 0 0 / .08); }
+  .preview .bar { width: 3px; align-self: stretch; background: var(--accent); border-radius: 2px; }
+  .preview .tx { flex: 1; font-size: 13.5px; line-height: 1.4; }
+  .preview .tx b { color: var(--accent); font-weight: 500; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .chip { font-size: 12.5px; background: #F1F4F8; border-radius: 12px; padding: 2px 8px; }
+  .bytes { margin-top: 5px; font-size: 12px; color: var(--green); font-weight: 500; }
+  /* tasks */
+  .seg { display: flex; gap: 6px; padding: 10px 16px; border-bottom: 1px solid var(--line); flex: none; }
+  .seg div { font-size: 13.5px; padding: 6px 12px; border-radius: 16px; background: #F1F4F8; color: #3A434D; }
+  .seg div.on { background: var(--accent); color: #fff; }
+  .sect { font-size: 13px; font-weight: 500; color: var(--muted); padding: 12px 16px 4px; }
+  .task { display: flex; gap: 12px; padding: 10px 16px; align-items: center; }
+  .task .mid { flex: 1; min-width: 0; }
+  .task .name { font-size: 15.5px; font-weight: 500; }
+  .task .sub { font-size: 13.5px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .btn { font-size: 14px; font-weight: 500; padding: 8px 14px; border-radius: 18px; background: var(--accent); color: #fff; }
+  .btn.red { background: var(--red); }
+  .btn.ghost { background: transparent; color: var(--green); padding: 8px 6px; }
+  .notes { color: #C9D1DB; font-size: 13px; line-height: 1.55; padding: 0 32px 40px; max-width: 1100px; columns: 2; column-gap: 40px; }
+  .notes b { color: #fff; font-weight: 500; }
+  svg { display: block; }
+</style>
+</head>
+<body>
+<header class="page">
+  <h1>RescueCodec app, mockup v3 (Telegram-style)</h1>
+  <p>Compact chat first. Chats list with one chat per channel and direct messages, Tasks as the second tab. Colours only carry meaning: red Mayday/SOS, amber open, blue accepted and my messages, green done/connected. Byte savings only where you send (composer) and in details. Dark mode follows the same layout.</p>
+</header>
+
+<div class="row">
+
+  <!-- 1. CHATS LIST -->
+  <div class="frame">
+    <h2>1 · Chats</h2>
+    <div class="phone">
+      <div class="status"><span>12:41</span><span>▲ ● ■</span></div>
+      <div class="appbar">
+        <div class="t"><b>RescueCodec</b><small><i class="dot"></i>D-Node 2 · connected</small></div>
+        <div class="ib"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#6B7785" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg></div>
+        <div class="sos">SOS</div>
+        <div class="ib"><svg width="20" height="20" viewBox="0 0 24 24" fill="#6B7785"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></div>
+      </div>
+      <div class="alertrow"><svg width="18" height="18" viewBox="0 0 24 24" fill="#D93025"><path d="M12 2L1 21h22L12 2zm1 15h-2v-2h2v2zm0-4h-2V9h2v4z"/></svg><span><b>MAYDAY</b> · D-Node 3 · team member injured</span><span class="go">Open</span></div>
+      <div class="list">
+        <div class="item"><div class="av" style="background:#2F7DE1"><svg width="24" height="24" viewBox="0 0 24 24" fill="#fff"><path d="M16 11c1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 3-1.34 3-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5C15 14.17 10.33 13 8 13zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg></div>
+          <div class="mid"><div class="top"><span class="name">RescueCodec</span><span class="time">12:13</span></div>
+          <div class="bot"><span class="prev"><em>D-Node 7:</em> Person found · child, conscious</span><span class="badge red">3</span></div></div></div>
+        <div class="item"><div class="av" style="background:#E07A1F">DS</div>
+          <div class="mid"><div class="top"><span class="name">draeger-srs</span><span class="time">12:05</span></div>
+          <div class="bot"><span class="prev"><em>Dräger KdoW:</em> Treffpunkt Halle 8, 13:30</span><span class="badge">1</span></div></div></div>
+        <div class="item"><div class="av" style="background:#8E5BD8">MM</div>
+          <div class="mid"><div class="top"><span class="name">MeshMeister</span><span class="time">11:52</span></div>
+          <div class="bot"><span class="prev"><em>AK_Mobil_1:</em> anyone near hall 8?</span></div></div></div>
+        <div class="item"><div class="av" style="background:#1E9E57">D7</div>
+          <div class="mid"><div class="top"><span class="name">D-Node 7</span><span class="tag">direct</span><span class="time">11:40</span></div>
+          <div class="bot"><span class="prev">You: ok, coming</span><svg width="18" height="12" viewBox="0 0 18 12" fill="none" stroke="#2F7DE1" stroke-width="1.8"><path d="M1 6l4 4 7-8M7 10l1 0 7-8"/></svg></div></div></div>
+        <div class="item"><div class="av" style="background:#5B6B7C">BS</div>
+          <div class="mid"><div class="top"><span class="name">Base (gateway)</span><span class="tag">direct</span><span class="time">10:58</span></div>
+          <div class="bot"><span class="prev">Please check sector 4 before 14:00</span></div></div></div>
+      </div>
+      <div class="fab"><svg width="24" height="24" viewBox="0 0 24 24" fill="#fff"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg></div>
+      <div class="nav"><div class="on"><svg width="24" height="24" viewBox="0 0 24 24" fill="#2F7DE1"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>Chats<span class="nb">4</span></div><div><svg width="24" height="24" viewBox="0 0 24 24" fill="#6B7785"><path d="M19 3h-4.18C14.4 1.84 13.3 1 12 1s-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm-2 14l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>Tasks<span class="nb" style="background:#D93025">3</span></div></div>
+    </div>
+  </div>
+
+  <!-- 2. CHAT -->
+  <div class="frame">
+    <h2>2 · Team chat</h2>
+    <div class="phone">
+      <div class="status"><span>12:41</span><span>▲ ● ■</span></div>
+      <div class="appbar" style="padding-left:4px">
+        <div class="ib"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#111418" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></div>
+        <div class="av s" style="background:#2F7DE1">RC</div>
+        <div class="t"><b style="font-size:17px">RescueCodec</b><small><i class="dot"></i>5 radios online</small></div>
+        <div class="sos">SOS</div>
+        <div class="ib"><svg width="20" height="20" viewBox="0 0 24 24" fill="#6B7785"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></div>
+      </div>
+      <div class="pinned"><div class="bar"></div><div class="tx"><b>MAYDAY · D-Node 3</b><br><span>Team member injured · 2 min ago · 300 m S</span></div><div class="acc">Accept</div></div>
+      <div class="chat">
+        <div class="day">Today</div>
+        <div class="msg in"><div class="from" style="color:#1E9E57">D-Node 7</div>Path along the creek is flooded, use the forest road<span class="meta">12:02</span></div>
+        <div class="msg out">Ok, we switch to the forest road<span class="meta">12:03 <svg width="16" height="11" viewBox="0 0 18 12" fill="none" stroke="#2F7DE1" stroke-width="1.8"><path d="M1 6l4 4 7-8M7 10l1 0 7-8"/></svg></span></div>
+        <div class="msg in rep"><div class="from" style="color:#1E9E57">D-Node 7</div>
+          <div class="title"><svg width="16" height="16" viewBox="0 0 24 24" fill="#111418"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>Person found <span class="st open">Open</span></div>
+          <div class="det">Child · conscious · hypothermia · fracture</div>
+          <div class="det">Needs stretcher · 2 more helpers</div>
+          <div class="loc"><svg width="13" height="13" viewBox="0 0 24 24" fill="#2F7DE1"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 010-5 2.5 2.5 0 010 5z"/></svg>450 m NE · show on map<span class="meta" style="margin-left:auto">12:13</span></div>
+        </div>
+        <div class="kb"><div>Accept</div><div class="no">Decline</div></div>
+        <div class="svc"><svg width="13" height="13" viewBox="0 0 24 24" fill="#fff"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>Base accepted · Hazard: path blocked</div>
+        <div class="msg out rep"><div class="title"><svg width="16" height="16" viewBox="0 0 24 24" fill="#B26A00"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>Hazard <span class="st acc">Accepted</span></div><div class="det">Path blocked · fallen tree</div><span class="meta">12:15 <svg width="16" height="11" viewBox="0 0 18 12" fill="none" stroke="#2F7DE1" stroke-width="1.8"><path d="M1 6l4 4 7-8M7 10l1 0 7-8"/></svg></span></div>
+      </div>
+      <div class="composer">
+        <div class="field"><div class="ib"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#6B7785" stroke-width="2"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V2h6v2M9 10h6M9 14h6"/></svg></div><span class="ph">Message</span></div>
+        <div class="round"><svg width="22" height="22" viewBox="0 0 24 24" fill="#fff"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/></svg></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. TYPING A REPORT -->
+  <div class="frame">
+    <h2>3 · Typing → it becomes a report</h2>
+    <div class="phone">
+      <div class="status"><span>12:42</span><span>▲ ● ■</span></div>
+      <div class="appbar" style="padding-left:4px">
+        <div class="ib"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#111418" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></div>
+        <div class="av s" style="background:#2F7DE1">RC</div>
+        <div class="t"><b style="font-size:17px">RescueCodec</b><small><i class="dot"></i>5 radios online</small></div>
+        <div class="sos">SOS</div>
+      </div>
+      <div class="chat" style="justify-content:flex-end">
+        <div class="msg in"><div class="from" style="color:#1E9E57">D-Node 7</div>Path along the creek is flooded, use the forest road<span class="meta">12:02</span></div>
+        <div class="msg out">Ok, we switch to the forest road<span class="meta">12:03 <svg width="16" height="11" viewBox="0 0 18 12" fill="none" stroke="#2F7DE1" stroke-width="1.8"><path d="M1 6l4 4 7-8M7 10l1 0 7-8"/></svg></span></div>
+      </div>
+      <div style="background:var(--chat-bg); padding-top:4px">
+        <div class="preview"><div class="bar"></div><div class="tx"><b>Sends as: Person found</b>
+          <div class="chips"><span class="chip">child ✕</span><span class="chip">conscious ✕</span><span class="chip">hypothermia ✕</span><span class="chip">fracture ✕</span><span class="chip">stretcher ✕</span><span class="chip">+2 helpers ✕</span><span class="chip" style="color:#2F7DE1">+ add</span></div>
+          <div class="bytes">23 B on air · as text 105 B · 4.6× smaller</div></div>
+          <div class="ib" style="width:28px;height:28px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6B7785" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></div></div>
+      </div>
+      <div class="composer">
+        <div class="field"><div class="ib"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2F7DE1" stroke-width="2"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V2h6v2M9 10h6M9 14h6"/></svg></div><span class="txt">Kind gefunden, ansprechbar, stark unterkühlt, Knöchel verletzt. Wir brauchen eine Trage und zwei Leute.</span></div>
+        <div class="round"><svg width="22" height="22" viewBox="0 0 24 24" fill="#fff"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg></div>
+      </div>
+      <div style="height:250px;background:#D7DCE2;display:grid;place-items:center;color:#7A8592;font-size:13px">keyboard</div>
+    </div>
+  </div>
+
+  <!-- 4. TASKS -->
+  <div class="frame">
+    <h2>4 · Tasks</h2>
+    <div class="phone">
+      <div class="status"><span>12:41</span><span>▲ ● ■</span></div>
+      <div class="appbar">
+        <div class="t"><b>Tasks</b><small><i class="dot"></i>D-Node 2 · connected</small></div>
+        <div class="sos">SOS</div>
+        <div class="ib"><svg width="20" height="20" viewBox="0 0 24 24" fill="#6B7785"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></div>
+      </div>
+      <div class="seg"><div class="on">Open 3</div><div>Mine 1</div><div>Done 6</div></div>
+      <div class="list">
+        <div class="task"><div class="av" style="background:#D93025"><svg width="22" height="22" viewBox="0 0 24 24" fill="#fff"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg></div>
+          <div class="mid"><div class="name" style="color:#D93025">Mayday · team member injured</div><div class="sub">D-Node 3 · 300 m S · 2 min</div></div><div class="btn red">Accept</div></div>
+        <div class="task"><div class="av" style="background:#E8A300"><svg width="22" height="22" viewBox="0 0 24 24" fill="#fff"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg></div>
+          <div class="mid"><div class="name">Person found</div><div class="sub">D-Node 7 · child, conscious · 450 m NE</div></div><div class="btn">Accept</div></div>
+        <div class="task"><div class="av" style="background:#E8A300"><svg width="22" height="22" viewBox="0 0 24 24" fill="#fff"><path d="M20 6h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v2H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-6 0h-4V4h4v2zm1 8h-2v2h-2v-2H9v-2h2v-2h2v2h2v2z"/></svg></div>
+          <div class="mid"><div class="name">Need: stretcher ×2</div><div class="sub">D-Node 5 · sector 4 · 12 min</div></div><div class="btn">Accept</div></div>
+        <div class="sect">Mine</div>
+        <div class="task"><div class="av" style="background:#2F7DE1"><svg width="22" height="22" viewBox="0 0 24 24" fill="#fff"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg></div>
+          <div class="mid"><div class="name">Hazard · path blocked</div><div class="sub">You · accepted 12:15 · 120 m W</div></div><div class="btn ghost">✓ Done</div></div>
+        <div class="sect">Done today</div>
+        <div class="task" style="opacity:.6"><div class="av" style="background:#1E9E57"><svg width="22" height="22" viewBox="0 0 24 24" fill="#fff"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg></div>
+          <div class="mid"><div class="name">Sector 2 cleared</div><div class="sub">D-Node 4 · done 11:30</div></div></div>
+      </div>
+      <div class="nav"><div><svg width="24" height="24" viewBox="0 0 24 24" fill="#6B7785"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>Chats<span class="nb">4</span></div><div class="on"><svg width="24" height="24" viewBox="0 0 24 24" fill="#2F7DE1"><path d="M19 3h-4.18C14.4 1.84 13.3 1 12 1s-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm-2 14l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>Tasks<span class="nb" style="background:#D93025">3</span></div></div>
+    </div>
+  </div>
+
+</div>
+
+<div class="notes">
+  <p><b>Chats.</b> One row per private channel on the radio, then direct messages. Team channel pinned on top. Mayday shows as one slim red row, not a big banner. The app reopens the last chat directly.</p>
+  <p><b>Chat.</b> Normal bubbles. Reports are bubbles with a title, two short lines and a distance, plus Accept/Decline buttons under them. Answers are small grey lines in the middle. A Mayday is pinned under the title bar with an Accept button.</p>
+  <p><b>Sending.</b> One field. While you type, the app shows what it will send and the byte saving. Tap ✕ on a chip to remove it, ✕ on the strip to send as plain text. Mic when the field is empty.</p>
+  <p><b>SOS.</b> Small red button in the title bar on every screen. Hold for 2 seconds. Radio, Airtime and Settings live in the ⋮ menu; the green dot opens the Radio screen.</p>
+  <p><b>Tasks.</b> Compact rows with one button. Open, Mine, Done as filters. Red Mayday always first.</p>
+  <p><b>Removed from view.</b> UTM grid numbers (tap the distance for the map and grid), "delivery unknown" labels (only a grey clock tick), byte captions under every bubble (only in the composer and in Details).</p>
+</div>
+</body>
+</html>

@@ -1,0 +1,539 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Radio Log Direction</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Atkinson+Hyperlegible+Mono:wght@400;500;700&family=Atkinson+Hyperlegible+Next:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  /* radio body (shell) */
+  --body: #17191C;
+  --body-2: #2A2D31;
+  --on-body: #F3F4EF;
+  --on-body-2: #AEB2AA;
+  /* display (content) */
+  --display: #F5F5F1;
+  --paper: #FFFFFF;
+  --ink: #111214;
+  --ink-2: #4A4E54;
+  --rule: #D8DAD3;
+  /* brand: hi-vis, means "you" */
+  --vis: #D5F23A;
+  --vis-deep: #B9D51E;
+  /* state */
+  --red: #D3231B;
+  --red-ink: #A3150F;
+  --amber: #F4A20C;
+  --amber-ink: #8A5200;
+  --blue: #1F59D3;
+  --green: #17783F;
+  --green-lit: #3DCB6F;
+
+  --f-display: 'Archivo', 'Arial Narrow', sans-serif;
+  --f-text: 'Atkinson Hyperlegible Next', system-ui, sans-serif;
+  --f-mono: 'Atkinson Hyperlegible Mono', ui-monospace, monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { background: #E3E4DF; }
+body {
+  background: #E3E4DF; color: var(--ink);
+  font-family: var(--f-text);
+  -webkit-font-smoothing: antialiased;
+  padding: 26px 70px 0;
+  width: 1700px;
+}
+::selection { background: var(--vis); color: var(--ink); }
+svg { display: block; }
+.ic { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.ic.s { width: 20px; height: 20px; }
+.ic.xs { width: 18px; height: 18px; }
+
+/* ---------- concept block ---------- */
+.concept { display: grid; grid-template-columns: 430px 1fr 400px; gap: 48px; align-items: start; }
+.concept h1 { font-family: var(--f-display); font-stretch: 75%; font-weight: 800; font-size: 46px; line-height: .95; letter-spacing: -.01em; }
+.concept h1 span { color: var(--ink-2); font-weight: 600; }
+.concept p.idea { margin-top: 10px; font-size: 16px; line-height: 1.4; color: #2B2E32; max-width: 420px; }
+.swatches { display: grid; grid-template-columns: repeat(8, 1fr); gap: 10px; }
+.sw i { display: block; height: 46px; border-radius: 6px; border: 1px solid rgb(0 0 0 / .12); }
+.sw b { display: block; margin-top: 6px; font-size: 13px; font-weight: 700; }
+.sw code { font-family: var(--f-mono); font-size: 13px; color: var(--ink-2); }
+.fonts { display: grid; gap: 7px; }
+.fonts div { display: flex; align-items: baseline; gap: 12px; border-bottom: 1px solid #C9CBC4; padding-bottom: 6px; }
+.fonts div:last-child { border: 0; }
+.fonts .spec { flex: none; width: 150px; font-size: 22px; line-height: 1; }
+.fonts .f1 { font-family: var(--f-display); font-stretch: 75%; font-weight: 800; letter-spacing: .01em; }
+.fonts .f2 { font-family: var(--f-text); font-weight: 700; }
+.fonts .f3 { font-family: var(--f-mono); font-weight: 500; font-size: 20px; }
+.fonts small { font-size: 13px; color: var(--ink-2); line-height: 1.3; }
+.fonts small b { color: var(--ink); font-weight: 700; }
+
+/* ---------- screens row ---------- */
+.screens { display: grid; grid-template-columns: repeat(4, 360px); gap: 40px; margin-top: 22px; }
+.label { font-size: 13px; font-weight: 700; color: var(--ink-2); margin: 0 0 7px 4px; display: flex; gap: 8px; }
+.label span { font-family: var(--f-mono); color: var(--ink); }
+.phone {
+  width: 360px; height: 760px; border-radius: 26px; overflow: hidden; position: relative;
+  background: var(--display); display: flex; flex-direction: column;
+  box-shadow: 0 1px 2px rgb(0 0 0 / .18), 0 18px 40px -12px rgb(0 0 0 / .35);
+}
+
+/* system status bar */
+.sys { height: 26px; flex: none; background: var(--body); color: var(--on-body); display: flex; align-items: center; justify-content: space-between; padding: 0 18px 0 20px; font-family: var(--f-text); font-size: 13px; font-weight: 700; }
+.sys .r { display: flex; gap: 6px; align-items: center; }
+.sys svg { width: 16px; height: 16px; }
+
+/* top bar */
+.bar { flex: none; height: 64px; background: var(--body); color: var(--on-body); display: flex; align-items: center; padding: 0 4px 0 16px; gap: 6px; }
+.bar.back { padding-left: 4px; }
+.tb { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 3px; height: 56px; }
+.wm { display: flex; align-items: center; gap: 9px; }
+.mark { width: 28px; height: 28px; border-radius: 7px; background: var(--vis); color: var(--ink); display: grid; place-items: center; flex: none; }
+.mark svg { width: 20px; height: 20px; }
+.wm .w { font-size: 23px; line-height: 1; letter-spacing: -.005em; white-space: nowrap; }
+.wm .w b { font-family: var(--f-display); font-stretch: 75%; font-weight: 800; }
+.wm .w span { font-family: var(--f-mono); font-weight: 500; font-size: 20px; color: var(--vis); margin-left: 1px; }
+.title { font-family: var(--f-display); font-stretch: 75%; font-weight: 800; font-size: 24px; line-height: 1; letter-spacing: .002em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.radio { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--on-body-2); white-space: nowrap; }
+.radio .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green-lit); flex: none; }
+.radio b { color: var(--on-body); font-weight: 700; }
+.radio .bars { display: flex; align-items: flex-end; gap: 2px; height: 12px; margin-left: 2px; }
+.radio .bars i { width: 3px; background: var(--on-body); border-radius: 1px; }
+.radio .bars i:nth-child(1) { height: 4px; } .radio .bars i:nth-child(2) { height: 7px; } .radio .bars i:nth-child(3) { height: 10px; } .radio .bars i:nth-child(4) { height: 12px; background: #5B5F66; }
+.ib { width: 48px; height: 48px; display: grid; place-items: center; color: var(--on-body); flex: none; }
+
+/* mayday strip */
+.mayday { flex: none; background: var(--red); color: #fff; display: flex; align-items: center; gap: 12px; padding: 8px 12px 8px 16px; }
+.mayday .mt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.mayday .l1 { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; }
+.mayday .tag { font-family: var(--f-display); font-stretch: 75%; font-weight: 800; font-size: 17px; letter-spacing: .04em; }
+.mayday .who { font-size: 14px; font-weight: 700; }
+.mayday .l2 { font-size: 15px; font-weight: 700; white-space: nowrap; }
+.wkey { height: 48px; padding: 0 16px; border-radius: 8px; background: #fff; color: var(--red-ink); font-family: var(--f-text); font-weight: 800; font-size: 16px; display: grid; place-items: center; flex: none; }
+.mayday.slim { padding: 0 8px 0 16px; height: 48px; }
+.mayday.slim .l1 { align-items: center; }
+.mayday.slim .who { font-family: var(--f-text); font-size: 14px; font-weight: 700; opacity: 1; }
+.mayday.slim .go { width: 48px; height: 48px; display: grid; place-items: center; }
+
+/* lists */
+.list { flex: 1; overflow: hidden; background: var(--display); }
+.sub { font-family: var(--f-display); font-stretch: 75%; font-weight: 800; font-size: 14px; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-2); padding: 16px 16px 6px; display: flex; gap: 8px; }
+.sub span { font-family: var(--f-mono); font-weight: 500; letter-spacing: 0; }
+.row { display: flex; align-items: center; gap: 12px; padding: 0 16px; height: 74px; position: relative; }
+.row::after { content: ""; position: absolute; left: 72px; right: 0; bottom: 0; height: 1px; background: var(--rule); }
+.row:last-child::after { display: none; }
+.key { width: 44px; height: 44px; border-radius: 8px; flex: none; display: grid; place-items: center; }
+.key.ch { background: var(--body); color: var(--on-body); font-family: var(--f-mono); font-weight: 700; font-size: 20px; }
+.key.ch.team { background: var(--body); color: var(--vis); }
+.key.dm { border: 2px solid var(--ink); color: var(--ink); }
+.rm { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.r1 { display: flex; align-items: center; gap: 6px; }
+.r1 .n { font-size: 17px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.r1 .pin { color: var(--ink-2); }
+.r1 time { margin-left: auto; font-family: var(--f-mono); font-size: 13px; color: var(--ink-2); padding-left: 8px; }
+.r1 time.new { color: var(--ink); font-weight: 700; }
+.r2 { display: flex; align-items: center; gap: 8px; }
+.pv { flex: 1; min-width: 0; font-size: 15px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 4px; }
+.pv em { font-style: normal; color: var(--ink); font-weight: 700; }
+.pv .t { overflow: hidden; text-overflow: ellipsis; }
+.cnt { min-width: 26px; height: 24px; border-radius: 6px; background: var(--ink); color: #fff; font-family: var(--f-mono); font-weight: 700; font-size: 14px; display: grid; place-items: center; padding: 0 7px; flex: none; }
+
+/* dock */
+.dock { flex: none; background: var(--body); padding: 10px 12px; display: flex; gap: 8px; align-items: flex-end; }
+.sos { width: 68px; height: 56px; border-radius: 10px; background: var(--red); color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; flex: none; gap: 1px; box-shadow: inset 0 0 0 2px rgb(255 255 255 / .16); }
+.sos b { font-family: var(--f-display); font-stretch: 75%; font-weight: 900; font-size: 21px; letter-spacing: .06em; line-height: 1; }
+.sos small { font-size: 13px; font-weight: 700; line-height: 1; opacity: .95; }
+.tabs { flex: 1; display: flex; gap: 6px; }
+.tab { flex: 1; height: 56px; border-radius: 10px; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--on-body); font-weight: 700; font-size: 16px; position: relative; background: var(--body-2); }
+.tab.on { background: var(--vis); color: var(--ink); }
+.tab .b { min-width: 24px; height: 22px; border-radius: 6px; font-family: var(--f-mono); font-weight: 700; font-size: 13px; display: grid; place-items: center; padding: 0 6px; font-style: normal; }
+.tab .b.k { background: var(--ink); color: #fff; }
+.tab .b.a { background: var(--amber); color: var(--ink); }
+.field { flex: 1; min-height: 56px; border-radius: 10px; background: var(--paper); color: var(--ink-2); font-size: 16px; display: flex; align-items: center; padding: 0 14px; }
+.tx { width: 68px; height: 56px; border-radius: 10px; background: var(--vis); color: var(--ink); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; flex: none; }
+.tx small { font-size: 13px; font-weight: 800; line-height: 1; }
+.gest { height: 18px; flex: none; background: var(--body); display: grid; place-items: center; }
+.gest i { width: 108px; height: 4px; border-radius: 2px; background: #8E9297; }
+
+/* log */
+.log { flex: 1; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; background: var(--display); }
+.e { display: grid; grid-template-columns: 68px 1fr; padding: 9px 16px 10px 0; border-top: 1px solid var(--rule); }
+.e time { font-family: var(--f-mono); font-size: 14px; font-weight: 700; color: var(--ink); padding: 1px 0 0 16px; }
+.e.me { background: #EEF3D0; }
+.cs .loc { margin-left: auto; display: flex; align-items: center; gap: 3px; font-family: var(--f-text); font-weight: 800; letter-spacing: 0; font-size: 15px; }
+.ec { min-width: 0; }
+.cs { display: flex; align-items: center; gap: 8px; height: 20px; font-family: var(--f-mono); font-weight: 700; font-size: 13px; letter-spacing: .04em; color: var(--ink); }
+.cs .you { background: var(--vis); color: var(--ink); padding: 0 6px; border-radius: 4px; height: 20px; display: inline-flex; align-items: center; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .14); }
+.cs .dl { margin-left: auto; display: flex; align-items: center; gap: 4px; font-family: var(--f-text); font-weight: 400; letter-spacing: 0; font-size: 13px; color: var(--ink-2); }
+.e p { font-size: 17px; line-height: 1.38; margin-top: 3px; }
+.mk { margin-top: 6px; height: 36px; border-radius: 6px; display: flex; align-items: center; gap: 8px; padding: 0 10px; }
+.mk b { font-family: var(--f-display); font-stretch: 75%; font-weight: 800; font-size: 18px; letter-spacing: .04em; }
+.mk span { margin-left: auto; font-size: 14px; font-weight: 800; display: flex; align-items: center; gap: 4px; }
+.mk.amber { background: var(--amber); color: var(--ink); }
+.mk.blue { background: var(--blue); color: #fff; }
+.mk.ink { background: var(--ink); color: #fff; }
+.fl { margin-top: 7px; display: grid; gap: 3px; font-size: 15.5px; line-height: 1.3; }
+.fl .dir { display: flex; align-items: center; gap: 6px; font-family: var(--f-mono); font-weight: 700; font-size: 15px; }
+.acts { display: flex; gap: 8px; margin-top: 10px; }
+.k { height: 48px; border-radius: 8px; display: flex; align-items: center; justify-content: center; gap: 6px; font-weight: 800; font-size: 16px; padding: 0 16px; flex: none; }
+.k.ink { background: var(--ink); color: #fff; }
+.k.line { box-shadow: inset 0 0 0 2px var(--ink); color: var(--ink); }
+.acts .k.ink { flex: 1.3; }
+.acts .k.line { flex: 1; }
+.e.sysl { padding-top: 10px; padding-bottom: 10px; }
+.e.sysl .ec { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--ink-2); white-space: nowrap; }
+.e.sysl .ec b { color: var(--ink); }
+.e.sysl .ic { color: var(--blue); }
+
+/* compose */
+.preview { flex: 1; background: var(--paper); padding: 14px 16px 14px; display: flex; flex-direction: column; justify-content: flex-end; }
+.pv1 { display: flex; align-items: center; gap: 10px; }
+.pv1 .lab { font-size: 14px; color: var(--ink-2); font-weight: 700; }
+.pv1 .mk { margin: 0; height: 34px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.chip { height: 40px; border-radius: 8px; box-shadow: inset 0 0 0 1.5px #8D9197; display: flex; align-items: center; gap: 4px; padding: 0 6px 0 12px; font-size: 15px; font-weight: 700; background: var(--paper); }
+.chip .ic { color: var(--ink-2); }
+.save { margin-top: 12px; font-size: 15px; color: var(--ink-2); display: flex; align-items: baseline; gap: 5px; white-space: nowrap; }
+.save b { color: var(--ink); font-weight: 800; }
+.save .big { font-size: 19px; background: var(--vis); padding: 0 5px; border-radius: 4px; }
+.plain { height: 44px; display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 700; color: var(--ink); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1.5px; }
+.plain .ic { color: var(--ink-2); }
+.dock.typing { flex-direction: column; align-items: stretch; gap: 8px; }
+.dock.typing .field { color: var(--ink); display: block; padding: 10px 14px; font-size: 16px; line-height: 1.4; min-height: 56px; box-shadow: inset 0 0 0 2px var(--vis); }
+.krow { display: flex; gap: 8px; }
+.k2 { flex: 1; height: 56px; border-radius: 10px; box-shadow: inset 0 0 0 2px #5C6066; color: var(--on-body); display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 700; font-size: 15px; }
+.caret { display: inline-block; width: 2px; height: 19px; background: var(--ink); vertical-align: -4px; margin-left: 1px; }
+.kbd { height: 184px; flex: none; background: #D4D6D1; display: grid; place-items: center; font-family: var(--f-mono); font-size: 13px; color: #5A5E64; letter-spacing: .06em; }
+.gest.light { background: #D4D6D1; }
+.gest.light i { background: #6F7378; }
+
+/* tasks */
+.trow { display: flex; align-items: center; gap: 12px; padding: 0 12px 0 16px; height: 78px; position: relative; }
+.trow::after { content: ""; position: absolute; left: 72px; right: 0; bottom: 0; height: 1px; background: var(--rule); }
+.trow.last::after { display: none; }
+.key.st { color: var(--ink); }
+.key.st.amber { background: var(--amber); }
+.key.st.blue { background: var(--blue); color: #fff; }
+.key.st.green { background: var(--green); color: #fff; }
+.trow .rm { gap: 3px; }
+.tt { font-size: 17px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tm { font-size: 14px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tm b { font-weight: 700; color: var(--ink); }
+.trow .k { padding: 0 14px; }
+.trow.may { background: var(--red); color: #fff; height: 84px; }
+.trow.may::after { display: none; }
+.trow.may .key { box-shadow: inset 0 0 0 2px #fff; color: #fff; }
+.trow.may .tt { color: #fff; }
+.trow.may .tm, .trow.may .tm b { color: #fff; }
+.trow.may .mtag { font-family: var(--f-display); font-stretch: 75%; font-weight: 800; font-size: 16px; letter-spacing: .05em; margin-right: 8px; }
+.trow.done .tt { color: var(--ink-2); }
+.state { display: flex; align-items: center; gap: 4px; font-weight: 800; font-size: 14px; color: var(--green); padding-right: 6px; }
+.sub .fold { margin-left: auto; color: var(--ink-2); }
+
+/* notes */
+.notes { display: grid; grid-template-columns: repeat(6, 1fr); gap: 28px; margin-top: 26px; padding-top: 16px; border-top: 1.5px solid #B9BBB4; }
+.notes h3 { font-family: var(--f-display); font-stretch: 75%; font-weight: 800; font-size: 18px; letter-spacing: .01em; }
+.notes p { font-size: 14px; line-height: 1.4; color: #34373B; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-menu" viewBox="0 0 24 24"><circle cx="12" cy="5.5" r="1.7" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/><circle cx="12" cy="18.5" r="1.7" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M20 12H5M11 5.5 4.5 12l6.5 6.5"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M9 3.5h6M10 3.5v6.2L6.8 13h10.4L14 9.7V3.5M12 13v7.5"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M4.5 12.5 9.5 17.5 19.5 7"/></symbol>
+    <symbol id="i-dcheck" viewBox="0 0 24 24"><path d="M1.5 12.5 6 17 15 7.5M11 16.5l.5.5L20.5 7.5"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="2.5" width="6" height="11.5" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21.5M8.5 21.5h7"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="M4 12h15M13 5.5l6.5 6.5-6.5 6.5"/></symbol>
+    <symbol id="i-log" viewBox="0 0 24 24"><path d="M3.5 6h3M10 6h10.5M3.5 12h3M10 12h10.5M3.5 18h3M10 18h7"/></symbol>
+    <symbol id="i-tasks" viewBox="0 0 24 24"><rect x="3.5" y="4" width="5" height="5" rx="1"/><path d="M12 6.5h8.5M12 17.5h8.5M3.8 17.2l1.8 1.8 3.4-3.6"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M7 7l10 10M17 7 7 17"/></symbol>
+    <symbol id="i-ne" viewBox="0 0 24 24"><path d="M6.5 17.5l11-11M9 6.5h8.5V15"/></symbol>
+    <symbol id="i-s" viewBox="0 0 24 24"><path d="M12 4.5v15M6 13.5l6 6 6-6"/></symbol>
+    <symbol id="i-person" viewBox="0 0 24 24"><circle cx="12" cy="7.5" r="3.5"/><path d="M5 20.5c0-4 3.1-6.8 7-6.8s7 2.8 7 6.8"/></symbol>
+    <symbol id="i-hazard" viewBox="0 0 24 24"><path d="M12 3.8 21.5 20H2.5z"/><path d="M12 10v4.2"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v6"/><circle cx="12" cy="16.6" r=".6" fill="currentColor"/></symbol>
+    <symbol id="i-box" viewBox="0 0 24 24"><path d="M3.5 7.5 12 3.5l8.5 4v9L12 20.5l-8.5-4z"/><path d="M3.5 7.5 12 11.5l8.5-4M12 11.5v9"/></symbol>
+    <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4M5 4.5h12l-2.5 4 2.5 4H5"/></symbol>
+    <symbol id="i-text" viewBox="0 0 24 24"><path d="M5 6.5V5h14v1.5M12 5v14M9 19h6"/></symbol>
+    <symbol id="i-right" viewBox="0 0 24 24"><path d="M9.5 5.5 16 12l-6.5 6.5"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="M6 9.5l6 6 6-6"/></symbol>
+    <symbol id="i-cell" viewBox="0 0 24 24"><path d="M3 20h17V3z" fill="none"/><path d="M4 4l16 16" /></symbol>
+    <symbol id="i-bat" viewBox="0 0 24 24"><rect x="3" y="7" width="16" height="10" rx="2"/><path d="M21.5 10.5v3"/><rect x="5.5" y="9.5" width="8" height="5" rx=".6" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-bt" viewBox="0 0 24 24"><path d="M7 7.5l10 9-5 4.5V3l5 4.5-10 9"/></symbol>
+    <symbol id="i-mark" viewBox="0 0 24 24"><path d="M7.5 4.5H4.5v15h3M16.5 4.5h3v15h-3" stroke-width="2.6" stroke-linecap="square" stroke-linejoin="miter"/><rect x="9" y="9" width="6" height="6" rx="1" fill="currentColor" stroke="none"/></symbol>
+  </defs>
+</svg>
+
+<!-- ================= concept ================= -->
+<section class="concept">
+  <div>
+    <h1>A&nbsp;&nbsp;Radio log <span>/ RescueCodec</span></h1>
+    <p class="idea">The phone becomes a field radio with a logbook: every message is a timed entry under a call-sign, every report carries a loud type marker, and you hold a key to talk.</p>
+  </div>
+  <div class="swatches">
+    <div class="sw"><i style="background:#17191C"></i><b>Body</b><code>#17191C</code></div>
+    <div class="sw"><i style="background:#F5F5F1"></i><b>Display</b><code>#F5F5F1</code></div>
+    <div class="sw"><i style="background:#111214"></i><b>Ink</b><code>#111214</code></div>
+    <div class="sw"><i style="background:#D5F23A"></i><b>Hi-vis</b><code>#D5F23A</code></div>
+    <div class="sw"><i style="background:#D3231B"></i><b>Mayday</b><code>#D3231B</code></div>
+    <div class="sw"><i style="background:#F4A20C"></i><b>Open</b><code>#F4A20C</code></div>
+    <div class="sw"><i style="background:#1F59D3"></i><b>Accepted</b><code>#1F59D3</code></div>
+    <div class="sw"><i style="background:#17783F"></i><b>Done</b><code>#17783F</code></div>
+  </div>
+  <div class="fonts">
+    <div><span class="spec f1">PERSON FOUND</span><small><b>Archivo</b> Condensed 800 · titles, markers</small></div>
+    <div><span class="spec f2">Path blocked</span><small><b>Atkinson Hyperlegible Next</b> · all text</small></div>
+    <div><span class="spec f3">12:13 23 B</span><small><b>Atkinson Hyperlegible Mono</b> · times, call-signs, bytes</small></div>
+  </div>
+</section>
+
+<!-- ================= screens ================= -->
+<section class="screens">
+
+  <!-- 1 CHATS -->
+  <div>
+    <div class="label"><span>1</span>Chats</div>
+    <div class="phone">
+      <div class="sys"><span>12:16</span><span class="r"><svg class="ic" style="width:15px;height:15px"><use href="#i-bt"/></svg><svg class="ic" style="width:15px;height:15px;opacity:.55"><use href="#i-cell"/></svg><svg class="ic" style="width:18px;height:18px"><use href="#i-bat"/></svg></span></div>
+      <header class="bar">
+        <div class="tb">
+          <div class="wm"><span class="mark"><svg class="ic"><use href="#i-mark"/></svg></span><span class="w"><b>Rescue</b><span>Codec</span></span></div>
+          <div class="radio"><i class="dot"></i><span><b>Connected</b> · D-Node 2</span><span class="bars"><i></i><i></i><i></i><i></i></span></div>
+        </div>
+        <div class="ib"><svg class="ic"><use href="#i-menu"/></svg></div>
+      </header>
+      <div class="mayday">
+        <div class="mt">
+          <div class="l1"><span class="tag">MAYDAY</span><span class="who">D-Node 3 · 2 min ago</span></div>
+          <div class="l2">Team member injured · 300 m S</div>
+        </div>
+        <div class="wkey">Accept</div>
+      </div>
+      <div class="list">
+        <div class="sub">Channels</div>
+        <div class="row">
+          <span class="key ch team">1</span>
+          <div class="rm">
+            <div class="r1"><span class="n">RescueCodec</span><svg class="ic xs pin"><use href="#i-pin"/></svg><time class="new">12:13</time></div>
+            <div class="r2"><span class="pv"><em>D-Node 7:</em><span class="t">Person found · child, conscious</span></span><span class="cnt">3</span></div>
+          </div>
+        </div>
+        <div class="row">
+          <span class="key ch">2</span>
+          <div class="rm">
+            <div class="r1"><span class="n">draeger-srs</span><time class="new">12:05</time></div>
+            <div class="r2"><span class="pv"><em>Dräger KdoW:</em><span class="t">Treffpunkt Halle 8, 13:30</span></span><span class="cnt">1</span></div>
+          </div>
+        </div>
+        <div class="row">
+          <span class="key ch">3</span>
+          <div class="rm">
+            <div class="r1"><span class="n">MeshMeister</span><time>11:52</time></div>
+            <div class="r2"><span class="pv"><em>AK_Mobil_1:</em><span class="t">anyone near hall 8?</span></span></div>
+          </div>
+        </div>
+        <div class="sub">Direct</div>
+        <div class="row">
+          <span class="key dm"><svg class="ic"><use href="#i-person"/></svg></span>
+          <div class="rm">
+            <div class="r1"><span class="n">D-Node 7</span><time>11:40</time></div>
+            <div class="r2"><span class="pv"><svg class="ic xs"><use href="#i-dcheck"/></svg><span class="t">You: ok, coming</span></span></div>
+          </div>
+        </div>
+        <div class="row">
+          <span class="key dm"><svg class="ic"><use href="#i-person"/></svg></span>
+          <div class="rm">
+            <div class="r1"><span class="n">Base</span><time>10:58</time></div>
+            <div class="r2"><span class="pv"><span class="t">Please check sector 4 before 14:00</span></span></div>
+          </div>
+        </div>
+      </div>
+      <footer class="dock">
+        <div class="sos"><b>SOS</b><small>hold 2 s</small></div>
+        <nav class="tabs">
+          <div class="tab on"><svg class="ic"><use href="#i-log"/></svg>Chats<i class="b k">4</i></div>
+          <div class="tab"><svg class="ic"><use href="#i-tasks"/></svg>Tasks<i class="b a">3</i></div>
+        </nav>
+      </footer>
+      <div class="gest"><i></i></div>
+    </div>
+  </div>
+
+  <!-- 2 TEAM CHAT -->
+  <div>
+    <div class="label"><span>2</span>Team chat</div>
+    <div class="phone">
+      <div class="sys"><span>12:16</span><span class="r"><svg class="ic" style="width:15px;height:15px"><use href="#i-bt"/></svg><svg class="ic" style="width:15px;height:15px;opacity:.55"><use href="#i-cell"/></svg><svg class="ic" style="width:18px;height:18px"><use href="#i-bat"/></svg></span></div>
+      <header class="bar back">
+        <div class="ib"><svg class="ic"><use href="#i-back"/></svg></div>
+        <div class="tb">
+          <div class="title">RescueCodec</div>
+          <div class="radio"><i class="dot"></i><span><b>Connected</b> · D-Node 2</span><span class="bars"><i></i><i></i><i></i><i></i></span></div>
+        </div>
+        <div class="ib"><svg class="ic"><use href="#i-menu"/></svg></div>
+      </header>
+      <div class="mayday">
+        <div class="mt">
+          <div class="l1"><span class="tag">MAYDAY</span><span class="who">D-Node 3 · 2 min ago</span></div>
+          <div class="l2">Team member injured · 300 m S</div>
+        </div>
+        <div class="wkey">Accept</div>
+      </div>
+      <main class="log">
+        <div class="e"><time>12:02</time><div class="ec"><div class="cs">D-NODE 7</div><p>Path along the creek is flooded, use the forest road</p></div></div>
+        <div class="e me"><time>12:03</time><div class="ec"><div class="cs"><span class="you">YOU</span><span class="dl"><svg class="ic xs"><use href="#i-dcheck"/></svg>Delivered</span></div><p>Ok, we switch to the forest road</p></div></div>
+        <div class="e"><time>12:13</time><div class="ec">
+          <div class="cs">D-NODE 7<span class="loc"><svg class="ic xs"><use href="#i-ne"/></svg>450 m NE</span></div>
+          <div class="mk amber"><svg class="ic s"><use href="#i-person"/></svg><b>PERSON FOUND</b><span>Open</span></div>
+          <div class="fl">
+            <div>Child, conscious, hypothermia, fracture</div>
+            <div>Needs stretcher, 2 more helpers</div>
+          </div>
+          <div class="acts"><div class="k ink">Accept</div><div class="k line">Decline</div></div>
+        </div></div>
+        <div class="e me"><time>12:15</time><div class="ec">
+          <div class="cs"><span class="you">YOU</span><span class="dl"><svg class="ic xs"><use href="#i-dcheck"/></svg>Delivered</span></div>
+          <div class="mk blue"><svg class="ic s"><use href="#i-hazard"/></svg><b>HAZARD</b><span><svg class="ic xs"><use href="#i-check"/></svg>Accepted</span></div>
+          <div class="fl"><div>Path blocked · fallen tree</div></div>
+        </div></div>
+        <div class="e sysl"><time>12:16</time><div class="ec"><svg class="ic s"><use href="#i-check"/></svg><span><b>Base</b> accepted · Hazard: path blocked</span></div></div>
+      </main>
+      <footer class="dock">
+        <div class="sos"><b>SOS</b><small>hold 2 s</small></div>
+        <div class="field">Message or report</div>
+        <div class="tx"><svg class="ic"><use href="#i-mic"/></svg><small>Talk</small></div>
+      </footer>
+      <div class="gest"><i></i></div>
+    </div>
+  </div>
+
+  <!-- 3 COMPOSE -->
+  <div>
+    <div class="label"><span>3</span>Composing a report</div>
+    <div class="phone">
+      <div class="sys"><span>12:16</span><span class="r"><svg class="ic" style="width:15px;height:15px"><use href="#i-bt"/></svg><svg class="ic" style="width:15px;height:15px;opacity:.55"><use href="#i-cell"/></svg><svg class="ic" style="width:18px;height:18px"><use href="#i-bat"/></svg></span></div>
+      <header class="bar back">
+        <div class="ib"><svg class="ic"><use href="#i-back"/></svg></div>
+        <div class="tb">
+          <div class="title">RescueCodec</div>
+          <div class="radio"><i class="dot"></i><span><b>Connected</b> · D-Node 2</span><span class="bars"><i></i><i></i><i></i><i></i></span></div>
+        </div>
+        <div class="ib"><svg class="ic"><use href="#i-menu"/></svg></div>
+      </header>
+      <div class="mayday slim">
+        <div class="mt"><div class="l1"><span class="tag">MAYDAY</span><span class="who">D-Node 3 · injured · 300 m S</span></div></div>
+        <div class="go"><svg class="ic"><use href="#i-right"/></svg></div>
+      </div>
+      <div class="preview">
+        <div class="pv1"><span class="lab">Sends as</span><div class="mk ink"><svg class="ic s"><use href="#i-person"/></svg><b>PERSON FOUND</b></div></div>
+        <div class="chips">
+          <span class="chip">child<svg class="ic s"><use href="#i-x"/></svg></span>
+          <span class="chip">conscious<svg class="ic s"><use href="#i-x"/></svg></span>
+          <span class="chip">hypothermia<svg class="ic s"><use href="#i-x"/></svg></span>
+          <span class="chip">fracture<svg class="ic s"><use href="#i-x"/></svg></span>
+          <span class="chip">stretcher<svg class="ic s"><use href="#i-x"/></svg></span>
+          <span class="chip">+2 helpers<svg class="ic s"><use href="#i-x"/></svg></span>
+        </div>
+        <div class="save"><b class="big">23 B</b>on air · as text 105 B · <b>4.6× smaller</b></div>
+      </div>
+      <footer class="dock typing">
+        <div class="field">Kind gefunden, ansprechbar, stark unterkühlt, Knöchel verletzt. Wir brauchen eine Trage und zwei Leute.<span class="caret"></span></div>
+        <div class="krow">
+          <div class="sos"><b>SOS</b><small>hold 2 s</small></div>
+          <div class="k2"><svg class="ic s"><use href="#i-text"/></svg>Send as plain text</div>
+          <div class="tx"><svg class="ic"><use href="#i-send"/></svg><small>Send</small></div>
+        </div>
+      </footer>
+      <div class="kbd">KEYBOARD</div>
+      <div class="gest light"><i></i></div>
+    </div>
+  </div>
+
+  <!-- 4 TASKS -->
+  <div>
+    <div class="label"><span>4</span>Tasks</div>
+    <div class="phone">
+      <div class="sys"><span>12:16</span><span class="r"><svg class="ic" style="width:15px;height:15px"><use href="#i-bt"/></svg><svg class="ic" style="width:15px;height:15px;opacity:.55"><use href="#i-cell"/></svg><svg class="ic" style="width:18px;height:18px"><use href="#i-bat"/></svg></span></div>
+      <header class="bar">
+        <div class="tb">
+          <div class="title" style="font-size:26px">Tasks</div>
+          <div class="radio"><i class="dot"></i><span><b>Connected</b> · D-Node 2</span><span class="bars"><i></i><i></i><i></i><i></i></span></div>
+        </div>
+        <div class="ib"><svg class="ic"><use href="#i-menu"/></svg></div>
+      </header>
+      <div class="list">
+        <div class="trow may">
+          <span class="key"><svg class="ic"><use href="#i-alert"/></svg></span>
+          <div class="rm">
+            <div class="tm"><span class="mtag">MAYDAY</span><b>D-Node 3</b></div>
+            <div class="tt">Team member injured</div>
+            <div class="tm">300 m S · 2 min ago</div>
+          </div>
+          <div class="wkey">Accept</div>
+        </div>
+        <div class="sub">Needs you <span>2</span></div>
+        <div class="trow">
+          <span class="key st amber"><svg class="ic"><use href="#i-person"/></svg></span>
+          <div class="rm">
+            <div class="tt">Person found</div>
+            <div class="tm"><b>D-Node 7</b> · 450 m NE · 12:13</div>
+          </div>
+          <div class="k ink">Accept</div>
+        </div>
+        <div class="trow last">
+          <span class="key st amber"><svg class="ic"><use href="#i-box"/></svg></span>
+          <div class="rm">
+            <div class="tt">Need: stretcher ×2</div>
+            <div class="tm"><b>D-Node 5</b> · sector 4 · 12:09</div>
+          </div>
+          <div class="k ink">Accept</div>
+        </div>
+        <div class="sub">Mine <span>1</span></div>
+        <div class="trow last">
+          <span class="key st blue"><svg class="ic"><use href="#i-hazard"/></svg></span>
+          <div class="rm">
+            <div class="tt">Hazard: path blocked</div>
+            <div class="tm">Accepted by Base · 12:16</div>
+          </div>
+          <div class="k line">Done</div>
+        </div>
+        <div class="sub">Done <span>1</span><svg class="ic s fold"><use href="#i-down"/></svg></div>
+        <div class="trow done last">
+          <span class="key st green"><svg class="ic"><use href="#i-check"/></svg></span>
+          <div class="rm">
+            <div class="tt">Sector 2 cleared</div>
+            <div class="tm"><b>D-Node 4</b> · 11:30</div>
+          </div>
+          <div class="state"><svg class="ic xs"><use href="#i-check"/></svg>Done</div>
+        </div>
+      </div>
+      <footer class="dock">
+        <div class="sos"><b>SOS</b><small>hold 2 s</small></div>
+        <nav class="tabs">
+          <div class="tab"><svg class="ic"><use href="#i-log"/></svg>Chats<i class="b k" style="background:#fff;color:var(--ink)">4</i></div>
+          <div class="tab on"><svg class="ic"><use href="#i-tasks"/></svg>Tasks<i class="b a" style="box-shadow:inset 0 0 0 1.5px var(--ink)">3</i></div>
+        </nav>
+      </footer>
+      <div class="gest"><i></i></div>
+    </div>
+  </div>
+
+</section>
+
+<!-- ================= notes ================= -->
+<section class="notes">
+  <div><h3>A log, not bubbles</h3><p>Time in a fixed column, then the call-sign, then the words. Everything reads top to bottom. Your own lines carry a hi-vis YOU tag.</p></div>
+  <div><h3>Colour is state</h3><p>Red Mayday, amber open, blue accepted, green done. Always with a word and an icon. Hi-vis means "you": your tab, your key, your lines.</p></div>
+  <div><h3>Two keys, like a radio</h3><p>SOS sits bottom left on every screen (hold 2 s). Talk sits bottom right and turns into Send when you type. Black keys act, coloured blocks report.</p></div>
+  <div><h3>Channels you tune into</h3><p>Channels are dark keys with their number. Direct chats are outlined keys. No avatars, no photos, nothing to decode.</p></div>
+  <div><h3>Radio is one tap</h3><p>The status line under every title opens Radio. The menu (three dots) holds Radio, Airtime and Settings. Nothing else up there.</p></div>
+  <div><h3>Fast to build</h3><p>Fonts bundled in res/font. Flat fills, 2 dp outlines, 6 to 10 dp corners, no shadows. Night mode keeps the body and dims the display to graphite.</p></div>
+</section>
+
+</body>
+</html>
