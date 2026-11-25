@@ -449,6 +449,8 @@ Examples (complete payloads, a message with id 3, `vectors/domain.json` → `cho
 | Ok | Auto | 2 B | 4 B | 6 B | **normal text, 2 B** |
 | (fire) | Auto | 6 B | 8 B | Fire 6 B | **normal text, 6 B** (tie) |
 
+How to choose the setting in the app and the gateway, and what it saves: `docs/COMPACT_TEXT.md`, section "Domain vocabularies".
+
 **Labels.** UIs show the vocabulary of a received or sent domain frame, for example "compact · S&R · 9 B". Gateway records have `codec.form: "domain"`, `codec.vocab: "sar"`, `codec.vocab_id: 2` and `codec.vocab_label: "S&R"`; `GET /v2/health` shows `vocabulary` and `vocabularies`.
 
 #### 3.8.7 The vocabularies
@@ -483,7 +485,9 @@ Ids 0 and 6..255 are not assigned. The same table, with sources, licences and me
 | Hiking | 1848 | 61.2 % | 5.56 → 2.23 → 2.16 | 3.0 % |
 | Medical | 3963 | 60.5 % | 5.99 → 2.52 → 2.33 | 7.5 % |
 
-The domain frame helps most on domain language: 5 to 20 % against base on manual sentences, 0 to 3 % on chat messages. An escaped word costs N + 16 = 26 bits, more than its 16 bits in the 0x02 frame, so the domain frame wins only when enough words are in the vocabulary. The send rule picks the smaller one, so a message never gets larger.
+The domain frame helps most on domain language: 5 to 20 % against base on single manuals, 0 to 3 % on chat messages. An escaped word costs N + 16 = 26 bits, more than its 16 bits in the 0x02 frame, so the domain frame wins only when enough words are in the vocabulary. The send rule picks the smaller one, so a message never gets larger.
+
+Through the full send rule (`tools/measure_domain.py`: the real sender code, settings Auto, General and pinned, 14,421 held-out domain texts and 6,228 general ones), Auto sends **4.9 %** fewer bytes than General over the five domain sets (2.37 → 2.26 bytes per word), 6 to 12 % on manual sentences, under 3 % on domain messages and under 1 % on everyday chat. One-packet share does not change. The five lists take 18 KB in the APK. Results, sources, licences and how to turn it on: `docs/COMPACT_TEXT.md`, section "Domain vocabularies".
 
 #### 3.8.8 Byte by byte
 
@@ -771,6 +775,7 @@ Any other move is an `invalid_transition` error. A valid move produces an Ack to
 | `spec/vocab/domains.yaml` | Vocabulary ids, code widths, SHA-256, sources, licences and measurements |
 | `spec/vectors/domain.json` | 108 domain frame cases (24 frames, 5 streams, 40 random, 21 invalid decodes, 5 invalid encodes, 3 unknown vocabularies, 10 send-rule choices) and the SHA-256 of each vocabulary |
 | `spec/tools/domain_vocab.py` | Builds, chooses and measures the team vocabularies (corpora are downloaded, not in the repo) |
+| `spec/tools/measure_domain.py` | Measures the domain frame through the real send rule on held-out text (bytes per word, what Auto picks, one-packet share, bytes in the APK) |
 | `spec/tools/gen_domain_vectors.py` | Regenerates `domain.json` from the reference |
 | `spec/tools/words_dict.py` | Builds, chooses and measures word dictionary 1 (corpora are downloaded, not in the repo) |
 | `spec/tools/words_dict2.py` | Builds, chooses and measures word dictionary 2 and the compact frame |
