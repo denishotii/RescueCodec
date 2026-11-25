@@ -41,10 +41,13 @@ sealed class ChannelChoice {
         fun isDefaultKey(psk: ByteArray): Boolean =
             psk.size <= 1 || (psk.size == 16 && psk.contentEquals(DEFAULT_PSK_16))
 
-        /** Channels that are switched on, with their name and whether the key is our own. */
-        fun options(channels: List<Channel>?): List<ChannelOption> = channels.orEmpty()
+        /**
+         * Channels that are switched on, with their name and whether the key is our own. A channel without a name gets
+         * [preset] (the modem preset's name, "LongFast"), the way the official apps show it.
+         */
+        fun options(channels: List<Channel>?, preset: String = ""): List<ChannelOption> = channels.orEmpty()
             .filter { it.role != Channel.Role.DISABLED }
-            .map { ChannelOption(it.index, it.settings?.name.orEmpty(), !isDefaultKey(it.settings?.psk?.toByteArray() ?: ByteArray(0))) }
+            .map { ChannelOption(it.index, it.settings?.name.orEmpty().ifBlank { preset }, !isDefaultKey(it.settings?.psk?.toByteArray() ?: ByteArray(0))) }
             .sortedBy { it.index }
 
         /**
@@ -52,8 +55,8 @@ sealed class ChannelChoice {
          * Automatic: the enabled channel named [AppSettings.CHANNEL_NAME]; else the only enabled
          * channel with its own key. Anything else is a [Problem] or [Waiting], never channel 0.
          */
-        fun resolve(channels: List<Channel>?, fixedIndex: Int): ChannelChoice {
-            val all = options(channels)
+        fun resolve(channels: List<Channel>?, fixedIndex: Int, preset: String = ""): ChannelChoice {
+            val all = options(channels, preset)
             if (channels.isNullOrEmpty()) return Waiting("Waiting for the radio to tell us its channels.")
             if (fixedIndex >= 0) {
                 val c = all.firstOrNull { it.index == fixedIndex }

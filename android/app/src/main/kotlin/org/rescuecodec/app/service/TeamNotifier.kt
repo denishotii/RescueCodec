@@ -24,6 +24,7 @@ import org.rescuecodec.app.MainActivity
 import org.rescuecodec.app.R
 import org.rescuecodec.app.core.AlertDelivery
 import org.rescuecodec.app.core.AlertKind
+import org.rescuecodec.app.core.ChatId
 import org.rescuecodec.app.core.Labels
 import org.rescuecodec.app.core.Readable
 import org.rescuecodec.app.core.TeamAlerts
@@ -91,8 +92,19 @@ class TeamWatcher(
     }
 }
 
-/** Posts the notifications of [TeamWatcher]: one per message or task, grouped per channel. Never throws. */
-class TeamNotifier(private val context: Context, private val language: () -> String) {
+/**
+ * Posts the notifications of [TeamWatcher]: one per message or task, grouped per Android channel. Each one names the
+ * radio channel (or says it is a direct message) and the sender by the name in the radio's node list. A tap opens
+ * that chat; a task opens Tasks. Never throws.
+ */
+class TeamNotifier(
+    private val context: Context,
+    private val language: () -> String,
+    /** The sender's name from the radio's node list, or null. */
+    private val names: (Long) -> String? = { null },
+    /** The team channel's name, for rows still waiting for it. */
+    private val team: () -> String = { "RescueCodec" },
+) {
 
     fun show(kind: AlertKind, row: MessageEntity, taskType: String?) {
         if (!allowed()) return
@@ -101,18 +113,24 @@ class TeamNotifier(private val context: Context, private val language: () -> Str
             val res = resources(lang)
             val nm = context.getSystemService(NotificationManager::class.java) ?: return
             createChannels(nm, res)
-            val who = TeamAlerts.ackTeam(row.json) ?: res.getString(R.string.sender_node, TeamAlerts.shortNode(row.node))
+            val who = names(row.node) ?: TeamAlerts.ackTeam(row.json) ?: res.getString(R.string.sender_node, TeamAlerts.shortNode(row.node))
+            val chat = ChatId.of(row, team())
+            // "on RescueCodec" or "direct message": every notification says where it came from.
+            val where = when (chat) {
+                is ChatId.Direct -> res.getString(R.string.notif_direct)
+                is ChatId.Channel -> chat.name
+            }
             val title: String
             val text: String
             val screen: String
             when (kind) {
                 AlertKind.TASK -> {
-                    title = Labels.head(lang, row.type)
-                    text = Readable.withoutPosition(row.json, lang) ?: res.getString(R.string.notif_task_text)
+                    title = res.getString(R.string.notif_title_where, Labels.head(lang, row.type), where)
+                    text = res.getString(R.string.notif_from, who) + " " + (Readable.withoutPosition(row.json, lang) ?: res.getString(R.string.notif_task_text))
                     screen = "TASKS"
                 }
                 AlertKind.MESSAGE -> {
-                    title = who
+                    title = res.getString(R.string.notif_title_where, who, where)
                     text = textOf(row.json) ?: Readable.of(row.json, lang).orEmpty()
                     screen = "TEAM"
                 }
@@ -120,14 +138,16 @@ class TeamNotifier(private val context: Context, private val language: () -> Str
                     val what = Labels.head(lang, taskType ?: "found")
                     title = if (TeamAlerts.ackStatus(row.json) == "done") res.getString(R.string.notif_answer_done, who, what)
                     else res.getString(R.string.notif_answer_accepted, who, what)
-                    text = ""
+                    text = res.getString(R.string.notif_on_channel, where)
                     screen = "TEAM"
                 }
             }
             val channel = channelOf(kind)
             val open = Intent(context, MainActivity::class.java)
-                .setAction("org.rescuecodec.app.action.OPEN_$screen")
+                // One action per chat, so two chats never share (and overwrite) one tap intent.
+                .setAction("org.rescuecodec.app.action.OPEN_$screen" + if (screen == "TEAM") "/" + chat.key else "")
                 .putExtra("screen", screen)
+                .putExtra("chat", chat.key)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             val tap = PendingIntent.getActivity(context, requestOf(kind), open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
             val b = NotificationCompat.Builder(context, channel)

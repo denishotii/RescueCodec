@@ -27,14 +27,6 @@ object MeshText {
     /** True for a gateway's readable copy of a RescueCodec message. */
     fun isCopy(text: String): Boolean = text.startsWith(COPY_PREFIX)
 
-    /**
-     * Is a text for us? A broadcast only on the team channel ([teamChannel], null while there is none), or a direct
-     * message to our own node [self] on any channel. Never the public LongFast chat, never a DM to someone else.
-     */
-    fun accept(to: Long, channel: Int, self: Long, teamChannel: Int?): Boolean =
-        if (to == BROADCAST) teamChannel != null && channel == teamChannel
-        else self != 0L && to == self
-
     /** The canonical JSON shape of a plain text, so it shows like any text message. */
     fun message(text: String, priority: String? = null): Map<String, Any?> {
         val out = LinkedHashMap<String, Any?>()

@@ -37,6 +37,16 @@ class UiPrefs(private val settings: AppSettings, private val store: KeyValueStor
         _sounds.value = on
     }
 
+    private val _showPublic = MutableStateFlow(settings.showPublicChannel)
+
+    /** The public channel (LongFast) shows in the chat list and its messages are received. Off by default. */
+    val showPublic: StateFlow<Boolean> = _showPublic.asStateFlow()
+
+    fun setShowPublic(on: Boolean) {
+        settings.showPublicChannel = on
+        _showPublic.value = on
+    }
+
     fun setTheme(mode: String) {
         store.putString(THEME_KEY, mode)
         _theme.value = mode

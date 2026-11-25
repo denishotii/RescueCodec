@@ -9,8 +9,11 @@ import org.rescuecodec.engine.TaskState
  * ([org.rescuecodec.app.service.MaydayNotifier]); tests record the calls. [Messenger] calls it.
  */
 interface MaydayAlerts {
-    /** A new Mayday, task [key] ("0badf00d-7"), from node [from]. [reason] is the reason code ("injured") or null. */
-    fun show(key: String, from: Long, reason: String?)
+    /**
+     * A new Mayday, task [key] ("0badf00d-7"), from node [from]. [reason] is the reason code ("injured") or null.
+     * [channel] is the name of the channel it came on, or null.
+     */
+    fun show(key: String, from: Long, reason: String?, channel: String? = null)
 
     /** The Mayday [key] is done: take its notification away. */
     fun clear(key: String)
@@ -18,7 +21,7 @@ interface MaydayAlerts {
     companion object {
         /** Does nothing. The default when there is no screen (tests). */
         val NONE: MaydayAlerts = object : MaydayAlerts {
-            override fun show(key: String, from: Long, reason: String?) = Unit
+            override fun show(key: String, from: Long, reason: String?, channel: String?) = Unit
             override fun clear(key: String) = Unit
         }
 

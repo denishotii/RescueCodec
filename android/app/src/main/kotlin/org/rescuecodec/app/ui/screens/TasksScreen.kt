@@ -34,6 +34,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import org.rescuecodec.app.R
 import org.rescuecodec.app.core.AnswerResult
 import org.rescuecodec.app.core.Labels
@@ -68,6 +71,8 @@ import androidx.compose.ui.text.withStyle
 fun TasksScreen(vm: TasksViewModel, tasks: List<TaskItem>, snackbar: SnackbarHostState, lang: String) {
     val scope = rememberCoroutineScope()
     val now by rememberNow()
+    // With more than one private channel, each card names the channel it came on (its answers go there too).
+    val showChannel by vm.showChannel.collectAsStateWithLifecycle()
     var showDone by rememberSaveable { mutableStateOf(false) }
     val mayday = tasks.filter { it.type == "mayday" && it.state != "done" }
     val rest = tasks - mayday.toSet()
@@ -93,10 +98,10 @@ fun TasksScreen(vm: TasksViewModel, tasks: List<TaskItem>, snackbar: SnackbarHos
         contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 88.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        section(R.string.lane_mayday, mayday, maydayColor, lang, now, onAnswer)
-        section(R.string.lane_open, open, null, lang, now, onAnswer)
-        section(R.string.lane_mine, mine, null, lang, now, onAnswer)
-        section(R.string.lane_others, others, null, lang, now, onAnswer)
+        section(R.string.lane_mayday, mayday, maydayColor, lang, now, showChannel, onAnswer)
+        section(R.string.lane_open, open, null, lang, now, showChannel, onAnswer)
+        section(R.string.lane_mine, mine, null, lang, now, showChannel, onAnswer)
+        section(R.string.lane_others, others, null, lang, now, showChannel, onAnswer)
         if (done.isNotEmpty()) {
             item(key = "done_header") {
                 Surface(
@@ -111,24 +116,25 @@ fun TasksScreen(vm: TasksViewModel, tasks: List<TaskItem>, snackbar: SnackbarHos
                     }
                 }
             }
-            if (showDone) items(done, key = { it.key }) { t -> TaskCard(t, lang, now, onAnswer) }
+            if (showDone) items(done, key = { it.key }) { t -> TaskCard(t, lang, now, showChannel, onAnswer) }
         }
     }
 }
 
 private fun androidx.compose.foundation.lazy.LazyListScope.section(
-    title: Int, list: List<TaskItem>, color: androidx.compose.ui.graphics.Color?, lang: String, now: Long, onAnswer: (TaskItem, String) -> Unit,
+    title: Int, list: List<TaskItem>, color: androidx.compose.ui.graphics.Color?, lang: String, now: Long, showChannel: Boolean, onAnswer: (TaskItem, String) -> Unit,
 ) {
     if (list.isEmpty()) return
     item(key = "h$title") { SectionHeader(stringResource(title), count = list.size, color = color ?: MaterialTheme.colorScheme.onSurface) }
-    items(list, key = { it.key }) { t -> TaskCard(t, lang, now, onAnswer) }
+    items(list, key = { it.key }) { t -> TaskCard(t, lang, now, showChannel, onAnswer) }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun TaskCard(t: TaskItem, lang: String, now: Long, onAnswer: (TaskItem, String) -> Unit) {
+private fun TaskCard(t: TaskItem, lang: String, now: Long, showChannel: Boolean, onAnswer: (TaskItem, String) -> Unit) {
     val c = Rc.colors
     val isMayday = t.type == "mayday"
+    val channelDesc = stringResource(R.string.task_channel, t.channelName.orEmpty())
     val readable = remember(t.json, lang) { Readable.withoutPosition(t.json, lang) }
     val gridRef = remember(t.json) { Readable.gridRef(t.json) }
     RcCard(
@@ -150,6 +156,10 @@ private fun TaskCard(t: TaskItem, lang: String, now: Long, onAnswer: (TaskItem, 
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 StateTag(t.state)
                 if (t.local) Tag(stringResource(R.string.tag_ours), MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurfaceVariant)
+                if (showChannel && t.channelName != null) Tag(
+                    "# ${t.channelName}", MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.semantics { contentDescription = channelDesc }.testTag("task_channel_${t.key}"),
+                )
             }
             Text(
                 readable ?: stringResource(R.string.task_unknown_report),

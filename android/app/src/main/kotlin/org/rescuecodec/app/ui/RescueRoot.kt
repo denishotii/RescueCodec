@@ -73,6 +73,9 @@ import org.rescuecodec.app.R
 import org.rescuecodec.app.radio.LinkState
 import org.rescuecodec.app.ui.components.RcIcon
 import org.rescuecodec.app.core.ChannelChoice
+import org.rescuecodec.app.core.ChatId
+import org.rescuecodec.app.core.TeamAlerts
+import org.rescuecodec.app.ui.chat.ChatListScreen
 import org.rescuecodec.app.ui.chat.ChatScreen
 import org.rescuecodec.app.ui.components.Hairline
 import org.rescuecodec.app.ui.components.SosDock
@@ -116,6 +119,9 @@ enum class Screen(val labelRes: Int, val iconRes: Int, val tag: String) {
 
 private val TABS = listOf(Screen.TEAM, Screen.TASKS)
 
+/** A screen (and for Team, a chat by its key) asked for by an intent while the app is open. [n] makes each one new. */
+data class NavRequest(val n: Int, val screen: Screen, val chat: String? = null)
+
 private class LocalizedContext(base: android.content.Context, private val res: android.content.res.Resources) : android.content.ContextWrapper(base) {
     override fun getResources(): android.content.res.Resources = res
 }
@@ -140,7 +146,7 @@ fun WithAppLanguage(lang: String, content: @Composable () -> Unit) {
 
 /** The whole app: theme, language, top bar, the two tabs and the screens of the menu. */
 @Composable
-fun RescueRoot(graph: AppGraph, initial: Screen = Screen.TEAM, navRequest: Pair<Int, Screen>? = null) {
+fun RescueRoot(graph: AppGraph, initial: Screen = Screen.TEAM, navRequest: NavRequest? = null, initialChat: String? = null) {
     val app = LocalContext.current.applicationContext as Application
     val factory = remember(graph) { AppViewModelFactory(app, graph) }
     val settings: SettingsViewModel = viewModel(factory = factory)
@@ -150,7 +156,7 @@ fun RescueRoot(graph: AppGraph, initial: Screen = Screen.TEAM, navRequest: Pair<
         RescueTheme(ThemeMode.of(theme)) {
             // Test tags become resource ids, so uiautomator and the screenshot script can find buttons.
             Surface(Modifier.fillMaxSize().semantics { testTagsAsResourceId = true }, color = MaterialTheme.colorScheme.background) {
-                RescueScaffold(graph, factory, settings, lang, initial, navRequest)
+                RescueScaffold(graph, factory, settings, lang, initial, navRequest, initialChat)
             }
         }
     }
@@ -158,16 +164,29 @@ fun RescueRoot(graph: AppGraph, initial: Screen = Screen.TEAM, navRequest: Pair<
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun RescueScaffold(graph: AppGraph, factory: AppViewModelFactory, settings: SettingsViewModel, lang: String, initial: Screen, navRequest: Pair<Int, Screen>?) {
+private fun RescueScaffold(
+    graph: AppGraph,
+    factory: AppViewModelFactory,
+    settings: SettingsViewModel,
+    lang: String,
+    initial: Screen,
+    navRequest: NavRequest?,
+    initialChat: String?,
+) {
     val connection: ConnectionViewModel = viewModel(factory = factory)
     val tasksVm: TasksViewModel = viewModel(factory = factory)
     val messages: MessagesViewModel = viewModel(factory = factory)
     val stats: StatsViewModel = viewModel(factory = factory)
     val report: ReportViewModel = viewModel(factory = factory)
-    // One conversation today: the team channel. A chat list would hold one of these per channel.
-    val chatChannel = ChatChannel.TEAM
-    val chat: ChatViewModel = viewModel(key = chatChannel.key, factory = ChatViewModelFactory(LocalContext.current.applicationContext as Application, graph, chatChannel))
-    val chatTitle by chat.title.collectAsStateWithLifecycle()
+    val chatList: ChatListViewModel = viewModel(factory = factory)
+    // Team is the chat list or one chat. For speed in an emergency the app opens straight into the last chat used;
+    // back goes to the list.
+    var openChat by rememberSaveable { mutableStateOf<String?>(initialChat ?: chatList.startChat().key) }
+    val chatId = openChat?.let { ChatId.parse(it) }
+    val chat: ChatViewModel? = chatId?.let { id ->
+        viewModel(key = id.key, factory = ChatViewModelFactory(LocalContext.current.applicationContext as Application, graph, id))
+    }
+    val chatTitle = chat?.title?.collectAsStateWithLifecycle()?.value
 
     var screen by rememberSaveable { mutableStateOf(initial.name) }
     var lastTab by rememberSaveable { mutableStateOf(if (initial.isTab) initial.name else Screen.TEAM.name) }
@@ -176,7 +195,7 @@ private fun RescueScaffold(graph: AppGraph, factory: AppViewModelFactory, settin
         if (s.isTab) lastTab = s.name
         screen = s.name
     }
-    LaunchedEffect(navRequest) { navRequest?.let { go(it.second) } }
+    LaunchedEffect(navRequest) { navRequest?.let { r -> r.chat?.let { openChat = it }; go(r.screen) } }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val link by connection.state.collectAsStateWithLifecycle()
@@ -197,8 +216,14 @@ private fun RescueScaffold(graph: AppGraph, factory: AppViewModelFactory, settin
         }
     }
 
-    // Back: from a menu screen to the last tab, from Tasks to Team, then out of the app.
-    BackHandler(enabled = current != Screen.TEAM) { if (current.isTab) go(Screen.TEAM) else screen = lastTab }
+    // Back: from a menu screen to the last tab, from Tasks to Team, from a chat to the chat list, then out of the app.
+    BackHandler(enabled = current != Screen.TEAM || openChat != null) {
+        when {
+            current == Screen.TEAM -> openChat = null
+            current.isTab -> go(Screen.TEAM)
+            else -> screen = lastTab
+        }
+    }
 
     val sosQueued = stringResource(R.string.sos_queued)
     val sosQueuedNoPos = stringResource(R.string.sos_queued_no_position)
@@ -218,7 +243,8 @@ private fun RescueScaffold(graph: AppGraph, factory: AppViewModelFactory, settin
             MaydayBanner(tasksVm, tasks, waiting, lang) { go(Screen.TASKS) }
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when (current) {
-                    Screen.TEAM -> ChatScreen(chat, messages, tasksVm, report, tasks, link, channel, snackbar, lang, onOpenRadio = { go(Screen.RADIO) }, onSos = onSos)
+                    Screen.TEAM -> if (chat == null) ChatListScreen(chatList, lang, onOpen = { openChat = it.key })
+                    else ChatScreen(chat, messages, tasksVm, report, tasks, link, channel, snackbar, lang, onOpenRadio = { go(Screen.RADIO) }, onSos = onSos)
                     Screen.TASKS -> TasksScreen(tasksVm, tasks, snackbar, lang)
                     Screen.STATS -> StatsScreen(stats, lang)
                     Screen.RADIO -> ConnectScreen(connection, snackbar)
@@ -236,8 +262,14 @@ private fun RescueScaffold(graph: AppGraph, factory: AppViewModelFactory, settin
         snackbarHost = { SnackbarHost(snackbar, Modifier.padding(bottom = 80.dp)) },
         topBar = {
             if (current.isTab) {
+                val directFallback = (chatId as? ChatId.Direct)?.let { stringResource(R.string.sender_node, TeamAlerts.shortNode(it.node)) }
                 TabTopBar(
-                    title = if (current == Screen.TEAM) chatTitle ?: stringResource(R.string.nav_team) else stringResource(R.string.nav_tasks),
+                    title = when {
+                        current == Screen.TASKS -> stringResource(R.string.nav_tasks)
+                        chatId == null -> stringResource(R.string.chats_title)
+                        else -> chatTitle ?: directFallback ?: stringResource(R.string.nav_team)
+                    },
+                    onBack = if (current == Screen.TEAM && chatId != null) ({ openChat = null }) else null,
                     link = link,
                     queued = waiting.size,
                     lang = lang,
@@ -323,6 +355,8 @@ private fun LocalContentColorFor(selected: Boolean) =
 @Composable
 private fun TabTopBar(
     title: String,
+    /** Inside a chat: the back arrow to the chat list. */
+    onBack: (() -> Unit)?,
     link: LinkState,
     queued: Int,
     lang: String,
@@ -348,6 +382,11 @@ private fun TabTopBar(
                     .fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                if (onBack != null) {
+                    Surface(onClick = onBack, color = androidx.compose.ui.graphics.Color.Transparent, shape = MaterialTheme.shapes.medium, modifier = Modifier.size(48.dp).testTag("chat_back")) {
+                        Box(contentAlignment = Alignment.Center) { RcIcon(R.drawable.ic_arrow_back, stringResource(R.string.chat_open_list)) }
+                    }
+                }
                 ChannelTitle(
                     title = title,
                     onClick = onStatus,

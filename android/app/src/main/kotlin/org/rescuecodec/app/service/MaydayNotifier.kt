@@ -29,18 +29,26 @@ import java.util.Locale
  * "MAYDAY from !a1b2c3d4: team member injured". One notification per task key (the tag), removed when the task is
  * done. A tap opens the Actions screen. Without the notification permission (Android 13+) it does nothing. Never throws.
  */
-class MaydayNotifier(private val context: Context, private val language: () -> String) : MaydayAlerts {
+class MaydayNotifier(
+    private val context: Context,
+    private val language: () -> String,
+    /** The sender's name from the radio's node list, or null. */
+    private val names: (Long) -> String? = { null },
+) : MaydayAlerts {
 
-    override fun show(key: String, from: Long, reason: String?) {
+    override fun show(key: String, from: Long, reason: String?, channel: String?) {
         if (!allowed()) return
         try {
             val lang = language()
             val res = resources(lang)
             val nm = context.getSystemService(NotificationManager::class.java) ?: return
             createChannel(nm, res)
-            val who = MaydayAlerts.nodeLabel(from)
+            val who = names(from) ?: MaydayAlerts.nodeLabel(from)
             val title = if (reason != null) res.getString(R.string.mayday_alert_reason, who, Labels.value(lang, "mayday", reason))
             else res.getString(R.string.mayday_alert, who)
+            // The channel it came on, so the person knows which team called: "On RescueCodec. Tap to open Tasks and answer."
+            val body = if (channel.isNullOrBlank()) res.getString(R.string.mayday_alert_text)
+            else res.getString(R.string.notif_on_channel, channel) + " " + res.getString(R.string.mayday_alert_text)
             val open = Intent(context, MainActivity::class.java)
                 .setAction(ACTION_OPEN_MAYDAY)
                 .putExtra("screen", "ACTIONS")
@@ -50,8 +58,8 @@ class MaydayNotifier(private val context: Context, private val language: () -> S
             val n = NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle(title)
-                .setContentText(res.getString(R.string.mayday_alert_text))
-                .setStyle(NotificationCompat.BigTextStyle().bigText(res.getString(R.string.mayday_alert_text)))
+                .setContentText(body)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(body))
                 .setColor(MAYDAY_RED)
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_ALARM)

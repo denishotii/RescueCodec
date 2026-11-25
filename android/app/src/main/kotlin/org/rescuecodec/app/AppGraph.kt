@@ -5,11 +5,18 @@ import android.content.Context
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.meshtastic.sdk.StorageProvider
 import org.meshtastic.sdk.storage.sqldelight.AndroidContextHolder
 import org.meshtastic.sdk.storage.sqldelight.SqlDelightStorageProvider
 import org.rescuecodec.app.core.AppSettings
+import org.rescuecodec.app.core.ChannelChoice
+import org.rescuecodec.app.core.ChatReads
+import org.rescuecodec.app.core.NodeDirectory
 import org.rescuecodec.app.core.KeyValueStore
 import org.rescuecodec.app.core.Messenger
 import org.rescuecodec.app.core.PrefsKeyValueStore
@@ -34,7 +41,8 @@ import java.io.File
  */
 class AppGraph(
     context: Context,
-    val database: AppDatabase = AppDatabase.open(context),
+    // A version 1 database had one channel: its rows move to the team channel we knew last (read when it opens).
+    val database: AppDatabase = AppDatabase.open(context, teamChannel = { AppSettings(PrefsKeyValueStore(context)).lastTeamChannel }),
     val keyValue: KeyValueStore = PrefsKeyValueStore(context),
     transports: TransportFactory? = null,
     scanner: RadioScanner = BleRadioScanner(),
@@ -47,6 +55,12 @@ class AppGraph(
 
     /** Language and day/night, watched by the screens. */
     val ui = UiPrefs(settings, keyValue)
+
+    /** Names of the other radios from the radio's node list, kept across restarts. */
+    val nodes = NodeDirectory(keyValue)
+
+    /** Up to which message each chat was read, for the unread badges. */
+    val chatReads = ChatReads(keyValue)
 
     val link: ConnectionManager = ConnectionManager(
         scope = scope,
@@ -69,11 +83,17 @@ class AppGraph(
         stats = database.stats(),
         settings = settings,
         log = { android.util.Log.i(TAG, it) },
-        alerts = MaydayNotifier(appContext) { ui.language.value },
+        alerts = MaydayNotifier(appContext, { ui.language.value }, { nodes.label(it) }),
+        nodes = nodes,
     )
 
+    /** Name of the team channel: from the radio when connected, else the one we knew last. */
+    val teamName: StateFlow<String> = messenger.channel
+        .map { (it as? ChannelChoice.Ready)?.name?.takeIf { n -> n.isNotBlank() } ?: settings.lastTeamChannel }
+        .stateIn(scope, SharingStarted.Eagerly, settings.lastTeamChannel)
+
     /** Notifications and in-app cues for new messages, tasks and answers. It only reads the database. */
-    val teamNotifier = TeamNotifier(appContext) { ui.language.value }
+    val teamNotifier = TeamNotifier(appContext, { ui.language.value }, { nodes.label(it) }, { teamName.value })
     val teamAlerts = TeamWatcher(
         messages = database.messages(),
         tasks = database.tasks(),

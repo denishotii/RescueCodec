@@ -68,7 +68,7 @@ class MessengerTest {
     private class RecordingAlerts : MaydayAlerts {
         val shown = java.util.concurrent.CopyOnWriteArrayList<Triple<String, Long, String?>>()
         val cleared = java.util.concurrent.CopyOnWriteArrayList<String>()
-        override fun show(key: String, from: Long, reason: String?) { shown.add(Triple(key, from, reason)) }
+        override fun show(key: String, from: Long, reason: String?, channel: String?) { shown.add(Triple(key, from, reason)) }
         override fun clear(key: String) { cleared.add(key) }
     }
 
