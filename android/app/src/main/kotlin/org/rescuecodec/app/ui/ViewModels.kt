@@ -44,7 +44,14 @@ import org.rescuecodec.app.data.MessageEntity
 import org.rescuecodec.app.data.StatNames
 import org.rescuecodec.app.data.TaskEntity
 import org.rescuecodec.app.data.add
+import org.meshtastic.proto.Channel
+import org.meshtastic.proto.Config
+import org.meshtastic.sdk.AdminResult
+import org.rescuecodec.app.core.Channels
+import org.rescuecodec.app.radio.ChannelAdmin
 import org.rescuecodec.app.radio.ChannelJoin
+import org.rescuecodec.app.radio.CreateResult
+import org.rescuecodec.app.radio.NameProblem
 import org.rescuecodec.app.radio.ChannelLink
 import org.rescuecodec.app.radio.JoinPlan
 import org.rescuecodec.app.radio.LinkState
@@ -137,6 +144,114 @@ class ConnectionViewModel(app: Application, private val graph: AppGraph) : Andro
             graph.messenger.refreshChannel()
         }
     }
+
+    // ------------------------------------------------------------------ new, share and remove a channel
+
+    /** A channel's share link, for the QR sheet. */
+    data class ChannelShare(val index: Int, val name: String, val link: String)
+
+    /** Making a new channel. */
+    sealed interface CreateState {
+        data object Idle : CreateState
+        data object Working : CreateState
+        data class Done(val share: ChannelShare) : CreateState
+        data object NoRadio : CreateState
+        data object NoFreeSlot : CreateState
+        data class BadName(val problem: NameProblem) : CreateState
+        data class Refused(val detail: String) : CreateState
+    }
+
+    /** Removing a channel. */
+    sealed interface RemoveState {
+        data object Idle : RemoveState
+        data class Working(val name: String) : RemoveState
+        data class Done(val name: String) : RemoveState
+        data class Failed(val name: String, val reason: String) : RemoveState
+    }
+
+    private val _create = MutableStateFlow<CreateState>(CreateState.Idle)
+    val create: StateFlow<CreateState> = _create.asStateFlow()
+
+    private val _remove = MutableStateFlow<RemoveState>(RemoveState.Idle)
+    val remove: StateFlow<RemoveState> = _remove.asStateFlow()
+
+    /** The connected radio's channels (with keys, they never leave the app unasked) and LoRa settings. Debug demo: made-up ones. */
+    private fun radioNow(): Pair<List<Channel>, Config.LoRaConfig?>? {
+        val c = graph.link.client.value ?: return org.rescuecodec.app.Demo.radio()
+        return c.channels.value.orEmpty() to ChannelJoin.loraOf(c)
+    }
+
+    /** The radio's admin call that writes one channel, or null without a radio. */
+    private fun writer(): (suspend (Channel) -> AdminResult<Unit>)? {
+        val c = graph.link.client.value ?: return org.rescuecodec.app.Demo.writer()
+        return { ch -> c.admin.setChannel(ch) }
+    }
+
+    /** Names in use: from the radio, else the last known list. */
+    private fun takenNames(): List<String> {
+        radioNow()?.let { (list, lora) -> return Channels.list(list, Channels.presetName(lora)).map { it.name } + Channels.presetName(lora) }
+        return graph.messenger.radioChannels.value.orEmpty().map { it.name }
+    }
+
+    /** A name for a new channel that is still free: "Team 2". */
+    fun suggestName(): String = ChannelAdmin.suggestName(takenNames())
+
+    /** Null when [name] can be used. */
+    fun checkName(name: String): NameProblem? = ChannelAdmin.checkName(name, takenNames())
+
+    /** True when a radio is there to write to. */
+    fun canWrite(): Boolean = writer() != null
+
+    /** Writes a new private channel with a fresh key into a free secondary slot. The QR sheet opens on [CreateState.Done]. */
+    fun createChannel(name: String) {
+        if (_create.value == CreateState.Working) return
+        val radio = radioNow()
+        val write = writer()
+        if (radio == null || write == null) { _create.value = CreateState.NoRadio; return }
+        _create.value = CreateState.Working
+        viewModelScope.launch {
+            val r = runCatching { ChannelAdmin.create(radio.first, radio.second, name, write) }
+                .getOrElse { CreateResult.Failed(CreateResult.Reason.REFUSED, it.message ?: it::class.simpleName) }
+            _create.value = when (r) {
+                is CreateResult.Created -> CreateState.Done(ChannelShare(r.index, r.name, r.link))
+                is CreateResult.Failed -> when (r.reason) {
+                    CreateResult.Reason.NO_FREE_SLOT -> CreateState.NoFreeSlot
+                    CreateResult.Reason.BAD_NAME -> CreateState.BadName(ChannelAdmin.checkName(name, radio.first, Channels.presetName(radio.second)) ?: NameProblem.TAKEN)
+                    CreateResult.Reason.REFUSED -> CreateState.Refused(r.detail.orEmpty())
+                }
+            }
+            graph.messenger.refreshChannel()
+        }
+    }
+
+    fun clearCreate() { _create.value = CreateState.Idle }
+
+    /** The QR content of channel [index] (only that channel and the radio's LoRa settings), or null without a radio. */
+    fun share(index: Int): ChannelShare? {
+        val (list, lora) = radioNow() ?: return null
+        val link = ChannelAdmin.shareLink(list, index, lora) ?: return null
+        val name = list.firstOrNull { it.index == index }?.let { Channels.displayName(it, Channels.presetName(lora)) } ?: return null
+        return ChannelShare(index, name, link)
+    }
+
+    /** True when channel [index] may be removed (not the primary). Without a radio: any slot but 0. */
+    fun removable(index: Int): Boolean = radioNow()?.let { ChannelAdmin.removable(it.first, index) } ?: (index > 0)
+
+    /** Switches channel [index] off on the radio. Its chat leaves the list; its messages stay in the database. */
+    fun removeChannel(index: Int, name: String) {
+        val radio = radioNow()
+        val write = writer()
+        if (radio == null || write == null) { _remove.value = RemoveState.Failed(name, "no radio"); return }
+        _remove.value = RemoveState.Working(name)
+        viewModelScope.launch {
+            val problem = runCatching { ChannelAdmin.remove(radio.first, index, write) }.getOrElse { it.message ?: "failed" }
+            if (problem == null && graph.settings.channelIndex == index) pickChannel(-1)
+            _remove.value = if (problem == null) RemoveState.Done(name) else RemoveState.Failed(name, problem)
+            graph.messenger.refreshChannel()
+        }
+    }
+
+    fun clearRemove() { _remove.value = RemoveState.Idle }
 }
 
 /** One task as the screen shows it. */

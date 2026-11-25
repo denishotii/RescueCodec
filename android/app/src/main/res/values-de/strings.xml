@@ -438,4 +438,35 @@
     <string name="ms_waiting_short">Wartet</string>
     <string name="ms_failed_short">Fehler</string>
     <string name="lane_mine_short">Meine</string>
+    <!-- Neuer Kanal, QR zeigen, Kanal entfernen (Funkgerät-Tab) -->
+    <string name="channel_new">Neuer Kanal</string>
+    <string name="channel_new_explain">Ein neuer privater Kanal mit eigenem geheimen Schlüssel. Teile seinen QR-Code mit deinem Team.</string>
+    <string name="channel_name_label">Kanalname</string>
+    <string name="channel_name_bytes">%1$d von %2$d Bytes</string>
+    <string name="channel_name_empty">Gib dem Kanal einen Namen.</string>
+    <string name="channel_name_too_long">Zu lang: %1$d von %2$d Bytes. Ä, ö, ü und ß zählen doppelt.</string>
+    <string name="channel_name_taken">Das Funkgerät hat schon einen Kanal mit diesem Namen.</string>
+    <string name="channel_create">Anlegen</string>
+    <string name="channel_creating">Kanal wird ins Funkgerät geschrieben …</string>
+    <string name="channel_no_slot">Kein freier Platz: Das Funkgerät hat schon 8 Kanäle. Entferne zuerst einen.</string>
+    <string name="channel_refused">Das Funkgerät hat den Kanal nicht angenommen: %1$s</string>
+    <string name="channel_options">Kanal-Optionen</string>
+    <string name="channel_show_qr">QR-Code zeigen</string>
+    <string name="channel_remove">Kanal entfernen</string>
+    <string name="channel_primary_note">Das ist der Hauptkanal des Funkgeräts. Er bleibt und lässt sich hier nicht entfernen.</string>
+    <string name="channel_qr_warning">Wer diesen Code hat, kann auf diesem Kanal mitlesen und senden.</string>
+    <string name="channel_qr_hint">Scanne ihn in RescueCodec mit „Per QR beitreten“ oder in der Meshtastic-App.</string>
+    <string name="channel_share_link">Link teilen</string>
+    <string name="channel_qr_unavailable">Verbinde das Funkgerät, um den QR-Code dieses Kanals zu zeigen.</string>
+    <string name="channel_remove_title">„%1$s“ entfernen?</string>
+    <string name="channel_remove_body">Dein Funkgerät verlässt diesen Kanal. Zurück kommst du nur mit seinem QR-Code. Alte Nachrichten bleiben verborgen auf diesem Handy.</string>
+    <string name="channel_remove_team_note">Das ist euer Team-Kanal. Meldungen gehen über ihn raus.</string>
+    <string name="channel_remove_team_title">Team-Kanal wirklich entfernen?</string>
+    <string name="channel_remove_team_body">Meldungen warten, bis du einen anderen Team-Kanal wählst.</string>
+    <string name="channel_remove_confirm">Entfernen</string>
+    <string name="channel_remove_team_confirm">Team-Kanal entfernen</string>
+    <string name="channel_next">Weiter</string>
+    <string name="channel_removing">„%1$s“ wird entfernt …</string>
+    <string name="channel_removed">Kanal „%1$s“ entfernt.</string>
+    <string name="channel_remove_failed">„%1$s“ konnte nicht entfernt werden: %2$s</string>
 </resources>

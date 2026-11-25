@@ -7,6 +7,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import okio.ByteString.Companion.toByteString
+import org.meshtastic.proto.Channel
+import org.meshtastic.proto.ChannelSettings
+import org.meshtastic.proto.Config
+import org.meshtastic.sdk.AdminResult
 import org.rescuecodec.app.core.MeshText
 import org.rescuecodec.app.core.NodeName
 import org.rescuecodec.app.data.MessageEntity
@@ -44,6 +49,32 @@ object Demo {
     /** On screen only: the demo shows a connected radio. */
     fun link(real: LinkState): LinkState =
         if (active && (real is LinkState.Disconnected || real is LinkState.Error)) LinkState.Connected(RadioTarget.Ble("DE:MO:00:00:00:02", "D-Node 2"), OWN, "D-Node 2") else real
+
+    /**
+     * On screen only: the demo radio's channels with made-up keys (the same as the channel list below), so the
+     * channel QR sheet can be shown without a radio. Null when the demo is off.
+     */
+    fun radio(): Pair<List<Channel>, Config.LoRaConfig?>? = if (!active) null else synchronized(channels) { channels.toList() } to LORA
+
+    /** On screen only: "writes" a channel into the made-up list after a short wait. Nothing is sent. Null when off. */
+    fun writer(): (suspend (Channel) -> AdminResult<Unit>)? = if (!active) null else { ch ->
+        kotlinx.coroutines.delay(900)
+        synchronized(channels) { channels.removeAll { it.index == ch.index }; channels += ch; channels.sortBy { it.index } }
+        AdminResult.Success(Unit)
+    }
+
+    private val LORA = Config.LoRaConfig.Builder().use_preset(true).modem_preset(Config.LoRaConfig.ModemPreset.LONG_FAST)
+        .region(Config.LoRaConfig.RegionCode.EU_868).build()
+
+    private fun demoChannel(index: Int, name: String, key: ByteArray, role: Channel.Role) = Channel.Builder().index(index).role(role)
+        .settings(ChannelSettings.Builder().name(name).psk(key.toByteString()).build()).build()
+
+    private val channels: MutableList<Channel> = mutableListOf(
+        demoChannel(0, "RescueCodec", ByteArray(32) { (it * 7 + 3).toByte() }, Channel.Role.PRIMARY),
+        demoChannel(1, "draeger-srs", ByteArray(32) { (it * 11 + 5).toByte() }, Channel.Role.SECONDARY),
+        demoChannel(2, "MeshMeister", ByteArray(32) { (it * 13 + 1).toByte() }, Channel.Role.SECONDARY),
+        demoChannel(3, "", byteArrayOf(1), Channel.Role.SECONDARY),
+    ) .also { l -> (4..7).forEach { l += demoChannel(it, "", ByteArray(0), Channel.Role.DISABLED) } }
 
     private const val OWN = 0xD2L
     private const val D3 = 0xD3L

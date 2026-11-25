@@ -32,6 +32,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -63,6 +64,7 @@ import org.rescuecodec.app.ui.components.SourceTag
 import org.rescuecodec.app.ui.components.Tag
 import androidx.compose.ui.unit.sp
 import org.rescuecodec.app.ui.components.StatusDot
+import org.rescuecodec.app.ui.components.clickableButton
 import org.rescuecodec.app.ui.theme.Rc
 
 /**
@@ -87,6 +89,8 @@ fun RadioScreen(
     val options by vm.channelOptions.collectAsStateWithLifecycle()
     val picked by vm.pickedChannel.collectAsStateWithLifecycle()
     val join by vm.join.collectAsStateWithLifecycle()
+    val create by vm.create.collectAsStateWithLifecycle()
+    val removal by vm.remove.collectAsStateWithLifecycle()
     val radioChannels by graph.messenger.radioChannels.collectAsStateWithLifecycle()
     val team by graph.teamName.collectAsStateWithLifecycle()
     val showPublic by graph.ui.showPublic.collectAsStateWithLifecycle()
@@ -100,7 +104,29 @@ fun RadioScreen(
     var pasting by remember { mutableStateOf(false) }
     var pasted by remember { mutableStateOf("") }
     var other by remember { mutableStateOf(false) }
+    var creating by remember { mutableStateOf(false) }
+    var menuFor by remember { mutableStateOf<org.rescuecodec.app.core.RadioChannel?>(null) }
+    var removeFor by remember { mutableStateOf<org.rescuecodec.app.core.RadioChannel?>(null) }
+    var qrName by remember { mutableStateOf<String?>(null) }
+    var qrShare by remember { mutableStateOf<ConnectionViewModel.ChannelShare?>(null) }
     val c = Rc.colors
+    // A new channel worked: close the form and show its QR at once, so the team can scan it.
+    LaunchedEffect(create) {
+        val done = create as? ConnectionViewModel.CreateState.Done ?: return@LaunchedEffect
+        creating = false
+        qrShare = done.share
+        qrName = done.share.name
+        vm.clearCreate()
+    }
+    LaunchedEffect(removal) {
+        val text = when (val r = removal) {
+            is ConnectionViewModel.RemoveState.Done -> context.getString(R.string.channel_removed, r.name)
+            is ConnectionViewModel.RemoveState.Failed -> context.getString(R.string.channel_remove_failed, r.name, r.reason)
+            else -> return@LaunchedEffect
+        }
+        vm.clearRemove()
+        snackbar.showSnackbar(text)
+    }
     val connected = link is LinkState.Connected
 
     Column(
@@ -174,16 +200,29 @@ fun RadioScreen(
             if (list.isEmpty()) Text(stringResource(R.string.radio_channels_none), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             list.distinctBy { it.name }.forEachIndexed { i, ch ->
                 if (i > 0) Hairline()
-                Row(Modifier.fillMaxWidth().heightIn(min = 40.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(ch.name.ifEmpty { stringResource(R.string.channel_no_name) }, style = MaterialTheme.typography.titleSmall.copy(fontSize = 16.sp), color = if (ch.isPublic) c.muted else MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
-                    when {
-                        ch.name == team -> Tag(stringResource(R.string.ch_team), MaterialTheme.colorScheme.onSurface, MaterialTheme.colorScheme.surface)
-                        ch.isPublic -> Tag(stringResource(if (showPublic) R.string.ch_public else R.string.ch_public_hidden), androidx.compose.ui.graphics.Color.Transparent, MaterialTheme.colorScheme.onSurface, border = MaterialTheme.colorScheme.outlineVariant)
-                        else -> PlainTag(stringResource(R.string.ch_private))
+                // A private channel of the radio: tap for Show QR code and Remove channel.
+                val tappable = ch.isPrivate && ch.index >= 0
+                val removing = (removal as? ConnectionViewModel.RemoveState.Working)?.name == ch.name
+                val rowMod = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("channel_row_${ch.index}")
+                Box(if (tappable && !removing) rowMod.clickableButton { menuFor = ch } else rowMod, contentAlignment = Alignment.CenterStart) {
+                    Row(Modifier.heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(ch.name.ifEmpty { stringResource(R.string.channel_no_name) }, style = MaterialTheme.typography.titleSmall.copy(fontSize = 16.sp), color = if (ch.isPublic) c.muted else MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+                        if (removing) Text(stringResource(R.string.channel_removing, ch.name), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        when {
+                            ch.name == team -> Tag(stringResource(R.string.ch_team), MaterialTheme.colorScheme.onSurface, MaterialTheme.colorScheme.surface)
+                            ch.isPublic -> Tag(stringResource(if (showPublic) R.string.ch_public else R.string.ch_public_hidden), androidx.compose.ui.graphics.Color.Transparent, MaterialTheme.colorScheme.onSurface, border = MaterialTheme.colorScheme.outlineVariant)
+                            else -> PlainTag(stringResource(R.string.ch_private))
+                        }
+                        if (tappable) RcIcon(R.drawable.ic_more_vert, stringResource(R.string.channel_options), tint = MaterialTheme.colorScheme.onSurfaceVariant, size = 22.dp)
                     }
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
+            BigButton(
+                stringResource(R.string.channel_new), { vm.clearCreate(); creating = true },
+                Modifier.fillMaxWidth().padding(top = 6.dp).testTag("new_channel"), icon = R.drawable.ic_add,
+                container = MaterialTheme.colorScheme.onSurface, content = MaterialTheme.colorScheme.surface, height = 48.dp,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 BigButton(stringResource(R.string.join_by_qr), { scanner = true }, Modifier.weight(1f).testTag("scan_qr"), icon = R.drawable.ic_qr_code_scanner, outlined = true, container = MaterialTheme.colorScheme.onSurface, height = 48.dp)
                 BigButton(stringResource(R.string.paste_link), { pasting = !pasting }, Modifier.weight(1f).testTag("paste_link"), outlined = true, container = MaterialTheme.colorScheme.onSurface, height = 48.dp)
             }
@@ -212,6 +251,23 @@ fun RadioScreen(
 
     if (scanner) {
         QrScannerDialog(onResult = { text -> scanner = false; vm.readChannelText(text) }, onClose = { scanner = false })
+    }
+    if (creating) NewChannelSheet(vm, create, onDismiss = { creating = false; vm.clearCreate() })
+    menuFor?.let { ch ->
+        ChannelMenuSheet(
+            ch, removable = vm.removable(ch.index),
+            onQr = { menuFor = null; qrShare = vm.share(ch.index); qrName = ch.name },
+            onRemove = { menuFor = null; removeFor = ch },
+            onDismiss = { menuFor = null },
+        )
+    }
+    qrName?.let { name -> ChannelQrSheet(qrShare, name, onDismiss = { qrName = null; qrShare = null }) }
+    removeFor?.let { ch ->
+        RemoveChannelDialog(
+            ch, isTeam = ch.name == team || (channel as? ChannelChoice.Ready)?.index == ch.index,
+            onConfirm = { removeFor = null; vm.removeChannel(ch.index, ch.name) },
+            onDismiss = { removeFor = null },
+        )
     }
 }
 

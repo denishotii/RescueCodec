@@ -438,4 +438,35 @@
     <string name="ms_waiting_short">Waiting</string>
     <string name="ms_failed_short">Failed</string>
     <string name="lane_mine_short">Mine</string>
+    <!-- New, share and remove a channel (Radio tab) -->
+    <string name="channel_new">New channel</string>
+    <string name="channel_new_explain">A new private channel with its own secret key. Share its QR with your team.</string>
+    <string name="channel_name_label">Channel name</string>
+    <string name="channel_name_bytes">%1$d of %2$d bytes</string>
+    <string name="channel_name_empty">Give the channel a name.</string>
+    <string name="channel_name_too_long">Too long: %1$d of %2$d bytes. Ä, ö, ü and ß count twice.</string>
+    <string name="channel_name_taken">This radio already has a channel with this name.</string>
+    <string name="channel_create">Create</string>
+    <string name="channel_creating">Writing the channel to the radio…</string>
+    <string name="channel_no_slot">No free slot: the radio holds 8 channels. Remove one first.</string>
+    <string name="channel_refused">The radio did not take the channel: %1$s</string>
+    <string name="channel_options">Channel options</string>
+    <string name="channel_show_qr">Show QR code</string>
+    <string name="channel_remove">Remove channel</string>
+    <string name="channel_primary_note">This is the radio\'s main channel. It stays and cannot be removed here.</string>
+    <string name="channel_qr_warning">Anyone with this code can read and send on this channel.</string>
+    <string name="channel_qr_hint">Scan it with \"Join by QR\" in RescueCodec, or in the Meshtastic app.</string>
+    <string name="channel_share_link">Share link</string>
+    <string name="channel_qr_unavailable">Connect the radio to show this channel\'s QR code.</string>
+    <string name="channel_remove_title">Remove \"%1$s\"?</string>
+    <string name="channel_remove_body">Your radio leaves this channel. You only get it back with its QR code. Old messages stay on this phone, hidden.</string>
+    <string name="channel_remove_team_note">This is your team channel. Reports go out on it.</string>
+    <string name="channel_remove_team_title">Really remove the team channel?</string>
+    <string name="channel_remove_team_body">Reports wait until you pick another team channel.</string>
+    <string name="channel_remove_confirm">Remove</string>
+    <string name="channel_remove_team_confirm">Remove team channel</string>
+    <string name="channel_next">Next</string>
+    <string name="channel_removing">Removing \"%1$s\"…</string>
+    <string name="channel_removed">Channel \"%1$s\" removed.</string>
+    <string name="channel_remove_failed">Could not remove \"%1$s\": %2$s</string>
 </resources>
