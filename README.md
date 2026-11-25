@@ -38,6 +38,7 @@ The operator clicks **Accept**. An answer of about 20 bytes goes back, and every
 - **Reports from one sentence.** German or English. Simple offline rules turn the sentence into chips (child, conscious, stretcher). You check the chips, then send.
 - **Tasks with Accept and Done.** Every found person, request or hazard becomes a task. Hold **SOS** for 2 seconds to send a Mayday. It goes first in the queue and shows as a red banner on every screen.
 - **Works with normal Meshtastic.** Stock Meshtastic radios carry the messages. We change nothing in the firmware. People with the official Meshtastic app get normal text. Between RescueCodec users, free text is packed with a shared dictionary and is about 43 % smaller.
+- **Compact text (opt-in).** Settings, "Use compact encoding for text messages": every known English word becomes a 2-byte code, and names, numbers, coordinates and emoji are copied byte for byte, so the receiver sees exactly what was typed. Off by default. Details and numbers: [docs/COMPACT_TEXT.md](docs/COMPACT_TEXT.md).
 - **Channels by QR code.** Create a private channel on the phone, show its QR code, and teammates join by scanning it.
 - **Command post dashboard.** Offline map with finds, tracks and hazards, a task board, live reports with a channel filter, and a send panel that shows the size before you send.
 - **Open for other software.** The gateway offers REST, WebSocket, MQTT, TAK (Cursor on Target) and GeoJSON. Libraries in Python, Kotlin and TypeScript give the same bytes.
@@ -53,6 +54,8 @@ Byte counts are measured. Airtime is calculated with the LoRa formula for the LO
 | The example sentence, with GPS | 105 B, 1.21 s on air | 23 B, 0.60 s on air | 4.6× fewer bytes, about 2× less airtime |
 | All messages of our real-radio test on 25 Nov | | | 1.9× fewer bytes |
 | Free text, packed (40 test messages not used for tuning) | | | 43 % smaller (German 44 %, English 43 %) |
+| Compact text (2-byte words), 2,357 disaster messages not used to build the dictionary | | | 44 % smaller, 99.5 % fit one radio packet |
+| Compact text, 4,998 everyday English sentences not used to build the dictionary | | | 31 % smaller, 13 % stay plain text because that is smaller |
 
 **Why is the airtime gain smaller than the byte gain?** Meshtastic adds about 23 bytes of header to every packet, and every LoRa packet starts with the same preamble. So 23 bytes of content are about 46 bytes on air. The gain grows when more facts share one packet, for example a GPS track of 10 points in 48 bytes.
 
@@ -143,6 +146,7 @@ Each part has its own README: [android/app](android/app/README.md), [dashboard](
 | [docs/HARDWARE_CHECK.md](docs/HARDWARE_CHECK.md) | 10-minute checklist for real radios, with fixes when something fails |
 | [docs/INTEGRATE.md](docs/INTEGRATE.md) | Use RescueCodec from your own software, with examples that were run |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the parts fit together and why |
+| [docs/COMPACT_TEXT.md](docs/COMPACT_TEXT.md) | Compact text with 2-byte word codes: wire format, dictionary sources, measured results |
 | [docs/VOICE.md](docs/VOICE.md) | Offline speech to text and read-aloud |
 | [docs/OFFLINE.md](docs/OFFLINE.md) | Every download, its size and its licence |
 | [spec/SPEC.md](spec/SPEC.md) | The spec: wire format, JSON, rules, test vectors, security |
@@ -152,9 +156,9 @@ Each part has its own README: [android/app](android/app/README.md), [dashboard](
 ## Tests
 
 ```bash
-.venv/bin/python -m pytest -q                       # Python: 347 tests
-(cd ts && npm install && npm test)                  # TypeScript library: 249 tests
-(cd dashboard && npm install && npm test)           # dashboard: 53 tests
+.venv/bin/python -m pytest -q                       # Python: 390 tests
+(cd ts && npm install && npm test)                  # TypeScript library: 342 tests
+(cd dashboard && npm install && npm test)           # dashboard: 61 tests
 . scripts/env.sh && (cd android && ./gradlew :codec:test :engine:test :app:testDebugUnitTest)   # Kotlin and the app
 scripts/e2e-full.sh --runs 1                        # app on the emulator, simulator, gateway, dashboard
 ```
