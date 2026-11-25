@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package org.rescuecodec.app.core
 
+import org.rescuecodec.codec.TextDomain
 import org.rescuecodec.engine.ModemPreset
 import org.rescuecodec.engine.Region
 import org.rescuecodec.engine.TextMode
@@ -68,6 +69,15 @@ class AppSettings(private val store: KeyValueStore) {
     var compactText: Boolean
         get() = store.getLong("compact_text", 0) == 1L
         set(v) = store.putLong("compact_text", if (v) 1 else 0)
+
+    /**
+     * Team vocabulary for compact texts (spec section 3.8.6), only used with [compactText] on: "auto" (default, every
+     * domain frame is tried), "general" (no domain frame) or one domain ("sar", "fire", ...: that frame and the general
+     * forms). The smallest complete form still wins, never larger than plain. Receiving reads every vocabulary.
+     */
+    var teamVocabulary: String
+        get() = store.getString("team_vocabulary")?.takeIf { it in TextDomain.SETTINGS } ?: TextDomain.AUTO
+        set(v) = store.putString("team_vocabulary", v.takeIf { it in TextDomain.SETTINGS && it != TextDomain.AUTO })
 
     /** Show the public channel (no key or the default key, for example LongFast) in the chat list. Off by default. */
     var showPublicChannel: Boolean

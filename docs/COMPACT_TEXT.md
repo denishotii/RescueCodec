@@ -80,6 +80,7 @@ A small word list per field of work, so the most common words cost **10 bits** i
 - Setting: **Auto** (default: try every list), **General** (no team list), or one list ("pinned"). Gateway: `--vocabulary auto|general|emergency|sar|fire|hiking|medical`.
 - Every app and the gateway have all five lists, so receiving always works.
 - The message tag shows the list: "compact · S&R · 11 B".
+- **App:** Settings → "Use compact encoding for text messages" on → the row "Team vocabulary" appears below it, with one chip per choice: Auto (default), General, Emergency, Search & Rescue, Firefighting, Hiking / Mountain, Medical / First aid. German: "Team-Vokabular", "Automatisch (Standard)", "Allgemein", ... The composer line names the list: "Compact words · Medical · 19 B (as text 64 B)". Long-press → Details: "Domain frame (no envelope), team vocabulary Medical / First aid, 10-bit codes" and "Without the vocabulary: 38 B as a general compact frame".
 - It helps most with field language (5 to 20 % smaller than the compact frame on manual sentences), little with everyday chat (0 to 3 %). Sources, licences and measurements: `spec/vocab/domains.yaml`.
 - An app from before 2.3 rejects a domain frame (unreadable-message line), never wrong words. With such apps in the team, choose **General**.
 

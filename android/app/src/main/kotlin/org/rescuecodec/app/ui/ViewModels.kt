@@ -505,6 +505,10 @@ class SettingsViewModel(app: Application, private val graph: AppGraph) : Android
     val compactText: StateFlow<Boolean> = graph.ui.compactText
     fun setCompactText(on: Boolean) = graph.ui.setCompactText(on)
 
+    /** Team vocabulary of compact texts: auto (default), general or one domain. */
+    val teamVocabulary: StateFlow<String> = graph.ui.teamVocabulary
+    fun setTeamVocabulary(setting: String) = graph.ui.setTeamVocabulary(setting)
+
     val teamLabel: String get() = graph.settings.teamLabel
     fun setTeamLabel(v: String) { graph.settings.teamLabel = Messenger.teamLabelFor(v).orEmpty() }
 
@@ -566,8 +570,13 @@ data class ReportUi(
     val packed: Boolean = false,
     /** Bytes of a text as a normal Meshtastic text (as typed, when it goes packed), 0 when the message is not a text. */
     val plainBytes: Int = 0,
-    /** How a text goes: [TextMode.FORM_PLAIN], [TextMode.FORM_DEFLATE], [TextMode.FORM_WORDS] or [TextMode.FORM_LEAN] (compact). */
+    /**
+     * How a text goes: [TextMode.FORM_PLAIN], [TextMode.FORM_DEFLATE], [TextMode.FORM_WORDS], [TextMode.FORM_LEAN] or
+     * [TextMode.FORM_DOMAIN] (compact).
+     */
     val textForm: String = TextMode.FORM_PLAIN,
+    /** Form [TextMode.FORM_DOMAIN]: the team vocabulary chosen, e.g. "sar"; else null. */
+    val textVocab: String? = null,
     /** The text is too long for one radio message and will be cut, ending with "…". */
     val textCut: Boolean = false,
     /** The chat's text mode: auto, compressed or normal. */
@@ -643,6 +652,10 @@ class ReportViewModel(app: Application, private val graph: AppGraph) : AndroidVi
         viewModelScope.launch {
             // The compact text setting changes the byte line of a text.
             graph.ui.compactText.drop(1).collect { if (_ui.value.message != null) recompute(_ui.value.message, graph.ui.language.value) }
+        }
+        viewModelScope.launch {
+            // So does the team vocabulary (which domain frames are tried).
+            graph.ui.teamVocabulary.drop(1).collect { if (_ui.value.message != null) recompute(_ui.value.message, graph.ui.language.value) }
         }
     }
 
@@ -726,6 +739,7 @@ class ReportViewModel(app: Application, private val graph: AppGraph) : AndroidVi
         var packed = false
         var plainBytes = 0
         var textForm = TextMode.FORM_PLAIN
+        var textVocab: String? = null
         var textCut = false
         withContext(Dispatchers.Default) {
             try {
@@ -739,6 +753,7 @@ class ReportViewModel(app: Application, private val graph: AppGraph) : AndroidVi
                     packed = form.packed
                     plainBytes = if (form.packed) form.text.toByteArray(Charsets.UTF_8).size else form.plainSize
                     textForm = form.form
+                    textVocab = form.vocab
                     textCut = form.cut
                     readable = RescueCodec.reconstruct(form.message, lang)
                     return@withContext
@@ -758,6 +773,7 @@ class ReportViewModel(app: Application, private val graph: AppGraph) : AndroidVi
                     packed = form.packed
                     plainBytes = if (form.packed) form.text.toByteArray(Charsets.UTF_8).size else form.plainSize
                     textForm = form.form
+                    textVocab = form.vocab
                     textCut = form.cut
                 }
             } catch (e: CodecException) {
@@ -770,7 +786,7 @@ class ReportViewModel(app: Application, private val graph: AppGraph) : AndroidVi
             it.copy(
                 message = message, fallback = fallback, sentBytes = sent, readable = readable,
                 problem = problem, hasPosition = withPos["pos"] != null, shortened = shortened,
-                packed = packed, plainBytes = plainBytes, textForm = textForm, textCut = textCut,
+                packed = packed, plainBytes = plainBytes, textForm = textForm, textVocab = textVocab, textCut = textCut,
             )
         }
     }

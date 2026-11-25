@@ -57,6 +57,16 @@ class UiPrefs(private val settings: AppSettings, private val store: KeyValueStor
         _compactText.value = on
     }
 
+    private val _teamVocabulary = MutableStateFlow(settings.teamVocabulary)
+
+    /** Team vocabulary of compact texts: auto (default), general or one domain (spec section 3.8.6). */
+    val teamVocabulary: StateFlow<String> = _teamVocabulary.asStateFlow()
+
+    fun setTeamVocabulary(setting: String) {
+        settings.teamVocabulary = setting
+        _teamVocabulary.value = settings.teamVocabulary
+    }
+
     fun setTheme(mode: String) {
         store.putString(THEME_KEY, mode)
         _theme.value = mode

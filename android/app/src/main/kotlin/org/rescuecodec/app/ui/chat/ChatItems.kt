@@ -233,14 +233,19 @@ private fun TextBubble(m: MessageEntity, lang: String, mine: Boolean, senderName
 }
 
 /**
- * The small tag of a text that went packed for RescueCodec: "compact · 6 B" (word tokens) or "packed · 42 B" (DEFLATE),
- * with the bytes on air of our payload. A plain Meshtastic text gets no tag.
+ * The small tag of a text that went packed for RescueCodec: "compact · 6 B" (word tokens), "compact · S&R · 9 B" (a
+ * domain frame with a team vocabulary) or "packed · 42 B" (DEFLATE), with the bytes on air of our payload. A plain
+ * Meshtastic text gets no tag.
  */
 @Composable
 private fun FormTag(m: MessageEntity, modifier: Modifier = Modifier) {
     val tag = remember(m.json, m.source) { org.rescuecodec.app.core.MeshText.tagOf(m) } ?: return
-    val label = if (tag == org.rescuecodec.app.core.MeshText.TAG_COMPACT) stringResource(R.string.tag_compact, m.bytes.size)
-    else stringResource(R.string.tag_packed, m.bytes.size)
+    val vocab = remember(m.json, m.source) { org.rescuecodec.app.core.MeshText.vocabOf(m) }
+    val label = when {
+        tag != org.rescuecodec.app.core.MeshText.TAG_COMPACT -> stringResource(R.string.tag_packed, m.bytes.size)
+        vocab != null -> stringResource(R.string.tag_compact_vocab, org.rescuecodec.app.ui.components.VocabLabels.short(vocab.domain), m.bytes.size)
+        else -> stringResource(R.string.tag_compact, m.bytes.size)
+    }
     Text(label, style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp, fontFeatureSettings = "tnum"), color = Rc.colors.muted, modifier = modifier.testTag("form_tag_${m.id}"))
 }
 
