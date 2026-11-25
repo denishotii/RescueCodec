@@ -122,15 +122,18 @@ object ReportFields {
         return withBody(message, type, b)
     }
 
-    /** Switches the message type. The old body is dropped; required fields get a first value. */
-    fun setType(message: Map<String, Any?>, type: String, text: String = ""): Map<String, Any?> {
+    /**
+     * Switches the message type. The old body is dropped; required fields get a first value. A text takes [text] cut
+     * to [limit] bytes (180, or more where the chat packs).
+     */
+    fun setType(message: Map<String, Any?>, type: String, text: String = "", limit: Int = Codes.MAX_TEXT_BYTES): Map<String, Any?> {
         if (type == typeOf(message)) return message
         val b = LinkedHashMap<String, Any?>()
         when (type) {
             "request" -> b["resource"] = "other"
             "hazard" -> b["kind"] = "other"
             "sector" -> { b["sector"] = 1; b["status"] = "partial" }
-            "text" -> b["text"] = clampText(text)
+            "text" -> b["text"] = clampText(text, limit)
         }
         return withBody(message, type, b)
     }
@@ -152,9 +155,9 @@ object ReportFields {
     /** Plain text message with [text] cut to the limit of 180 bytes. */
     fun textMessage(text: String): Map<String, Any?> = mapOf("text" to mapOf("text" to clampText(text)))
 
-    fun clampText(text: String): String {
+    fun clampText(text: String, limit: Int = Codes.MAX_TEXT_BYTES): String {
         var t = text.trim()
-        while (t.toByteArray(Charsets.UTF_8).size > Codes.MAX_TEXT_BYTES) t = t.dropLast(1)
+        while (t.toByteArray(Charsets.UTF_8).size > limit) t = t.dropLast(1)
         return t
     }
 

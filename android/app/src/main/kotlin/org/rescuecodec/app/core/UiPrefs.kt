@@ -47,6 +47,16 @@ class UiPrefs(private val settings: AppSettings, private val store: KeyValueStor
         _showPublic.value = on
     }
 
+    private val _compactText = MutableStateFlow(settings.compactText)
+
+    /** Compact texts (word tokens) on chats that pack. Off by default. */
+    val compactText: StateFlow<Boolean> = _compactText.asStateFlow()
+
+    fun setCompactText(on: Boolean) {
+        settings.compactText = on
+        _compactText.value = on
+    }
+
     fun setTheme(mode: String) {
         store.putString(THEME_KEY, mode)
         _theme.value = mode

@@ -65,6 +65,7 @@ import org.rescuecodec.app.ui.screens.VoiceHelpDialog
 import org.rescuecodec.app.ui.screens.numberLabel
 import org.rescuecodec.app.ui.theme.Rc
 import org.rescuecodec.app.voice.VoiceState
+import org.rescuecodec.engine.TextMode
 
 /**
  * The composer at the bottom of every chat, overnight style. While the field is empty: the quick buttons
@@ -97,9 +98,12 @@ fun Composer(vm: ReportViewModel, lang: String, textOnly: Boolean, onSent: () ->
     Column(Modifier.fillMaxWidth().testTag("composer")) {
         when {
             hasText && msg != null && !listening && !textOnly -> WhatWillBeSent(ui, lang, onEdit = { editor = it }, onPlain = {
-                vm.edit { m -> ReportFields.setType(m, "text", vm.ui.value.text) }
+                vm.edit { m -> vm.asText(m) }
             })
-            hasText && msg != null && !listening -> ByteLine(ui, text = true)
+            hasText && msg != null && !listening -> {
+                if (ui.textCut) TooLongNote()
+                ByteLine(ui, text = true)
+            }
             !hasText && !listening && !textOnly -> QuickButtons(onPick = vm::append)
         }
         Row(
@@ -178,14 +182,26 @@ private fun SendButton(enabled: Boolean, onClick: () -> Unit) {
     }
 }
 
+/** "Too long: will be cut to fit one radio message": the text ends with "…" on the air. */
+@Composable
+private fun TooLongNote() {
+    Text(
+        stringResource(R.string.text_too_long),
+        style = MaterialTheme.typography.bodySmall.copy(fontSize = 14.sp), color = Rc.colors.ink3,
+        modifier = Modifier.padding(start = 14.dp, end = 14.dp, top = 4.dp).testTag("text_too_long"),
+    )
+}
+
 /**
- * "105 bytes as text → 23 bytes sent", in green. For a text how it goes (spec section 2.3): "Compressed for
- * RescueCodec · 39 B instead of 81 B" or "Normal Meshtastic text · readable by everyone".
+ * "105 bytes as text → 23 bytes sent", in green. For a text how it goes (spec sections 2.3 and 3.6): "Compressed for
+ * RescueCodec · 39 B instead of 81 B", "Compact words · 58 B (as text 151 B)" or "Normal Meshtastic text · readable by
+ * everyone".
  */
 @Composable
 private fun ByteLine(ui: ReportUi, text: Boolean) {
     if (ui.sentBytes <= 0) return
     val line = when {
+        text && ui.packed && ui.textForm == TextMode.FORM_WORDS -> stringResource(R.string.text_mode_words, ui.sentBytes, ui.plainBytes)
         text && ui.packed -> stringResource(R.string.text_mode_packed, ui.sentBytes, ui.plainBytes)
         text -> stringResource(R.string.text_mode_plain)
         else -> stringResource(R.string.counter_line, ui.textBytes, ui.sentBytes)
@@ -252,6 +268,7 @@ private fun WhatWillBeSent(ui: ReportUi, lang: String, onEdit: (Editor) -> Unit,
             }
             val notes = buildList {
                 if (ui.shortened) add(stringResource(R.string.report_text_shortened) to false)
+                if (ui.textCut && isText) add(stringResource(R.string.text_too_long) to false)
                 if (ui.fallback && isText) add(stringResource(R.string.preview_fallback) to false)
                 ui.problem?.let { add(stringResource(R.string.report_problem, it) to true) }
             }

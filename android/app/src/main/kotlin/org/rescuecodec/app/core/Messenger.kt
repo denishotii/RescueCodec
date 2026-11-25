@@ -39,6 +39,7 @@ import org.rescuecodec.app.data.TaskDao
 import org.rescuecodec.app.data.TaskEntity
 import org.rescuecodec.app.data.add
 import org.rescuecodec.codec.CodecException
+import org.rescuecodec.codec.Codes
 import org.rescuecodec.codec.Json
 import org.rescuecodec.codec.RescueCodec
 import org.rescuecodec.engine.Airtime
@@ -251,22 +252,26 @@ class Messenger(
     /**
      * A message with only a text, to [channel] (null: the team channel) or to [peer]. Packed for RescueCodec when the
      * chat's mode and the people in it allow it and it saves at least 3 bytes (spec section 2.3), else a normal
-     * Meshtastic text. A packed text keeps its id and position, like any RescueCodec message.
+     * Meshtastic text. A packed text keeps its id and position, like any RescueCodec message. With
+     * [AppSettings.compactText] on, a chat that packs sends word tokens when they are smaller (spec section 3.6).
+     * A chat that packs takes up to 400 bytes of text, cut to fit one packet ([TextFit.fitPacked]); a normal chat 180.
      */
     private suspend fun submitText(input: Map<String, Any?>, source: String, channel: String?, peer: Long?): SubmitResult {
+        val wish = routes.wish(chatOf(channel, peer), peer == null && isPublic(channel))
+        // Checked as a RescueCodec text first, so a broken message is refused the same way in every chat. Where the
+        // chat packs, a text over 180 bytes is fine (it is fitted below), so only the rest of the message is checked.
         try {
-            RescueCodec.encode(TextFit.fitText(input))
+            RescueCodec.encode(TextFit.fitText(if (wish.packed) withCheckableText(input) else input))
         } catch (e: CodecException) {
             return SubmitResult.Rejected(e.code, e.field, e.message ?: e.code)
         } catch (e: IllegalArgumentException) {
             return SubmitResult.Rejected("invalid_value", null, e.message ?: "invalid message")
         }
-        val wish = routes.wish(chatOf(channel, peer), peer == null && isPublic(channel))
         if (!wish.packed) return submitPlain(input, channel, peer)
         val message = LinkedHashMap(input)
         if ((message["id"] as? Number)?.toInt().let { it == null || it == 0 }) message["id"] = settings.nextMessageId()
-        val form = TextMode.chooseForm(message, true, wish.reason)
-        if (!form.packed) return submitPlain(input, channel, peer)
+        val form = TextMode.chooseForm(message, true, wish.reason, compact = settings.compactText)
+        if (!form.packed) return submitPlain(input, channel, peer, form.text)
         val msgId = (form.message["id"] as? Number)?.toInt() ?: 0
         return mutex.withLock {
             val row = MessageEntity(
@@ -286,9 +291,24 @@ class Messenger(
      * message is measured with a 2-byte id when it has none, the largest one [submit] gives.
      */
     suspend fun textForm(message: Map<String, Any?>, channel: String?, peer: Long?): TextMode.Form {
-        val wish = routes.wish(chatOf(channel, peer), peer == null && isPublic(channel))
+        val wish = textWish(channel, peer)
         val probe = if (message["id"] == null) LinkedHashMap(message).also { it["id"] = ID_PROBE } else message
-        return TextMode.chooseForm(probe, wish.packed, wish.reason)
+        return TextMode.chooseForm(probe, wish.packed, wish.reason, compact = settings.compactText)
+    }
+
+    /** Whether a text to [channel] (null: the team channel) or [peer] goes packed, and why (spec section 2.3). */
+    suspend fun textWish(channel: String?, peer: Long?): TextMode.Wish =
+        routes.wish(chatOf(channel, peer), peer == null && isPublic(channel))
+
+    /** [input] with a text over 180 bytes cut to 180, so the codec checks everything but the length of the text. */
+    private fun withCheckableText(input: Map<String, Any?>): Map<String, Any?> {
+        val body = input["text"] as? Map<*, *> ?: return input
+        val text = body["text"] as? String ?: return input
+        if (text.toByteArray(Charsets.UTF_8).size <= Codes.MAX_TEXT_BYTES) return input
+        val newBody = LinkedHashMap<String, Any?>()
+        for ((k, v) in body) newBody[k.toString()] = v
+        newBody["text"] = TextFit.fitPlain(text, Codes.MAX_TEXT_BYTES)
+        return LinkedHashMap(input).also { it["text"] = newBody }
     }
 
     /** The chat a message goes to: the direct chat with [peer], else the channel (null: the team channel). */
@@ -306,18 +326,16 @@ class Messenger(
      * A message with only a text, sent as a normal Meshtastic text (port 1) on [channel] (null: the team channel), or
      * to [peer] as a direct message (spec section 2.1). It takes the same queue, priority, airtime budget and
      * `want_ack` as a report. Only the words go out, at most 200 bytes: no id, position or time. The row is marked
-     * [MeshText.SOURCE] and [MessageEntity.bytes] is the text.
+     * [MeshText.SOURCE] and [MessageEntity.bytes] is the text. [submitText] has checked the message already; [words]
+     * is the text that goes out (the form's text on a chat that packs).
      */
-    private suspend fun submitPlain(input: Map<String, Any?>, channel: String?, peer: Long?): SubmitResult {
-        // Checked as a RescueCodec text first, so a broken message is refused the same way with the setting on or off.
-        try {
-            RescueCodec.encode(TextFit.fitText(input))
-        } catch (e: CodecException) {
-            return SubmitResult.Rejected(e.code, e.field, e.message ?: e.code)
-        } catch (e: IllegalArgumentException) {
-            return SubmitResult.Rejected("invalid_value", null, e.message ?: "invalid message")
-        }
-        val text = TextFit.fitPlain((input["text"] as Map<*, *>)["text"] as String)
+    private suspend fun submitPlain(
+        input: Map<String, Any?>,
+        channel: String?,
+        peer: Long?,
+        words: String = (input["text"] as Map<*, *>)["text"] as String,
+    ): SubmitResult {
+        val text = TextFit.fitPlain(words)
         val canonical = MeshText.message(text, input["priority"] as? String)
         val bytes = text.toByteArray(Charsets.UTF_8)
         return mutex.withLock {

@@ -145,6 +145,15 @@ fun SettingsScreen(vm: SettingsViewModel, connection: ConnectionViewModel, lang:
             }
             Switch(checked = showPublic, onCheckedChange = { vm.setShowPublic(it) }, modifier = Modifier.testTag("show_public_switch"))
         }
+        // Compact texts (word tokens, spec section 3.6): only where a chat packs anyway. Off by default.
+        val compactText by vm.compactText.collectAsStateWithLifecycle()
+        Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.set_compact_text), style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.set_compact_text_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Switch(checked = compactText, onCheckedChange = { vm.setCompactText(it) }, modifier = Modifier.testTag("compact_text_switch"))
+        }
 
         SectionHeader(stringResource(R.string.set_voice))
         RcCard {
