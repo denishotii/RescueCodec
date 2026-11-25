@@ -175,7 +175,7 @@ fields:
     wire: Request.urgency
     values:
       - {id: 1, code: now, meaning: "Needed immediately.", en: [now, immediately, asap, "right now"], de: [sofort, jetzt, "so schnell wie möglich", umgehend]}
-      - {id: 2, code: soon, meaning: "Within about 30 minutes.", en: [soon, "in half an hour", "within 30 minutes"], de: [bald, "in einer halben stunde", "innerhalb 30 minuten"]}
+      - {id: 2, code: soon, meaning: "Within about 30 minutes.", en: [soon, "in half an hour", "within half an hour", "within 30 minutes", "in 30 minutes"], de: [bald, "in einer halben stunde", "innerhalb einer halben stunde", "innerhalb 30 minuten", "in 30 minuten"]}
       - {id: 3, code: later, meaning: "Planned, when possible.", en: [later, "when possible", "no rush"], de: [später, spaeter, "wenn möglich", "keine eile"]}
 
   hazard.kind:
