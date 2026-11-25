@@ -138,7 +138,12 @@ private fun TaskCard(t: TaskItem, lang: String, now: Long, showChannel: Boolean,
     val c = Rc.colors
     val isMayday = t.type == "mayday"
     val channelDesc = stringResource(R.string.task_channel, t.channelName.orEmpty())
-    val readable = remember(t.json, lang) { org.rescuecodec.app.ui.chat.cardLine(t.json, t.type, lang) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val names by remember { org.rescuecodec.app.AppGraph.from(context).nodes.nodes }.collectAsStateWithLifecycle()
+    val line = remember(t.json, lang) { org.rescuecodec.app.ui.chat.cardLine(t.json, t.type, lang) }
+    val node = t.key.substringBefore('-').toLongOrNull(16)
+    val who = if (t.local || node == null) null else names[node]?.label ?: stringResource(R.string.sender_node, org.rescuecodec.app.core.TeamAlerts.shortNode(node))
+    val readable = line?.let { if (who != null) "$who: ${it.replaceFirstChar { ch -> ch.lowercase() }}" else it }
     val gridRef = remember(t.json) { Readable.gridRef(t.json) }
     RcCard(
         container = if (isMayday) c.maydaySoft else MaterialTheme.colorScheme.surface,
@@ -265,7 +270,7 @@ fun MaydayBanner(
             RcIcon(R.drawable.ic_warning, null, tint = c.onMayday, size = 26.dp)
             Text(word, style = MaterialTheme.typography.titleLarge.copy(fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 24.sp, letterSpacing = 0.4.sp), color = c.onMayday)
             Column(Modifier.weight(1f)) {
-                Text(line1, style = MaterialTheme.typography.titleSmall.copy(fontSize = 15.sp, lineHeight = 18.sp), color = c.onMayday, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(line1, style = MaterialTheme.typography.titleSmall.copy(fontSize = 15.sp, lineHeight = 18.sp), color = c.onMayday, maxLines = if (line2 == null) 2 else 1, overflow = TextOverflow.Ellipsis)
                 if (line2 != null) Text(line2, style = MaterialTheme.typography.titleSmall.copy(fontSize = 15.sp, lineHeight = 18.sp), color = c.onMayday, maxLines = 1)
             }
             if (active != null) {

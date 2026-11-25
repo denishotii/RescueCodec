@@ -76,6 +76,8 @@ fun ChatListScreen(vm: ChatListViewModel, tasks: List<TaskItem>, lang: String, o
     var picking by remember { mutableStateOf(false) }
     val list = chats ?: return
     val byKey = remember(tasks) { tasks.associateBy { it.key } }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val names by remember { org.rescuecodec.app.AppGraph.from(context).nodes.nodes }.collectAsStateWithLifecycle()
     val channels = list.filter { it.id is ChatId.Channel }
     val direct = list.filter { it.id is ChatId.Direct }
     LazyColumn(
@@ -84,9 +86,9 @@ fun ChatListScreen(vm: ChatListViewModel, tasks: List<TaskItem>, lang: String, o
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item(key = "h_channels") { SectionHeader(stringResource(R.string.chats_channels), note = stringResource(R.string.chats_on_radio), plain = true) }
-        items(channels, key = { it.id.key }) { s -> ChatListRow(s, s.last?.taskKey?.let { byKey[it] }, lang) { onOpen(s.id) } }
+        items(channels, key = { it.id.key }) { s -> ChatListRow(s, s.last?.taskKey?.let { byKey[it] }, lang, names) { onOpen(s.id) } }
         item(key = "h_direct") { SectionHeader(stringResource(R.string.chats_direct), plain = true) }
-        items(direct, key = { it.id.key }) { s -> ChatListRow(s, null, lang) { onOpen(s.id) } }
+        items(direct, key = { it.id.key }) { s -> ChatListRow(s, null, lang, names) { onOpen(s.id) } }
         item(key = "new_direct") {
             Surface(
                 onClick = { picking = true },
@@ -106,7 +108,7 @@ fun ChatListScreen(vm: ChatListViewModel, tasks: List<TaskItem>, lang: String, o
 }
 
 @Composable
-private fun ChatListRow(s: ChatSummary, task: TaskItem?, lang: String, onClick: () -> Unit) {
+private fun ChatListRow(s: ChatSummary, task: TaskItem?, lang: String, names: Map<Long, NodeName>, onClick: () -> Unit) {
     val c = Rc.colors
     val title = chatTitle(s)
     val unreadDesc = if (s.unread > 0) stringResource(R.string.chat_unread, s.unread) else ""
@@ -130,7 +132,11 @@ private fun ChatListRow(s: ChatSummary, task: TaskItem?, lang: String, onClick: 
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     if (task != null && task.state == "open") StateTag("open")
                     Text(
-                        preview(s.last, lang),
+                        preview(s.last, lang).let { p ->
+                            // In a channel: who wrote it ("D-Node 7: Person found"). In a direct chat the title says who.
+                            val m = s.last
+                            if (m != null && m.dir == "in" && s.id is ChatId.Channel) "${names[m.node]?.label ?: stringResource(R.string.sender_node, TeamAlerts.shortNode(m.node))}: $p" else p
+                        },
                         style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp), color = c.ink3,
                         maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
                     )

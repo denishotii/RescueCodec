@@ -36,7 +36,7 @@ object Demo {
         if (intent?.hasExtra("demo") == true) {
             val on = intent.getBooleanExtra("demo", false)
             prefs.edit().putBoolean("on", on).apply()
-            if (on) load(graph)
+            if (on) load(context.applicationContext, graph)
         }
         active = prefs.getBoolean("on", false)
     }
@@ -53,12 +53,12 @@ object Demo {
     private const val AK = 0xA1L
     private const val TEAM = "RescueCodec"
 
-    private fun load(graph: AppGraph) {
+    private fun load(context: Context, graph: AppGraph) {
         val s = graph.settings
         s.lastTeamChannel = TEAM
         s.lastOwnNode = OWN
         s.lastRadioChannels = "0|0|$TEAM\n1|0|draeger-srs\n2|0|MeshMeister\n3|1|LongFast"
-        s.lastChat = "ch:$TEAM"
+        s.lastChat = "dm:%08x".format(D7)
         graph.nodes.update(
             listOf(
                 NodeName(OWN, "D-Node 2", "D2"), NodeName(D3, "D-Node 3", "D3"), NodeName(D7, "D-Node 7", "D7"),
@@ -66,6 +66,14 @@ object Demo {
             ),
         )
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            runCatching { fill(context, graph) }
+                .onSuccess { android.util.Log.i("RescueDemo", "demo loaded") }
+                .onFailure { android.util.Log.e("RescueDemo", "demo failed", it) }
+        }
+    }
+
+    private suspend fun fill(context: Context, graph: AppGraph) {
+        run {
             val db = graph.database
             db.messages().clear()
             db.tasks().clear()
@@ -73,10 +81,16 @@ object Demo {
             val now = System.currentTimeMillis()
             fun ago(min: Int) = now - min * 60_000L
             val ex = Extractor()
-            val pos = mapOf("lat" to 50.1092, "lon" to 8.6623)
-            fun report(text: String, id: Int, withPos: Boolean = true): Map<String, Any?> {
+            // Positions near the phone, so the cards read "450 m NE" like the mockup (Frankfurt without a phone position).
+            val here = org.rescuecodec.app.core.LocationHelper.lastKnown(context)
+            val lat0 = here?.lat ?: 50.1060
+            val lon0 = here?.lon ?: 8.6580
+            val mPerLon = 111_320.0 * Math.cos(Math.toRadians(lat0))
+            fun near(north: Double, east: Double) = mapOf("lat" to lat0 + north / 111_320.0, "lon" to lon0 + east / mPerLon)
+            val pos = near(318.0, 318.0)
+            fun report(text: String, id: Int, withPos: Boolean = true, at: Map<String, Double> = pos): Map<String, Any?> {
                 val m = LinkedHashMap<String, Any?>()
-                if (withPos) m["pos"] = pos
+                if (withPos) m["pos"] = at
                 m.putAll(ex.extract(text, "en").message)
                 m["id"] = id
                 return m
@@ -95,9 +109,9 @@ object Demo {
             )
 
             // Team channel, oldest first.
-            val mayday = report("Mayday, team member injured, 2 persons", 12)
+            val mayday = report("Mayday, team member injured, 2 persons", 12, at = near(-300.0, 0.0))
             row(mayday, "in", D3, ago(22), MessageState.RECEIVED, taskKey = "000000d3-12")
-            val ownHazard = report("Danger: creek flooded, path impassable", 41)
+            val ownHazard = report("Danger: flooding at the creek", 41)
             row(ownHazard, "out", OWN, ago(40), MessageState.DELIVERED, taskKey = "000000d2-41")
             row(text("Path along the creek is flooded, use the forest road", 51), "in", D7, ago(15), MessageState.RECEIVED)
             row(text("Ok, we switch to the forest road", 42), "out", OWN, ago(14), MessageState.DELIVERED)
@@ -107,9 +121,9 @@ object Demo {
             row(found, "in", D7, ago(4), MessageState.RECEIVED, taskKey = "000000d7-21")
 
             // Other channels and a direct message.
-            row(text("Treffpunkt Halle 8, 13:30", 7), "in", DRAEGER, ago(12), MessageState.RECEIVED, channel = "draeger-srs")
             val mm = row(text("anyone near hall 8?", 3), "in", AK, ago(25), MessageState.RECEIVED, channel = "MeshMeister")
             graph.chatReads.markRead("ch:MeshMeister", mm)
+            row(text("Treffpunkt Halle 8, 13:30", 7), "in", DRAEGER, ago(12), MessageState.RECEIVED, channel = "draeger-srs")
             row(text("radio check", 4), "in", AK, ago(50), MessageState.RECEIVED, channel = "LongFast", public = true)
             row(text("ok, coming", 43), "out", OWN, ago(30), MessageState.DELIVERED, peer = D7)
 

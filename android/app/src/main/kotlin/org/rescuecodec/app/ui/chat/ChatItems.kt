@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -91,7 +92,7 @@ internal fun wordsOf(m: MessageEntity, lang: String): String? = textBody(m.json)
 internal fun cardLine(json: String?, type: String, lang: String): String? {
     val full = Readable.withoutPosition(json, lang) ?: return null
     val head = Labels.head(lang, type)
-    val rest = if (type != "mayday" && full.startsWith(head, ignoreCase = true)) full.substring(head.length).trimStart(':', ' ', ',', '.') else full
+    val rest = if (full.startsWith(head, ignoreCase = true)) full.substring(head.length).trimStart(':', ' ', ',', '.') else full
     return rest.ifBlank { full }.replaceFirstChar { it.uppercase() }
 }
 
@@ -131,7 +132,10 @@ internal fun distanceOf(json: String?, fix: Fix?): String? {
         val pos = Json.parseObject(json)["pos"] as? Map<*, *> ?: return null
         val lat = (pos["lat"] as Number).toDouble()
         val lon = (pos["lon"] as Number).toDouble()
-        "${distanceText(distanceM(fix, lat, lon))} ${bearingWord(fix, lat, lon)}"
+        val m = distanceM(fix, lat, lon)
+        // Farther than 100 km is not a walk: an old phone position, no distance then.
+        if (m > 100_000) return null
+        "${distanceText(m)} ${bearingWord(fix, lat, lon)}"
     }.getOrNull()
 }
 
@@ -166,7 +170,7 @@ private fun SpeakerIcon(words: String?, m: MessageEntity, actions: ChatActions) 
     if (words == null) return
     val desc = stringResource(R.string.action_read_aloud)
     Box(
-        Modifier.compactTouch(20.dp).size(44.dp).clickable(role = Role.Button, onClickLabel = desc) { actions.speak(m, words) }.testTag("speak_${m.id}"),
+        Modifier.compactTouch(20.dp).offset(x = 10.dp).size(44.dp).clickable(role = Role.Button, onClickLabel = desc) { actions.speak(m, words) }.testTag("speak_${m.id}"),
         contentAlignment = Alignment.Center,
     ) { RcIcon(R.drawable.ic_volume_up, desc, tint = Rc.colors.muted, size = 18.dp) }
 }

@@ -121,8 +121,9 @@ fun ComposerMic(
 ) {
     val c = Rc.colors
     val ink = MaterialTheme.colorScheme.primary
-    val disc = if (listening) c.mayday else if (ready) ink else MaterialTheme.colorScheme.surfaceContainerHighest
-    val fg = if (listening) c.onMayday else if (ready) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+    // Always the ink disc; without a speech model the icon is the crossed-out mic and a press explains why.
+    val disc = if (listening) c.mayday else ink
+    val fg = if (listening) c.onMayday else MaterialTheme.colorScheme.onPrimary
     val press = rememberUpdatedState(onPress)
     val release = rememberUpdatedState(onRelease)
     Box(

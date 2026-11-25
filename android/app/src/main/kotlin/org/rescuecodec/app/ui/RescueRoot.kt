@@ -246,7 +246,8 @@ private fun RescueScaffold(
 
     val content: @Composable (Modifier) -> Unit = { m ->
         Column(m) {
-            MaydayBanner(tasksVm, tasks, waiting, lang, names) { go(Screen.TASKS) }
+            // The Mayday banner on every screen, except Tasks (its Mayday card is right there) and while typing.
+            if (current != Screen.TASKS && !imeUp) MaydayBanner(tasksVm, tasks, waiting, lang, names) { go(Screen.TASKS) }
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when (current) {
                     Screen.CHATS -> if (chat == null) ChatListScreen(chatList, tasks, lang, onOpen = { openChat = it.key })

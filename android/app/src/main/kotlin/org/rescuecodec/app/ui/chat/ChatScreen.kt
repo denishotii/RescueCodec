@@ -46,6 +46,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import org.rescuecodec.app.core.Readable
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -299,7 +301,7 @@ private fun MessageSheet(m: MessageEntity, lang: String, vm: MessagesViewModel, 
     var full by remember { mutableStateOf(false) }
     val asText = remember(m.json, lang) { (textBody(m.json) ?: Readable.of(m.json, lang))?.toByteArray(Charsets.UTF_8)?.size }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet, containerColor = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)) {
-        Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 20.dp).verticalScroll(rememberScrollState()).testTag("message_sheet")) {
+        Column(Modifier.semantics { testTagsAsResourceId = true }.padding(horizontal = 16.dp).padding(bottom = 20.dp).verticalScroll(rememberScrollState()).testTag("message_sheet")) {
             if (words != null) SheetItem(R.drawable.ic_volume_up, stringResource(R.string.action_read_aloud), "sheet_speak") { onSpeak(words); onDismiss() }
             if (grid != null) SheetItem(R.drawable.ic_location_on, stringResource(R.string.action_show_position, grid), "sheet_position") {
                 // A map app if there is one (offline maps work too), else the grid reference goes to the clipboard.
