@@ -30,6 +30,11 @@ class FakeMessageDao : MessageDao {
 
     override suspend fun get(id: Long) = rows.value.firstOrNull { it.id == id }
     override fun observeRecent(limit: Int): Flow<List<MessageEntity>> = rows.map { it.sortedByDescending { r -> r.id }.take(limit) }
+    override fun observeChannel(name: String, team: Boolean, limit: Int): Flow<List<MessageEntity>> = rows.map { l ->
+        l.filter { it.peer == null && (it.channelName == name || (team && it.channelName == null)) }.sortedByDescending { r -> r.id }.take(limit)
+    }
+    override fun observeDirect(peer: Long, limit: Int): Flow<List<MessageEntity>> =
+        rows.map { l -> l.filter { it.peer == peer }.sortedByDescending { r -> r.id }.take(limit) }
     override suspend fun waiting() = rows.value.filter { it.dir == "out" && it.state in MessageState.WAITING }.sortedBy { it.id }
     override fun observeLastSignal(): Flow<MessageEntity?> =
         rows.map { l -> l.filter { it.dir == "in" && it.rssi != null && it.rssi != 0 }.maxByOrNull { it.id } }

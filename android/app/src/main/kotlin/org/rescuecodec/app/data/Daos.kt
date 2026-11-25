@@ -22,6 +22,17 @@ interface MessageDao {
     @Query("SELECT * FROM messages ORDER BY id DESC LIMIT :limit")
     fun observeRecent(limit: Int): Flow<List<MessageEntity>>
 
+    /**
+     * One channel chat, newest first: broadcasts on the channel [name]. With [team] true it also holds the outgoing
+     * messages that wait for the team channel (channelName still null).
+     */
+    @Query("SELECT * FROM messages WHERE peer IS NULL AND (channelName = :name OR (:team AND channelName IS NULL)) ORDER BY id DESC LIMIT :limit")
+    fun observeChannel(name: String, team: Boolean, limit: Int): Flow<List<MessageEntity>>
+
+    /** One direct-message chat with node [peer], newest first. */
+    @Query("SELECT * FROM messages WHERE peer = :peer ORDER BY id DESC LIMIT :limit")
+    fun observeDirect(peer: Long, limit: Int): Flow<List<MessageEntity>>
+
     /** Messages that still wait to be sent (also used to rebuild the queue after a restart). */
     @Query("SELECT * FROM messages WHERE dir = 'out' AND state IN ('queued','held','refused_airtime') ORDER BY id ASC")
     suspend fun waiting(): List<MessageEntity>
