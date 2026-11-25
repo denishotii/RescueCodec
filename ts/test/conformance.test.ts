@@ -206,7 +206,7 @@ describe("compact frames (spec section 3.7)", () => {
   });
 
   it("other reserved first bytes stay unsupported", () => {
-    for (const first of [0x00, 0x03, 0x04, 0x05, 0x06, 0x07]) {
+    for (const first of [0x00, 0x04, 0x05, 0x06, 0x07]) { // 0x03 is the domain frame (spec section 3.8)
       let caught: unknown = null;
       try {
         decodeAny(new Uint8Array([first, 0x02, 0x00, 0x10]));
