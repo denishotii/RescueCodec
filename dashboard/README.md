@@ -8,12 +8,13 @@ It works with the network cut: fonts, map libraries, map tiles and map glyphs ar
 
 ## What you see
 - **Mayday banner.** Red, full width, above everything. Accept or Done from the banner.
-- **Actions.** Open, accepted and done tasks. Accept asks for a team label (12 bytes) and an arrival time. Done is one tap.
-- **Live reports.** Every decoded message as a card: type, readable text, time, sender, size, RSSI, SNR, hops. EN/DE toggle in the top bar. Outgoing messages show queued, sent, delivered or failed.
-- **Map.** Offline base map and terrain shading. Finds, requests, Mayday, hazards (with radius), sector squares, tracks, radios. 2D by default, "3D terrain" tilts the map. The map edge shows UTM grid ticks, and every position is also given as a UTM grid reference.
-- **Traffic.** Bytes on air vs the same text, airtime saved, delivered vs sent, last RSSI and SNR, airtime in the last hour. Each number is tagged **measured** (solid outline) or **estimated** (dashed outline).
-- **Radios.** Nodes with battery, signal, hops, last heard.
-- **Send.** Under the reports. Pick a channel (the team channel is the default) or one person (a direct message). Type one sentence: while you type, the gateway (`POST /v2/extract`) shows what goes on air, for example "Sends as: Person found · 10 B (as text 65 B)" with the facts as chips, or "Text · 37 B". "Send as plain text" sends the words as they are; direct messages and public channels always do. Quick buttons: Recall all, Status check, Meet at …, + Request, + Hazard. Enter sends, Shift+Enter makes a new line. The message shows up in the feed with its status; a rate limit (429) says how long to wait.
+- **Actions.** Open tasks are always shown. Accepted and Done fold into one line each; click to open. Accept asks for a team label (12 bytes) and an arrival time. Done is one tap.
+- **Live reports.** Every decoded message as a card: one line with type icon, sender, channel, time and size ("packed · 23 B"), then the text in large letters. RSSI, SNR and hops are in the tooltip of the size. "Show" picks a channel or one type (Found, Requests, Hazards, Tracks, Other). Outgoing messages show queued, sent, delivered or failed.
+- **Map.** Offline base map and terrain shading. Finds, requests, Mayday, hazards (with radius), sector squares, tracks, radios. "Fit all" shows everything; the "⋯" menu has 2D / 3D terrain, the layers and the GeoJSON export. The map edge shows UTM grid ticks, and every position is also given as a UTM grid reference.
+- **Saving line.** The top bar shows "316 B on air instead of 665 B · 2.1× smaller" and the radio count. Click it for **Details**:
+- **Traffic** (in Details). Bytes on air vs the same text, airtime saved, delivered vs sent, last RSSI and SNR, airtime in the last hour. Each number is tagged **measured** (solid outline) or **estimated** (dashed outline).
+- **Radios** (in Details). Nodes with battery, signal, hops, last heard.
+- **Send.** Under the reports. Pick a channel (the team channel is the default) or one person (a direct message). Type one sentence: while you type, the gateway (`POST /v2/extract`) shows what goes on air, for example "Sends as: Person found · 10 B (as text 65 B)" with the facts as chips, or "Text · 37 B". "Send as plain text" sends the words as they are; direct messages and public channels always do. Quick buttons: Status check, Recall all, Meet at …. Enter sends, Shift+Enter makes a new line. The message shows up in the feed with its status; a rate limit (429) says how long to wait.
 - **Connection.** Gateway link, radio, MQTT. When the gateway is out of reach the page says so, keeps the last data and pauses the action buttons.
 
 Room view (the TV button) makes everything larger for a projector. Light and dark themes follow the system and can be switched.
