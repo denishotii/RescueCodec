@@ -217,6 +217,17 @@ class Sending(unittest.TestCase):
             time.sleep(0.3)
             self.assertEqual(gw.radio.plain_texts, [])
 
+    def test_long_text_with_position_is_cut_to_fit(self):
+        with gateway() as gw:
+            text = ("Fußweg über den Bach zerstört, nördlich gehts nicht weiter. " * 4).encode("utf-8")[:180].decode("utf-8", "ignore")
+            response = gw.post("/v2/messages", message={"pos": {"lat": 52.52001, "lon": 13.40495, "acc": "estimated"},
+                                                        "text": {"text": text}})
+            self.assertEqual(response.status_code, 202)
+            record = response.json()
+            self.assertLessEqual(record["codec"]["size"], 200)
+            self.assertTrue(record["message"]["text"]["text"].endswith("…"))
+            self.assertEqual(record["message"]["pos"]["lat"], 52.52001)
+
     def test_without_want_ack_the_status_stays_sent(self):
         with gateway() as gw:
             record = gw.post("/v2/messages", message=FOUND, want_ack=False).json()

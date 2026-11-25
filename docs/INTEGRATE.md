@@ -82,6 +82,8 @@ print(r.message, r.unsupported)
 
 When `unsupported` is true the sentence could not be coded safely. The message is then the plain text fallback. Let a person check the fields before you send. Add an `id` and a position yourself.
 
+A text fallback of 180 bytes plus a position and an `id` can be 201 to 204 bytes, over the 200-byte limit. `fit_text(message)` (from `rescuecodec.engine`) cuts the text to fit and adds "…". The gateway does this for you.
+
 ## TypeScript
 
 The package is not on npm yet. Build it once, then install it from the folder:

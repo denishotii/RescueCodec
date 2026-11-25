@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from rescuecodec.encoding.airtime import PRESETS, message_airtime_seconds
+from rescuecodec.engine.extract import fit_text
 from rescuecodec.engine.sendqueue import BUDGET_LIMIT, Deduper, SendQueue
 from rescuecodec.engine.tasks import InvalidTransition, Task, TaskBoard, TASK_TYPES, task_key
 from rescuecodec.gateway import __version__
@@ -344,6 +345,7 @@ class GatewayService:
             if kind != "ack" and not message.get("id"):
                 assigned = self.store.peek_message_id()
                 message["id"] = assigned
+            message = dict(fit_text(message))      # a long text plus position and id is cut to fit, like on the phone
             try:
                 payload = encode(message)
                 canonical = decode(payload)

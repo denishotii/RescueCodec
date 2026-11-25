@@ -94,6 +94,8 @@ paths:
         Send one canonical JSON message. Leave out `id`: the gateway assigns the next id of its own
         counter (types that can be answered always get one). If you give an `id`, it is used as is.
         Use `POST /v2/tasks/{key}/ack` to answer a task, not this endpoint.
+        A text message that is over 200 bytes only with its position and id is cut to fit and ends with "…",
+        like on the phone. The returned record shows the text that goes out.
         With `dry_run: true` nothing is sent; you get the record as it would be queued.
       requestBody:
         required: true
