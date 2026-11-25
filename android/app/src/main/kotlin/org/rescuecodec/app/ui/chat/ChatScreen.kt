@@ -302,6 +302,8 @@ private fun MessageSheet(m: MessageEntity, lang: String, vm: MessagesViewModel, 
     val asText = remember(m.json, lang) { (textBody(m.json) ?: Readable.of(m.json, lang))?.toByteArray(Charsets.UTF_8)?.size }
     val packed = remember(m.json) { org.rescuecodec.app.core.MeshText.isPacked(m) }
     val compactDict = remember(m.json) { org.rescuecodec.app.core.MeshText.compactDict(m) }
+    val frame = remember(m.json) { org.rescuecodec.app.core.MeshText.isCompactFrame(m) }
+    val plainText = remember(m.json) { org.rescuecodec.app.core.MeshText.isPlain(m) }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet, containerColor = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)) {
         Column(Modifier.semantics { testTagsAsResourceId = true }.padding(horizontal = 16.dp).padding(bottom = 20.dp).verticalScroll(rememberScrollState()).testTag("message_sheet")) {
             if (words != null) SheetItem(R.drawable.ic_volume_up, stringResource(R.string.action_read_aloud), "sheet_speak") { onSpeak(words); onDismiss() }
@@ -327,7 +329,8 @@ private fun MessageSheet(m: MessageEntity, lang: String, vm: MessagesViewModel, 
                 // A packed text (spec section 3.5): the words above are unpacked, the bytes on air are compressed.
                 if (packed) Text(stringResource(R.string.details_packed), style = small, color = Rc.colors.ink3, modifier = Modifier.testTag("details_packed"))
                 // A compact text (spec section 3.6): the words above are decoded from 2-byte word tokens.
-                if (compactDict != null) Text(stringResource(R.string.details_words, compactDict), style = small, color = Rc.colors.ink3, modifier = Modifier.testTag("details_words"))
+                if (compactDict != null) Text(stringResource(if (frame) R.string.details_frame else R.string.details_words, compactDict), style = small, color = Rc.colors.ink3, modifier = Modifier.testTag("details_words"))
+                if (plainText) Text(stringResource(R.string.details_plain), style = small, color = Rc.colors.ink3, modifier = Modifier.testTag("details_plain"))
                 if (incoming && m.rssi != null && m.rssi != 0) {
                     Text(
                         stringResource(R.string.details_signal_line, m.rssi, m.snr ?: 0f) + (m.hops?.let { " · " + stringResource(R.string.feed_hops, it) } ?: ""),

@@ -2,7 +2,7 @@
 // v1 is only decoded, never produced. The result carries "v": 1 and may hold values a v2
 // encoder refuses (for example a 32-bit id), so do not re-encode it.
 import * as C from "./codes.js";
-import { decode, detectVersion } from "./codec.js";
+import { COMPACT_FRAME, decode, decodeCompact, detectVersion } from "./codec.js";
 import { CodecError } from "./errors.js";
 import type { Found, RescueMessage } from "./types.js";
 
@@ -96,12 +96,13 @@ export function decodeV1(data: Uint8Array): RescueMessage {
 }
 
 /**
- * Decode a RescueCodec payload of any version. First byte 0x01 is v1 (result has "v": 1).
- * Bytes 0x00 and 0x02..0x07 are reserved and rejected with "unsupported_version".
- * Anything else is v2 (result has "v": 2).
+ * Decode a RescueCodec payload of any version. First byte 0x01 is v1 (result has "v": 1). 0x02 is a compact frame
+ * (spec section 3.7, "v": 2, a text without id). Bytes 0x00 and 0x03..0x07 are reserved and rejected with
+ * "unsupported_version". Anything else is a v2 Envelope (result has "v": 2).
  */
 export function decodeAny(data: Uint8Array): RescueMessage {
   if (data.length === 0) throw new CodecError("empty", "empty payload");
+  if (data[0] === COMPACT_FRAME) return { v: 2, ...decodeCompact(data) }; // a text without id (spec section 3.7)
   if (detectVersion(data) === 1) return decodeV1(data);
   return { v: 2, ...decode(data) };
 }

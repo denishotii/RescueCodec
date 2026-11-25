@@ -134,7 +134,7 @@ export function SendPanel() {
         <div className="send-row">
           <label className="send-input">
             <span className="sr-only">{t("composeLabel")}</span>
-            <textarea ref={inputRef} rows={1} value={text} placeholder={t("composePlaceholder")} aria-describedby="send-preview"
+            <textarea ref={inputRef} rows={2} value={text} placeholder={t("composePlaceholder")} aria-describedby="send-preview"
               onChange={(e) => { setText(clampBytes(e.target.value, inputCap(limit, text))); if (outcome && !outcome.ok) setOutcome(null); }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); }

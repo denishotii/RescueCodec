@@ -15,7 +15,7 @@ import java.security.MessageDigest
  * TextWords.decode(data, 1)                                // "We found Aylin Demir", byte for byte
  * ```
  * The stream is a list of 16-bit big-endian units:
- * - 0x0000..0xEFFF dictionary entry (line number - 1 of spec/vocab/words-dict-v1.txt)
+ * - 0x0000..0xEFFF dictionary entry (line number - 1 of spec/vocab/words-dict-v<N>.txt)
  * - 0xF001 CAP: next entry with its first letter a-z written A-Z
  * - 0xF002 UPPER: next entry with every letter a-z written A-Z
  * - 0xF003 GLUE: no space before the next entry
@@ -31,12 +31,13 @@ object TextWords {
     /** Largest text a receiver decodes (bytes of UTF-8), same as for DEFLATE texts. */
     const val MAX_TEXT_BYTES: Int = 1024
 
-    /** The dictionary new texts are encoded with. */
-    const val CURRENT_DICT: Int = 1
+    /** The dictionary new texts are encoded with (2: 61,440 entries; 1 stays readable forever). */
+    const val CURRENT_DICT: Int = 2
 
     /** Dictionary versions: number to (resource file, SHA-256 of its bytes). */
     val DICTS: Map<Int, Pair<String, String>> = mapOf(
         1 to ("words-dict-v1.txt" to "ffe93afb4623fcd364479169281ca745cc263317a4f83ce27f77d8d37b26a0d8"),
+        2 to ("words-dict-v2.txt" to "c88c6b6bd08821b150a248c41f10b99c71ee5f34ab40d6840685738eb8f48dee"),
     )
 
     const val CAP: Int = 0xF001

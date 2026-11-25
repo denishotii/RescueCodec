@@ -16,6 +16,8 @@ export interface UiState {
 }
 
 const LS = "rescuecodec.dashboard.v2";
+/** The theme is kept on its own and only when someone picks it: the default is Light, whatever the OS says. */
+const THEME_LS = "rescuecodec.dashboard.theme";
 
 function readSaved(): Partial<UiState> {
   try { return JSON.parse(localStorage.getItem(LS) ?? "{}") as Partial<UiState>; } catch { return {}; }
@@ -24,12 +26,13 @@ function readSaved(): Partial<UiState> {
 function defaults(): UiState {
   const saved = readSaved();
   const q = new URLSearchParams(typeof location !== "undefined" ? location.search : "");
-  const prefersDark = typeof matchMedia !== "undefined" && matchMedia("(prefers-color-scheme: dark)").matches;
+  let picked: string | null = null;
+  try { picked = localStorage.getItem(THEME_LS); } catch { /* storage blocked */ }
   const qTheme = q.get("theme");
   const qLang = q.get("lang");
   return {
     lang: qLang === "de" || qLang === "en" ? qLang : saved.lang === "de" ? "de" : "en",
-    theme: qTheme === "dark" || qTheme === "light" ? qTheme : saved.theme ?? (prefersDark ? "dark" : "light"),
+    theme: qTheme === "dark" || qTheme === "light" ? qTheme : picked === "dark" ? "dark" : "light",
     room: q.get("room") === "1" ? true : saved.room ?? false,
     filter: "all",
     channel: "all",
@@ -48,8 +51,9 @@ const listeners = new Set<() => void>();
 export function setUi(patch: Partial<UiState>) {
   state = { ...state, ...patch };
   try {
-    const { lang, theme, room, layers, team, eta } = state;
-    localStorage.setItem(LS, JSON.stringify({ lang, theme, room, layers, team, eta }));
+    const { lang, room, layers, team, eta } = state;
+    localStorage.setItem(LS, JSON.stringify({ lang, room, layers, team, eta }));
+    if (patch.theme) localStorage.setItem(THEME_LS, patch.theme);
   } catch { /* storage blocked: fine */ }
   applyDocument();
   listeners.forEach((l) => l());

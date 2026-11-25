@@ -11,7 +11,7 @@ vi.mock("../src/words-dict-data.js", async (importOriginal) => {
   return { WORD_DICT_TEXT: { 1: real.WORD_DICT_TEXT[1].replace(/\n/g, "\r\n") } };
 });
 
-const { CodecError, decode, encode, render, wordDictAvailable } = await import("../src/index.js");
+const { CodecError, decode, decodeAny, encode, render, wordDictAvailable } = await import("../src/index.js");
 
 const here = dirname(fileURLToPath(import.meta.url));
 const vectors = JSON.parse(readFileSync(join(here, "..", "..", "spec", "vectors", "codec.json"), "utf8"));
@@ -30,6 +30,11 @@ describe("damaged word dictionary copy", () => {
       expect(render(msg, "en")).toContain("word dictionary 1");
       expect(render(msg, "en")).not.toContain(c.text);
     }
+  });
+
+  it("decodes a compact frame with it as unknown", () => {
+    const c = vectors.compact_frames.find((x: any) => x.name === "frame-dict-1");
+    expect(decodeAny(bytes(c.hex))).toEqual({ v: 2, unknown: { words: 1 } });
   });
 
   it("refuses to encode with it", () => {

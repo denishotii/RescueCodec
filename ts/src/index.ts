@@ -1,6 +1,7 @@
 export {
   encode, decode, parse, toProto, fromProto, validate, canonical, detectVersion,
   messageType, effectivePriority, meshtasticPriority, resolveTime, degToE5, e5ToDeg, nodeToJson, nodeFromJson,
+  encodeCompact, decodeCompact, isCompactFrame, COMPACT_FRAME,
 } from "./codec.js";
 export { decodeAny, decodeV1 } from "./v1.js";
 export { packText, unpackText, textDictionary, knownDict, MAX_UNPACKED_BYTES, CURRENT_DICT, PackError } from "./textpack.js";

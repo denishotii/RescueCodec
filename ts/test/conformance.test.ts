@@ -4,8 +4,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
-  CodecError, WordsError, canonical, decode, decodeAny, decodeWords, encode, encodeWords, packText, render, textDictionary,
-  unpackText, wordDictionary,
+  CodecError, WordsError, canonical, decode, decodeAny, decodeCompact, decodeWords, encode, encodeCompact, encodeWords,
+  packText, render, textDictionary, unpackText, wordDictionary,
 } from "../src/index.js";
 import { WORD_DICT_TEXT } from "../src/words-dict-data.js";
 
@@ -122,11 +122,11 @@ describe("compact texts (spec section 3.6)", () => {
 
   it("renders a compact text with an unknown word dictionary as such", () => {
     const msg = decode(bytes(vectors.decode_only.find((c: any) => c.name === "words-unknown-dict").hex));
-    expect(msg).toEqual({ id: 7, unknown: { words: 2 } });
+    expect(msg).toEqual({ id: 7, unknown: { words: 9 } });
     expect(render(msg, "en")).toBe(
-      "Message encoded with a dictionary this app does not have (word dictionary 2), please update the app.",
+      "Message encoded with a dictionary this app does not have (word dictionary 9), please update the app.",
     );
-    expect(render(msg, "de")).toContain("Wörterbuch 2");
+    expect(render(msg, "de")).toContain("Wörterbuch 9");
     expect(render({ unknown: {} }, "en")).toBe("Message of a newer type, please update the app.");
   });
 });
@@ -164,5 +164,95 @@ describe("robustness", () => {
 
   it("rounds half away from zero on the decimal text", () => {
     expect(canonical({ id: 1, pos: { lat: 50.123455, lon: -7.000005 }, found: {} }).pos).toEqual({ lat: 50.12346, lon: -7.00001 });
+  });
+});
+
+describe("compact frames (spec section 3.7)", () => {
+  it.each<any>(vectors.compact_frames)("compact_frames: $name", (c: any) => {
+    if (c.text !== undefined) expect(hex(encodeCompact(c.text, c.dict))).toBe(c.hex);
+    expect(c.hex.length / 2).toBe(c.size);
+    expect(decodeCompact(bytes(c.hex))).toEqual(c.decoded);
+    expect(decodeAny(bytes(c.hex))).toEqual({ v: 2, ...c.decoded });
+    expect(render(c.decoded, "en")).toBe(c.render.en);
+    expect(render(c.decoded, "de")).toBe(c.render.de);
+  });
+
+  it.each<any>(vectors.compact_frames_invalid)("compact_frames_invalid: $name", (c: any) => {
+    const code = (fn: () => unknown) => {
+      try {
+        fn();
+      } catch (e) {
+        expect(e).toBeInstanceOf(CodecError);
+        return (e as CodecError).code;
+      }
+      throw new Error("expected a CodecError, got a result");
+    };
+    if (c.text !== undefined) expect(code(() => encodeCompact(c.text))).toBe(c.error);
+    if (c.hex !== undefined) expect(code(() => decodeAny(bytes(c.hex)))).toBe(c.error);
+  });
+
+  it("bundles word dictionary 2 with the SHA-256 of the spec and 61440 entries", () => {
+    const info = vectors.word_dicts["2"];
+    const data = new TextEncoder().encode(WORD_DICT_TEXT[2]);
+    expect(createHash("sha256").update(data).digest("hex")).toBe(info.sha256);
+    expect(wordDictionary(2).entries.length).toBe(info.entries);
+    expect(data.length).toBe(info.size);
+  });
+
+  it("hello world is 6 bytes", () => {
+    const data = encodeCompact("hello world");
+    expect(data.length).toBe(6);
+    expect(decodeAny(data)).toEqual({ v: 2, text: { text: "hello world", words: 2 } });
+  });
+
+  it("other reserved first bytes stay unsupported", () => {
+    for (const first of [0x00, 0x03, 0x04, 0x05, 0x06, 0x07]) {
+      let caught: unknown = null;
+      try {
+        decodeAny(new Uint8Array([first, 0x02, 0x00, 0x10]));
+      } catch (e) {
+        caught = e;
+      }
+      expect((caught as CodecError).code).toBe("unsupported_version");
+    }
+  });
+
+  it("round-trips random texts exactly", () => {
+    let s = 20261125 >>> 0;
+    const next = () => {
+      s = (s + 0x6d2b79f5) >>> 0;
+      let t = s;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    const pick = <T>(xs: readonly T[]) => xs[Math.floor(next() * xs.length)];
+    const D2 = wordDictionary(2);
+    const parts = [...D2.entries.slice(0, 3000), " ", "  ", "\n", ",", ".", "Ä", "🙂", "X", "42", "Aylin", "-1.2500"];
+    const ranges: [number, number][] = [[0x20, 0x7e], [0x09, 0x0d], [0xa0, 0x7ff], [0x10000, 0x1f64f]];
+    for (let i = 0; i < 1000; i++) {
+      let text = "";
+      if (i % 3 === 0) {
+        const n = 1 + Math.floor(next() * 50);
+        for (let k = 0; k < n; k++) {
+          const [lo, hi] = pick(ranges);
+          text += String.fromCodePoint(lo + Math.floor(next() * (hi - lo + 1)));
+        }
+      } else {
+        const n = 1 + Math.floor(next() * 25);
+        for (let k = 0; k < n; k++) text += pick(parts) + pick(["", " ", " ", " "]);
+        if (next() < 0.3) text = next() < 0.5 ? text.toUpperCase() : text.replace(/\b[a-z]/g, (c) => c.toUpperCase());
+      }
+      if (!text) continue;
+      let data: Uint8Array;
+      try {
+        data = encodeCompact(text);
+      } catch (e) {
+        expect((e as CodecError).code).toBe("too_large");
+        continue;
+      }
+      expect(data.length).toBeLessThanOrEqual(200);
+      expect(decodeCompact(data)).toEqual({ text: { text, words: 2 } });
+    }
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { channelOptions, channelsInUse, matchesChannel, showChannels } from "../src/lib/channels";
+import { channelOptions, channelsInUse, chipFor, matchesChannel, showChannels } from "../src/lib/channels";
 import type { Channel, Health } from "../src/api/types";
 import { t } from "../src/lib/i18n";
 
@@ -51,5 +51,15 @@ describe("channels in use", () => {
     expect(t("en", "direct")).toBe("Direct");
     expect(t("de", "direct")).toBe("Direkt");
     expect(t("de", "allChannels")).toBe("Alle Kanäle");
+  });
+});
+
+describe("channel chip on a card", () => {
+  it("only with more than one channel, and not for the gateway's own channel", () => {
+    expect(chipFor(false, "draeger-srs", "RescueCodec")).toBe(false);
+    expect(chipFor(true, "draeger-srs", "RescueCodec")).toBe(true);
+    expect(chipFor(true, "rescuecodec", "RescueCodec")).toBe(false);
+    expect(chipFor(true, "RescueCodec", null)).toBe(true);
+    expect(chipFor(true, undefined, "RescueCodec")).toBe(false);
   });
 });

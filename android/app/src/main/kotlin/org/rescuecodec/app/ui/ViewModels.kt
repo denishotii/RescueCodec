@@ -566,7 +566,7 @@ data class ReportUi(
     val packed: Boolean = false,
     /** Bytes of a text as a normal Meshtastic text (as typed, when it goes packed), 0 when the message is not a text. */
     val plainBytes: Int = 0,
-    /** How a text goes: [TextMode.FORM_PLAIN], [TextMode.FORM_DEFLATE] or [TextMode.FORM_WORDS] (compact words). */
+    /** How a text goes: [TextMode.FORM_PLAIN], [TextMode.FORM_DEFLATE], [TextMode.FORM_WORDS] or [TextMode.FORM_LEAN] (compact). */
     val textForm: String = TextMode.FORM_PLAIN,
     /** The text is too long for one radio message and will be cut, ending with "…". */
     val textCut: Boolean = false,
@@ -780,6 +780,10 @@ class ReportViewModel(app: Application, private val graph: AppGraph) : AndroidVi
 
     private fun withPosition(message: Map<String, Any?>): Map<String, Any?> {
         if (textOnly || message["pos"] != null) return message
+        // With compact text on, a free text goes without the automatic GPS fix, so it can go as a compact frame
+        // (2 bytes of frame plus 2 per word, spec section 3.7; a position would need the Envelope, 11 bytes more).
+        // Reports keep their position.
+        if (graph.settings.compactText && ReportFields.typeOf(message) == "text") return message
         val f = fix ?: return message
         val out = LinkedHashMap<String, Any?>()
         (message["priority"])?.let { out["priority"] = it }

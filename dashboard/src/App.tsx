@@ -11,7 +11,8 @@ import { Nodes } from "./components/Nodes";
 import { SendPanel } from "./components/SendPanel";
 import { StatsBand } from "./components/StatsBand";
 import { MobileAction } from "./components/MobileAction";
-import { MapPanel } from "./map/MapPanel";
+import { MapPanel, MapUnavailable } from "./map/MapPanel";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import type { Key } from "./lib/i18n";
 
 const TABS: { id: ReturnType<typeof useUi>["tab"]; label: Key; Icon: typeof Rss }[] = [
@@ -36,18 +37,22 @@ function Shell() {
   return (
     <div className="app" data-tab={ui.tab}>
       <a className="skip-link" href="#main-feed">{t("skipToMain")}</a>
-      <MaydayBanner />
-      <Header />
+      {/* every panel sits in its own boundary: one crash never blanks the page */}
+      <ErrorBoundary name="mayday"><MaydayBanner /></ErrorBoundary>
+      <ErrorBoundary name="header"><Header /></ErrorBoundary>
       <Notices />
       <main className="board">
-        <div className="slot slot-actions"><ActionsBoard /></div>
-        <div className="slot slot-map"><MapPanel /></div>
-        <div className="slot slot-feed"><Feed /><SendPanel /></div>
-        {/* phones and tablets get these as tabs; on a wide screen they open from the header (Details) */}
-        <div className="slot slot-nodes"><Nodes /></div>
-        <div className="slot slot-stats"><StatsBand /></div>
+        <div className="slot slot-actions"><ErrorBoundary name="actions"><ActionsBoard /></ErrorBoundary></div>
+        <div className="slot slot-map"><ErrorBoundary name="map" fallback={<MapUnavailable />}><MapPanel /></ErrorBoundary></div>
+        <div className="slot slot-feed">
+          <ErrorBoundary name="feed"><Feed /></ErrorBoundary>
+          <ErrorBoundary name="send"><SendPanel /></ErrorBoundary>
+        </div>
+        {/* phones and tablets get these as tabs; on a wide screen they open from the header menu (Details) */}
+        <div className="slot slot-nodes"><ErrorBoundary name="nodes"><Nodes /></ErrorBoundary></div>
+        <div className="slot slot-stats"><ErrorBoundary name="stats"><StatsBand /></ErrorBoundary></div>
       </main>
-      <MobileAction />
+      <ErrorBoundary name="mobile-action" fallback={null}><MobileAction /></ErrorBoundary>
       <nav className="tabbar" aria-label="Panels">
         {TABS.map(({ id, label, Icon }) => (
           <button key={id} className={ui.tab === id ? "on" : ""} aria-current={ui.tab === id ? "page" : undefined} onClick={() => setUi({ tab: id })}>

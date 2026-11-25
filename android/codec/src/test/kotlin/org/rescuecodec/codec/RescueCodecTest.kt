@@ -149,6 +149,61 @@ class RescueCodecTest {
     }
 
     @Test
+    fun compactFrameCases() {
+        val list = cases("compact_frames")
+        assertTrue(list.size >= 8)
+        for (c in list) {
+            val name = c["name"] as String
+            val text = c["text"] as String?
+            if (text != null) {
+                assertEquals(c["hex"], RescueCodec.encodeCompact(text, (c["dict"] as Number).toInt()).hex(), "$name: encode")
+            }
+            val data = hex(c["hex"] as String)
+            assertSame(c["decoded"], RescueCodec.decodeCompact(data), "$name: decode")
+            assertSame(mapOf("v" to 2) + obj(c["decoded"]), RescueCodec.decodeAny(data), "$name: decodeAny")
+            val render = obj(c["render"])
+            for (lang in listOf("en", "de")) {
+                assertEquals(render[lang], RescueCodec.reconstruct(obj(c["decoded"]), lang), "$name: render [$lang]")
+            }
+        }
+        val invalid = cases("compact_frames_invalid")
+        assertTrue(invalid.size >= 6)
+        for (c in invalid) {
+            val name = c["name"] as String
+            (c["text"] as String?)?.let { text ->
+                val e = assertFailsWith<CodecException>(name) { RescueCodec.encodeCompact(text) }
+                assertEquals(c["error"], e.code, "$name: encode code")
+            }
+            (c["hex"] as String?)?.let { h ->
+                val e = assertFailsWith<CodecException>(name) { RescueCodec.decodeAny(hex(h)) }
+                assertEquals(c["error"], e.code, "$name: decode code")
+            }
+        }
+    }
+
+    @Test
+    fun compactFrameHelloWorldAndRoundTrip() {
+        val d2 = TextWords.dictionary(2)
+        assertEquals(61440, d2.entries.size)
+        val hello = RescueCodec.encodeCompact("hello world")
+        assertEquals(6, hello.size)
+        assertEquals(0, RescueCodec.detectVersion(hello), "an Envelope reader sees a reserved first byte")
+        assertEquals("unsupported_version", assertFailsWith<CodecException> { RescueCodec.decode(hello) }.code)
+        val rnd = kotlin.random.Random(20261125)
+        val parts = d2.entries.take(3000) + listOf(" ", "  ", "\n", ",", ".", "Ä", "🙂", "X", "42", "Aylin", "-1.2500")
+        repeat(2000) {
+            val sb = StringBuilder()
+            repeat(rnd.nextInt(1, 25)) { sb.append(parts[rnd.nextInt(parts.size)]).append(listOf("", " ", " ", " ")[rnd.nextInt(4)]) }
+            var text = sb.toString()
+            if (rnd.nextDouble() < 0.2) text = text.uppercase()
+            if (text.isNotEmpty()) {
+                val data = try { RescueCodec.encodeCompact(text) } catch (e: CodecException) { assertEquals("too_large", e.code); null }
+                if (data != null) assertEquals(text, (RescueCodec.decodeAny(data)["text"] as Map<*, *>)["text"], text)
+            }
+        }
+    }
+
+    @Test
     fun wordDictionaryHashes() {
         @Suppress("UNCHECKED_CAST")
         val dicts = vectors["word_dicts"] as Map<String, Map<String, Any?>>

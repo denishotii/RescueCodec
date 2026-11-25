@@ -17,8 +17,9 @@ import org.rescuecodec.codec.TextWords
  *    packet in the last 24 h); a channel is packed when at least one RescueCodec node and no Meshtastic user (a node
  *    that sent port 1 texts there and no port 256 packet) was heard on it in the last 24 h. Nobody known: normal.
  * 4. Packed only when the packet is at least 3 bytes smaller than the words as a normal text. Else normal text.
- * 5. Compact text (opt-in setting, off by default): on a chat that packs, the word-token form is built too and is sent
- *    when its whole payload is smaller than what rule 4 picked (ties keep rule 4). Spec section 3.6.
+ * 5. Compact text (opt-in setting, off by default): on a chat that packs, every complete form is built (normal text,
+ *    DEFLATE Envelope, word tokens in the Envelope, compact frame 0x02) and the strictly smallest goes out; the normal
+ *    text when it is smaller or equal. Spec sections 2.3, 3.6 and 3.7.
  * 6. A chat that packs takes up to 400 bytes of text; the packet stays at most 200 bytes ([TextFit.fitPacked] cuts the
  *    rest).
  *
@@ -65,6 +66,9 @@ object TextMode {
     const val FORM_DEFLATE = "deflate"
     const val FORM_WORDS = "words"
 
+    /** [Form.form] of a compact frame (first byte 0x02, spec section 3.7): the word stream without an Envelope. */
+    const val FORM_LEAN = "lean"
+
     /**
      * The chosen form of a text. [payload] goes on the air (port 256 when [packed], else port 1); [message] is the
      * canonical message of what goes out. [plainSize] = bytes as a normal text (cut to 200 like [TextFit.fitPlain]),
@@ -84,6 +88,8 @@ object TextMode {
         val wordsSize: Int? = null,
         val text: String = "",
         val cut: Boolean = false,
+        /** Bytes as a compact frame (0x02), null when not tried, over 200 bytes or with a position or time. */
+        val leanSize: Int? = null,
     )
 
     /** [rest] (id, pos, time, priority) with the text [body], encoded; null when it does not fit or is not valid. */
@@ -98,12 +104,26 @@ object TextMode {
     private fun wordsBody(words: String) = linkedMapOf<String, Any?>("text" to words, "words" to TextWords.CURRENT_DICT)
 
     /**
+     * The compact frame of a text, or null: it has no id, position or time, so a message with `pos` or `time` (they
+     * would be lost) does not get one, nor a text over 200 bytes.
+     */
+    private fun lean(rest: Map<String, Any?>, words: String): ByteArray? {
+        if (rest["pos"] != null || rest["time"] != null) return null
+        return try {
+            RescueCodec.encodeCompact(words, TextWords.CURRENT_DICT)
+        } catch (e: CodecException) {
+            null
+        }
+    }
+
+    /**
      * Builds the forms of a text message and picks one. The id, pos, time and priority of [message] go only into the
      * packed forms. Never throws for a text message. Same as choose_form in rescuecodec/engine/textmode.py.
      *
-     * Existing rule ([compact] off): DEFLATE when it fits and saves at least 3 bytes against the normal text, else the
-     * normal text. With [compact] (the chat must pack, [wantPacked]), the word-token form is built too and replaces
-     * the existing choice only when its whole payload is smaller, or when the existing choice would cut the text.
+     * [compact] off: DEFLATE when it fits and saves at least 3 bytes against the normal text, else the normal text.
+     * [compact] on (the chat must pack, [wantPacked]): the complete payloads of the compact frame (0x02, no id), the
+     * word tokens in the Envelope and DEFLATE are built, and the strictly smallest goes out (ties: compact frame, then
+     * words, then DEFLATE); the normal text when it is smaller or equal, unless it would cut the text.
      * A chat that packs takes up to 400 bytes of text; what does not fit one packet is shortened ([TextFit.fitPacked]).
      */
     fun chooseForm(message: Map<String, Any?>, wantPacked: Boolean, reason: String = "", compact: Boolean = false): Form {
@@ -115,7 +135,7 @@ object TextMode {
             val fits = { w: String ->
                 w.toByteArray(Charsets.UTF_8).size <= Codes.MAX_ENCODE_BYTES ||
                     payload(rest, deflateBody(w)) != null ||
-                    (compact && payload(rest, wordsBody(w)) != null)
+                    (compact && (lean(rest, w) != null || payload(rest, wordsBody(w)) != null))
             }
             val fitted = TextFit.fitPacked(words, fits)
             cut = fitted != words
@@ -128,20 +148,46 @@ object TextMode {
         plainMsg["text"] = linkedMapOf<String, Any?>("text" to plain)
         val packedPayload = payload(rest, deflateBody(words))
         val packedSize = packedPayload?.size
-        val wordsPayload = if (compact && wantPacked) payload(rest, wordsBody(words)) else null
-        val wordsSize = wordsPayload?.size
-        val existing = if (wantPacked && packedPayload != null && packedPayload.size <= plainBytes.size - MIN_SAVING_BYTES) {
-            Form(true, packedPayload, RescueCodec.decode(packedPayload), plainBytes.size, packedSize, reason, FORM_DEFLATE, wordsSize, words, cut)
-        } else {
-            val why = if (!wantPacked) reason else if (packedPayload == null) "too_large" else "no_saving"
-            Form(false, plainBytes, plainMsg, plainBytes.size, packedSize, why, FORM_PLAIN, wordsSize, plain, cut || plain != words)
+        if (compact && wantPacked) return smallest(message, rest, words, plain, plainMsg, packedPayload, reason, cut)
+        if (wantPacked && packedPayload != null && packedPayload.size <= plainBytes.size - MIN_SAVING_BYTES) {
+            return Form(true, packedPayload, RescueCodec.decode(packedPayload), plainBytes.size, packedSize, reason, FORM_DEFLATE, null, words, cut)
         }
-        if (wordsPayload != null) {
-            val lossy = existing.form == FORM_PLAIN && plain != words
-            if (wordsPayload.size < existing.payload.size || lossy) {
-                return Form(true, wordsPayload, RescueCodec.decode(wordsPayload), plainBytes.size, packedSize, reason, FORM_WORDS, wordsSize, words, cut)
+        val why = if (!wantPacked) reason else if (packedPayload == null) "too_large" else "no_saving"
+        return Form(false, plainBytes, plainMsg, plainBytes.size, packedSize, why, FORM_PLAIN, null, plain, cut || plain != words)
+    }
+
+    /** Compact on, a chat that packs: the strictly smallest complete payload; the normal text on a tie. */
+    private fun smallest(
+        message: Map<String, Any?>,
+        rest: Map<String, Any?>,
+        words: String,
+        plain: String,
+        plainMsg: Map<String, Any?>,
+        packedPayload: ByteArray?,
+        reason: String,
+        cut: Boolean,
+    ): Form {
+        val plainBytes = plain.toByteArray(Charsets.UTF_8)
+        val leanPayload = lean(rest, words)
+        val wordsPayload = payload(rest, wordsBody(words))
+        // In tie order: compact frame, words in the Envelope, DEFLATE.
+        val candidates = listOf(FORM_LEAN to leanPayload, FORM_WORDS to wordsPayload, FORM_DEFLATE to packedPayload)
+        var best: Pair<String, ByteArray>? = null
+        for ((name, data) in candidates) if (data != null && (best == null || data.size < best.second.size)) best = name to data
+        val lossy = plain != words // the normal text would be cut, a packed form keeps it whole
+        if (best != null && (best.second.size < plainBytes.size || lossy)) {
+            val (name, data) = best
+            val msg: Map<String, Any?> = if (name == FORM_LEAN) {
+                LinkedHashMap<String, Any?>().apply {
+                    message["priority"]?.let { put("priority", it) } // not on the air: the radio's packet priority
+                    put("text", wordsBody(words))
+                }
+            } else {
+                RescueCodec.decode(data)
             }
+            return Form(true, data, msg, plainBytes.size, packedPayload?.size, reason, name, wordsPayload?.size, words, cut, leanPayload?.size)
         }
-        return existing
+        val why = if (best == null) "too_large" else "no_saving"
+        return Form(false, plainBytes, plainMsg, plainBytes.size, packedPayload?.size, why, FORM_PLAIN, wordsPayload?.size, plain, cut || plain != words, leanPayload?.size)
     }
 }

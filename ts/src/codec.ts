@@ -6,7 +6,9 @@ import * as C from "./codes.js";
 import { CodecError, type ErrorCode } from "./errors.js";
 import { EnvelopeSchema, type Envelope } from "./gen/rescuecodec/v2/rescuecodec_pb.js";
 import { MAX_UNPACKED_BYTES, PackError, knownDict, packText, unpackText } from "./textpack.js";
-import { MAX_WORDS_TEXT_BYTES, WORD_DICTS, WordsError, decodeWords, encodeWords, wordDictAvailable } from "./textwords.js";
+import {
+  CURRENT_WORD_DICT, MAX_WORDS_TEXT_BYTES, WORD_DICTS, WordsError, decodeWords, encodeWords, wordDictAvailable,
+} from "./textwords.js";
 import type { RescueMessage } from "./types.js";
 
 type Obj = Record<string, unknown>;
@@ -668,4 +670,62 @@ export function resolveTime(hhmm: string, now: Date = new Date()): Date {
 /** Normalise a JSON message (flag order, rounding) by encoding and decoding it. */
 export function canonical(msg: RescueMessage): RescueMessage {
   return decode(encode(msg));
+}
+
+// ------------------------------------------------------------------ compact frame (spec section 3.7)
+
+/** First byte of a compact frame: 0x02, the word dictionary version, the word stream (3.6). No Envelope, no id. */
+export const COMPACT_FRAME = 0x02;
+
+/** True when the payload is a compact frame (first byte 0x02), not an Envelope. */
+export function isCompactFrame(data: Uint8Array): boolean {
+  return data.length > 0 && data[0] === COMPACT_FRAME;
+}
+
+/**
+ * Text -> compact frame: 0x02, 1 byte word dictionary version, the word stream. No id, no position, no time.
+ * Throws CodecError (missing_field for an empty text, invalid_value for an unknown dictionary, too_large).
+ */
+export function encodeCompact(text: string, version: number = CURRENT_WORD_DICT): Uint8Array {
+  if (typeof text !== "string") throw err("invalid_value", "must be a string", "text.text");
+  if (!text) throw err("missing_field", "a compact frame needs a text", "text.text");
+  if (!Number.isInteger(version) || version < 1 || version > 255 || !wordDictAvailable(version)) {
+    throw err("invalid_value", `unknown word dictionary, known: [${Object.keys(WORD_DICTS).join(", ")}]`, "text.words");
+  }
+  let stream: Uint8Array;
+  try {
+    stream = encodeWords(text, version);
+  } catch (e) {
+    if (e instanceof WordsError) throw err(e.code, e.message, "text.text");
+    throw e;
+  }
+  const data = new Uint8Array(2 + stream.length);
+  data[0] = COMPACT_FRAME;
+  data[1] = version;
+  data.set(stream, 2);
+  if (data.length > C.MAX_ENCODE_BYTES) {
+    throw err("too_large", `${data.length} bytes, the limit is ${C.MAX_ENCODE_BYTES}`);
+  }
+  return data;
+}
+
+/**
+ * Compact frame -> canonical JSON `{text: {text, words: n}}` (no id). A dictionary this library does not have (or
+ * whose copy fails the SHA-256 check) gives `{unknown: {words: n}}`. Throws CodecError.
+ */
+export function decodeCompact(data: Uint8Array): RescueMessage {
+  if (data.length === 0 || data[0] !== COMPACT_FRAME) throw err("unsupported_version", "not a compact frame");
+  if (data.length > C.MAX_DECODE_BYTES) {
+    throw err("too_large", `${data.length} bytes, the limit is ${C.MAX_DECODE_BYTES}`);
+  }
+  if (data.length < 2) throw err("malformed", "the compact frame is cut off (no dictionary version)", "text.words_dict");
+  const version = data[1];
+  if (version === 0) throw err("malformed", "word dictionary 0 does not exist", "text.words_dict");
+  if (!wordDictAvailable(version)) return { unknown: { words: version } };
+  try {
+    return { text: { text: decodeWords(data.subarray(2), version), words: version } };
+  } catch (e) {
+    if (e instanceof WordsError) throw err(e.code, e.message, "text.words");
+    throw err("malformed", e instanceof Error ? e.message : String(e), "text.words");
+  }
 }

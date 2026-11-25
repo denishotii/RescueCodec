@@ -4,7 +4,7 @@ import unittest
 
 from gateway_fixtures import gateway, wait_for
 from rescuecodec.gateway.radio.base import PORT_PRIVATE_APP, PORT_TEXT_MESSAGE
-from rescuecodec.v2 import decode, encode
+from rescuecodec.v2 import decode, decode_any, encode, encode_compact
 from rescuecodec.v2 import rescuecodec_pb2 as pb
 from rescuecodec.v2.textwords import encode_words
 
@@ -31,16 +31,29 @@ class Send(unittest.TestCase):
             record = gw.post("/v2/text", text=HUT).json()
             self.assertEqual((record["codec"]["form"], record["message"]["text"]), ("deflate", {"text": HUT, "dict": 1}))
 
-    def test_on_sends_words_and_the_bytes_on_air_decode_exactly(self):
+    def test_on_sends_a_compact_frame_and_the_bytes_on_air_decode_exactly(self):
         with gateway(compact_text=True) as gw:
             packing(gw)
             record = gw.post("/v2/text", text=HUT).json()
-            self.assertEqual(record["codec"]["form"], "words")
-            self.assertEqual(record["message"]["text"], {"text": HUT, "words": 1})
+            self.assertEqual(record["codec"]["form"], "lean")
+            self.assertEqual(record["message"]["text"], {"text": HUT, "words": 2})
+            self.assertIsNone(record["key"])                          # no id: the packet id finds repeats
             sent = wait_for(lambda: gw.radio.sent)[0]
             self.assertEqual(sent["port"], PORT_PRIVATE_APP)
-            self.assertEqual(decode(sent["payload"])["text"]["text"], HUT)
-            self.assertLess(len(sent["payload"]), len(HUT.encode()))
+            self.assertEqual(sent["payload"][:2], b"\x02\x02")
+            self.assertEqual(decode_any(sent["payload"])["text"]["text"], HUT)
+            self.assertEqual(len(sent["payload"]), record["codec"]["size"])
+            self.assertLess(len(sent["payload"]), len(HUT.encode()) // 2)
+
+    def test_hello_world_is_six_bytes_on_air(self):
+        with gateway(compact_text=True) as gw:
+            packing(gw)
+            record = gw.post("/v2/text", text="hello world").json()
+            self.assertEqual((record["codec"]["form"], record["codec"]["size"]), ("lean", 6))
+            sent = wait_for(lambda: gw.radio.sent)[0]
+            self.assertEqual((sent["port"], len(sent["payload"])), (PORT_PRIVATE_APP, 6))
+            record = gw.post("/v2/text", text="Ok").json()           # 2 bytes as a normal text: smaller, stays plain
+            self.assertEqual(record["codec"]["version"], 0)
 
     def test_on_never_goes_compact_where_the_chat_does_not_pack(self):
         with gateway(compact_text=True) as gw:
@@ -75,7 +88,7 @@ class Send(unittest.TestCase):
         with gateway(compact_text=True) as gw:
             packing(gw)
             record = gw.post("/v2/messages", message={"pos": POS, "text": {"text": HUT}}).json()
-            self.assertEqual(record["codec"]["form"], "words")
+            self.assertEqual(record["codec"]["form"], "words")          # a position keeps the Envelope
             env = pb.Envelope()
             env.ParseFromString(bytes.fromhex(record["codec"]["hex"]))
             self.assertEqual((env.pos.lat, env.pos.lon), (5069212, 721345))
@@ -88,7 +101,7 @@ class Send(unittest.TestCase):
             packing(gw)
             body = gw.post("/v2/extract", text=HUT, channel="RescueCodec").json()
             self.assertEqual((body["send_as"], body["max_text_bytes"], body["form"], body["cut"]),
-                             ("compressed", 400, "words", False))
+                             ("compressed", 400, "lean", False))
             record = gw.post("/v2/text", text=HUT).json()
             self.assertEqual(body["coded_bytes"], record["codec"]["size"])
             packing(gw, "normal")
@@ -110,15 +123,47 @@ class Receive(unittest.TestCase):
 
     def test_an_unknown_word_dictionary_is_visible(self):
         env = pb.Envelope(id=6)
-        env.text.words = encode_words("is safe")
-        env.text.words_dict = 2
+        env.text.words = encode_words("is safe", 1)
+        env.text.words_dict = 9
         with gateway() as gw:
             gw.radio.inject("!0000e002", env.SerializeToString())
             item = wait_for(lambda: gw.client.get("/v2/messages").json()["items"])[0]
             self.assertEqual(item["type"], "unknown")
-            self.assertEqual(item["message"]["unknown"], {"words": 2})
+            self.assertEqual(item["message"]["unknown"], {"words": 9})
             self.assertIn("dictionary this app does not have", item["text"]["en"])
             self.assertNotIn("safe", item["text"]["en"])
+
+    def test_a_compact_frame_is_received_and_repeats_go_by_packet_id(self):
+        text = "We found Aylin Demir.\nMeet at 50.6900, -1.2500 🙂"
+        data = encode_compact(text)
+        with gateway() as gw:                                         # receiving works with the setting off
+            gw.radio.inject("!0000e002", data, channel=0, packet_id=77)
+            gw.radio.inject("!0000e002", data, channel=0, packet_id=77)       # the mesh delivered it twice
+            gw.radio.inject("!0000e002", data, channel=0, packet_id=78)       # the same words sent again
+            items = wait_for(lambda: len(gw.client.get("/v2/messages").json()["items"]) >= 2
+                             and gw.client.get("/v2/messages").json()["items"])
+            self.assertEqual(len(items), 2)
+            item = items[0]
+            self.assertEqual((item["type"], item["codec"]["form"], item["codec"]["size"]), ("text", "lean", len(data)))
+            self.assertEqual(item["message"]["text"], {"text": text, "words": 2})
+            self.assertEqual(item["text"]["en"], f"Message: {text}.")
+            self.assertEqual(gw.service._counters["duplicates"], 1)
+
+    def test_a_compact_frame_with_an_unknown_dictionary_is_visible(self):
+        with gateway() as gw:
+            gw.radio.inject("!0000e002", bytes.fromhex("020900100011"), channel=0)
+            item = wait_for(lambda: gw.client.get("/v2/messages").json()["items"])[0]
+            self.assertEqual((item["type"], item["message"]["unknown"]), ("unknown", {"words": 9}))
+            self.assertIn("dictionary this app does not have", item["text"]["en"])
+
+    def test_a_truncated_compact_frame_is_rejected(self):
+        data = encode_compact("We found Aylin Demir")
+        with gateway() as gw:
+            gw.radio.inject("!0000e002", data[:-3], channel=0)
+            gw.hear({"id": 8, "text": {"text": "after"}})
+            items = wait_for(lambda: gw.client.get("/v2/messages").json()["items"])
+            self.assertEqual([i["message"]["text"]["text"] for i in items], ["after"])
+            self.assertEqual(gw.service._counters["rejected"], 1)
 
     def test_a_truncated_compact_packet_is_rejected(self):
         data = encode({"id": 7, "text": {"text": "We found Aylin Demir", "words": 1}})

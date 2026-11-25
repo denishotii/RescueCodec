@@ -73,12 +73,14 @@ object RescueCodec {
     fun decodeToJson(bytes: ByteArray): String = Json.stringify(decode(bytes))
 
     /**
-     * Decodes a packet of any version. First byte 0x01 is a v1 packet (result has `"v": 1`), other
-     * reserved first bytes are rejected with `unsupported_version`, anything else is v2 (`"v": 2`).
+     * Decodes a packet of any version. First byte 0x01 is a v1 packet (result has `"v": 1`), 0x02 a compact frame
+     * (spec section 3.7, `"v": 2`, a text without id), other reserved first bytes are rejected with
+     * `unsupported_version`, anything else is a v2 Envelope (`"v": 2`).
      */
     fun decodeAny(bytes: ByteArray): Map<String, Any?> {
         if (bytes.isEmpty()) throw err("empty", "empty payload")
         if (detectVersion(bytes) == 1) return V1.decode(bytes)
+        if (isCompactFrame(bytes)) return LinkedHashMap<String, Any?>().apply { put("v", 2); putAll(decodeCompact(bytes)) }
         val out = LinkedHashMap<String, Any?>()
         out["v"] = 2
         out.putAll(decode(bytes))
@@ -96,6 +98,53 @@ object RescueCodec {
     /** Same as above for a [Locale]. */
     fun reconstruct(decoded: Map<String, Any?>, locale: Locale): String =
         Renderer.render(decoded, locale.language)
+
+    /** First byte of a compact frame (spec section 3.7): 0x02, the word dictionary version, the word stream (3.6). */
+    const val COMPACT_FRAME: Int = 0x02
+
+    /** True when the payload is a compact frame (first byte 0x02), not an Envelope. */
+    fun isCompactFrame(bytes: ByteArray): Boolean = bytes.isNotEmpty() && (bytes[0].toInt() and 0xFF) == COMPACT_FRAME
+
+    /**
+     * Text to compact frame: 0x02, 1 byte word dictionary version, the word stream. No id, no position, no time.
+     * Throws `missing_field` for an empty text, `invalid_value` for an unknown dictionary, `too_large` over 200 bytes.
+     */
+    fun encodeCompact(text: String, version: Int = TextWords.CURRENT_DICT): ByteArray {
+        if (text.isEmpty()) throw err("missing_field", "a compact frame needs a text", "text.text")
+        if (version !in 1..255 || !TextWords.available(version)) {
+            throw err("invalid_value", "unknown word dictionary, known: ${TextWords.DICTS.keys.sorted()}", "text.words")
+        }
+        val stream = try {
+            TextWords.encode(text, version)
+        } catch (e: CodecException) {
+            throw CodecException(e.code, e.message ?: e.code, "text.text")
+        }
+        val data = ByteArray(stream.size + 2)
+        data[0] = COMPACT_FRAME.toByte()
+        data[1] = version.toByte()
+        System.arraycopy(stream, 0, data, 2, stream.size)
+        if (data.size > Codes.MAX_ENCODE_BYTES) {
+            throw err("too_large", "${data.size} bytes, the limit is ${Codes.MAX_ENCODE_BYTES}")
+        }
+        return data
+    }
+
+    /**
+     * Compact frame to canonical JSON `{"text": {"text": ..., "words": n}}` (no id). A dictionary this library does
+     * not have (or whose copy fails the SHA-256 check) gives `{"unknown": {"words": n}}`. Throws [CodecException].
+     */
+    fun decodeCompact(bytes: ByteArray): Map<String, Any?> {
+        if (!isCompactFrame(bytes)) throw err("unsupported_version", "not a compact frame")
+        if (bytes.size > Codes.MAX_DECODE_BYTES) {
+            throw err("too_large", "${bytes.size} bytes, the limit is ${Codes.MAX_DECODE_BYTES}")
+        }
+        if (bytes.size < 2) throw err("malformed", "the compact frame is cut off (no dictionary version)", "text.words_dict")
+        val version = bytes[1].toInt() and 0xFF
+        if (version == 0) throw err("malformed", "word dictionary 0 does not exist", "text.words_dict")
+        if (!TextWords.available(version)) return linkedMapOf("unknown" to linkedMapOf<String, Any?>("words" to version))
+        val text = TextWords.decode(bytes.copyOfRange(2, bytes.size), version)
+        return linkedMapOf("text" to linkedMapOf<String, Any?>("text" to text, "words" to version))
+    }
 
     /** 1 for a v1 packet (first byte 0x01), 2 for v2, 0 for reserved versions or empty input. */
     fun detectVersion(bytes: ByteArray): Int {

@@ -5,8 +5,8 @@ import org.rescuecodec.app.data.MessageEntity
 
 /**
  * Normal Meshtastic texts (port 1, `TEXT_MESSAGE_APP`), as the official app and radio screens send and show them
- * (spec section 2.1). They are stored as normal `text` rows, marked with [SOURCE] in [MessageEntity.source], so a
- * screen can show a small "via Meshtastic" hint with [isPlain].
+ * (spec section 2.1). They are stored as normal `text` rows, marked with [SOURCE] in [MessageEntity.source]. A plain
+ * text shows no tag (users read "via Meshtastic" as "sent from the Meshtastic app"); a packed one shows [tagOf].
  */
 object MeshText {
     /** [MessageEntity.source] of a plain Meshtastic text, sent or received. No schema change needed. */
@@ -35,6 +35,24 @@ object MeshText {
      * stored JSON keeps the decoded words and `"words": 1`.
      */
     fun compactDict(row: MessageEntity): Int? = (textKey(row, "words") as? Number)?.toInt()
+
+    /** True for a compact frame (first byte 0x02, spec section 3.7): the word stream without an Envelope or id. */
+    fun isCompactFrame(row: MessageEntity): Boolean =
+        !isPlain(row) && row.bytes.isNotEmpty() && (row.bytes[0].toInt() and 0xFF) == org.rescuecodec.codec.RescueCodec.COMPACT_FRAME
+
+    /**
+     * The small tag of a text that went packed for RescueCodec: [TAG_COMPACT] (word tokens, in the Envelope or as a
+     * compact frame) or [TAG_PACKED] (DEFLATE); null for a plain Meshtastic text and for reports (they get no tag).
+     */
+    fun tagOf(row: MessageEntity): String? = when {
+        isPlain(row) || row.type != "text" -> null
+        compactDict(row) != null -> TAG_COMPACT
+        isPacked(row) -> TAG_PACKED
+        else -> null
+    }
+
+    const val TAG_COMPACT = "compact"
+    const val TAG_PACKED = "packed"
 
     private fun textKey(row: MessageEntity, key: String): Any? {
         if (isPlain(row) || row.type != "text") return null

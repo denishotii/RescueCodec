@@ -3,10 +3,10 @@ import { ChevronRight, MapPin } from "lucide-react";
 import type { MeshNode, Task } from "../api/types";
 import { useChannels, useData, useNow, useT } from "../state/hooks";
 import { focusOn, useUi } from "../state/ui";
-import { isActiveMayday, nodeLabel, relTime, sortTasks, typeName } from "../lib/format";
+import { cardText, clock, isActiveMayday, nodeLabel, relTime, sortTasks, typeName } from "../lib/format";
 import { utmLabel } from "../lib/geo";
 import { matchesChannel } from "../lib/channels";
-import { ChannelChip, Panel, PriorityChip, StateChip, TypeTile } from "./bits";
+import { ChannelChip, Panel, PriorityChip, StateChip, TYPE_ICON } from "./bits";
 import { AckControl } from "./AckControl";
 
 function lastAck(task: Task, status: "accepted" | "done" | "declined") {
@@ -30,24 +30,23 @@ export function TaskCard({ task, chips = false }: { task: Task; chips?: boolean 
   const pos = task.pos;
   const isMayday = task.type === "mayday";
   // the words already say what it is ("Hazard: ...", "Person found: ..."), so the top line says who and when
+  const Icon = TYPE_ICON[task.type];
   const where = pos ? (
     <button className="map-pin task-pin" onClick={() => focusOn(task.message_seq, task.key)} title={`${t("showOnMap")} · ${utmLabel(pos.lat, pos.lon)}`} aria-label={t("showOnMap")}>
-      <MapPin size={18} aria-hidden="true" />
+      <MapPin size={16} aria-hidden="true" />
     </button>
   ) : null;
 
   return (
     <li className={`task task-${task.state} ${isMayday ? "task-mayday" : ""} prio-card-${task.priority}`}>
       <div className="task-top">
-        <span title={typeName(lang, task.type)}><TypeTile type={task.type} size={18} /></span>
-        <div className="task-id">
-          <span className="task-from">{nodeLabel(task.from, nodes)}</span>
-          <PriorityChip priority={task.priority} />
-          {chips && <ChannelChip channel={task.channel} />}
-        </div>
-        <span className="task-age num" title={task.created}>{relTime(task.created, now, lang)}</span>
+        <span className={`report-icon type-${task.type}`} title={typeName(lang, task.type)}><Icon size={14} strokeWidth={2.2} aria-label={typeName(lang, task.type)} /></span>
+        <span className="task-from">{nodeLabel(task.from, nodes)}</span>
+        <span className="task-age num" title={relTime(task.created, now, lang)}>{clock(task.created, false)}</span>
+        <PriorityChip priority={task.priority} />
+        {chips && <ChannelChip channel={task.channel} />}
       </div>
-      <p className="task-text">{task.text[lang]}</p>
+      <p className="task-text">{cardText(task.text[lang], task.type, lang, nodes)}</p>
       {task.state === "accepted" && acc && (
         <p className="task-status">
           <StateChip state="accepted">{t("acceptedBy")} {who(acc, nodes)}</StateChip>
@@ -70,7 +69,7 @@ export function TaskCard({ task, chips = false }: { task: Task; chips?: boolean 
 
 export function ActionsBoard() {
   const { tasks } = useData();
-  const { pick, chips } = useChannels();
+  const { pick, chipOn } = useChannels();
   const t = useT();
   // Open is what needs a decision, so it is always shown; Accepted and Done fold into one line each
   const [shown, setShown] = useState({ accepted: false, done: false });
@@ -109,7 +108,7 @@ export function ActionsBoard() {
         <section id="lane-open" className={`lane lane-open ${groups.open.length ? "" : "lane-empty"}`} aria-label={t("open")}>
           <h3 className="lane-h state-open"><span>{t("open")}</span><span className="num">{groups.open.length}</span></h3>
           {groups.open.length
-            ? <ul className="task-list lane-body">{groups.open.map((x) => <TaskCard key={x.key} task={x} chips={chips} />)}</ul>
+            ? <ul className="task-list lane-body">{groups.open.map((x) => <TaskCard key={x.key} task={x} chips={chipOn(x.channel?.name)} />)}</ul>
             : <p className="empty">{t("nothingOpen")}</p>}
         </section>
         {folded.map((l) => {
@@ -121,7 +120,7 @@ export function ActionsBoard() {
                 <span>{l.label} <span className="num">{l.items.length}</span></span>
                 <ChevronRight className="chev" size={18} aria-hidden="true" />
               </button>
-              {open && <ul className="task-list lane-body">{l.items.map((x) => <TaskCard key={x.key} task={x} chips={chips} />)}</ul>}
+              {open && <ul className="task-list lane-body">{l.items.map((x) => <TaskCard key={x.key} task={x} chips={chipOn(x.channel?.name)} />)}</ul>}
             </section>
           );
         })}

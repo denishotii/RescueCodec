@@ -143,6 +143,9 @@ describe("compact texts and the 400-byte limit on a chat that packs", () => {
     expect(previewView("Hi, are you still at the station?", WORDS, true, "de")).toEqual({
       report: false, head: "Kompakte Wörter", bytes: 58, textBytes: 151, chips: [],
     });
+    expect(previewView("hello world", { ...WORDS, form: "lean", coded_bytes: 6, text_bytes: 11 }, false, "en")).toEqual({
+      report: false, head: "Compact words", bytes: 6, textBytes: 11, chips: [],
+    });
     expect(previewView("Hi", { ...WORDS, form: "deflate" }, false, "en").head).toBe("");
     expect(previewView("Hi", { ...WORDS, form: "plain", coded_bytes: 151 }, false, "en")).toEqual({
       report: false, head: "", bytes: 151, textBytes: null, chips: [],

@@ -288,6 +288,10 @@
     <string name="text_mode_menu">Textmodus</string>
     <string name="details_packed">Komprimierter Text · lesbar in RescueCodec-Apps</string>
     <string name="details_words">Kompakte Wörter, Wörterbuch %1$d</string>
+    <string name="tag_compact">kompakt · %1$d B</string>
+    <string name="tag_packed">gepackt · %1$d B</string>
+    <string name="details_frame">Kompakter Rahmen (ohne Umschlag), Wörterbuch %1$d</string>
+    <string name="details_plain">Normale Meshtastic-Nachricht · in jeder App lesbar</string>
     <string name="set_battery">Akku-Einstellungen</string>
     <string name="set_about">Über</string>
     <string name="set_version">Version</string>
@@ -391,7 +395,6 @@
     <string name="chat_unread">%1$d ungelesen</string>
     <string name="chat_team_pinned">Team-Kanal</string>
     <string name="chat_open_list">Alle Chats</string>
-    <string name="via_meshtastic">über Meshtastic</string>
     <string name="task_channel">Kanal %1$s</string>
     <string name="sos_team_channel">SOS geht an den Team-Kanal.</string>
     <string name="join_plan_add">Fügt „%1$s“ als Kanal %2$d hinzu.</string>

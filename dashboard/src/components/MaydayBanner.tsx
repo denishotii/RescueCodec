@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { MapPin, Siren } from "lucide-react";
 import { useData, useNow, useT } from "../state/hooks";
 import { focusOn, useUi } from "../state/ui";
-import { isActiveMayday, nodeLabel, relTime, sortTasks } from "../lib/format";
+import { cardText, isActiveMayday, nodeLabel, relTime, sortTasks } from "../lib/format";
 import { utmLabel } from "../lib/geo";
 import { AckControl } from "./AckControl";
 
@@ -33,7 +33,7 @@ export function MaydayBanner() {
               <span className="mayday-word">{t("mayday")}</span>
             </div>
             <div className="mayday-body">
-              <p className="mayday-text">{task.text[lang]}</p>
+              <p className="mayday-text">{cardText(task.text[lang], task.type, lang, nodes)}</p>
               <p className="mayday-meta">
                 <span>{t("maydayFrom")} <b>{nodeLabel(task.from, nodes)}</b></span>
                 {persons ? <span className="num">{persons} {persons === 1 ? t("maydayPerson") : t("maydayPersons")}</span> : null}

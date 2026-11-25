@@ -5,7 +5,7 @@
 //   decodeWords(data, 1)                  // "We found Aylin Demir", byte for byte
 //
 // The stream is a list of 16-bit big-endian units:
-//   0x0000..0xEFFF  dictionary entry (line number - 1 of spec/vocab/words-dict-v1.txt)
+//   0x0000..0xEFFF  dictionary entry (line number - 1 of spec/vocab/words-dict-v<N>.txt)
 //   0xF001          CAP    next entry with its first letter a-z written A-Z
 //   0xF002          UPPER  next entry with every letter a-z written A-Z
 //   0xF003          GLUE   no space before the next entry
@@ -21,9 +21,10 @@ export const MAX_WORDS_TEXT_BYTES = 1024;
 /** Word dictionary versions: number -> file in spec/vocab and the SHA-256 of its bytes (from the spec). */
 export const WORD_DICTS: Readonly<Record<number, { file: string; sha256: string }>> = {
   1: { file: "words-dict-v1.txt", sha256: "ffe93afb4623fcd364479169281ca745cc263317a4f83ce27f77d8d37b26a0d8" },
+  2: { file: "words-dict-v2.txt", sha256: "c88c6b6bd08821b150a248c41f10b99c71ee5f34ab40d6840685738eb8f48dee" },
 };
-/** The word dictionary new texts are encoded with. */
-export const CURRENT_WORD_DICT = 1;
+/** The word dictionary new texts are encoded with (2: 61,440 entries; 1 stays readable forever). */
+export const CURRENT_WORD_DICT = 2;
 
 export const CAP = 0xf001;
 export const UPPER = 0xf002;

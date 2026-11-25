@@ -106,7 +106,8 @@ export const inputCap = (limit: number, current: string) => Math.max(limit, byte
 export interface PreviewView {
   report: boolean;
   /**
-   * "Person found", "Request", ... from the readable line; "Compact words" for a text sent as word tokens;
+   * "Person found", "Request", ... from the readable line; "Compact words" for a text sent as word tokens (in the
+   * Envelope or as a compact frame);
    * "" for any other text (the UI says "Text").
    */
   head: string;
@@ -125,7 +126,7 @@ export const headOf = (line: string) => line.replace(/^\[[^\]]*\]\s*/, "").split
  */
 export function previewView(text: string, preview: ExtractResult | null, plain: boolean, lang: Lang): PreviewView {
   const words = text.trim();
-  if (preview?.type === "text" && preview.form === "words") {
+  if (preview?.type === "text" && (preview.form === "words" || preview.form === "lean")) {
     // A text goes to /v2/text either way, so "plain text" ticked changes nothing: the gateway picked word tokens.
     const textBytes = preview.text_bytes > preview.coded_bytes ? preview.text_bytes : null;
     return { report: false, head: t(lang, "compactWords"), bytes: preview.coded_bytes, textBytes, chips: [] };

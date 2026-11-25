@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { MapPin } from "lucide-react";
+import { Check, CheckCheck, CircleAlert, Clock, MapPin } from "lucide-react";
 import type { MessageRecord } from "../api/types";
 import { useChannels, useData, useT } from "../state/hooks";
 import { focusOn, setUi, useUi, type Filter } from "../state/ui";
-import { bytesLabel, clock, isNoRelay, nodeLabel, typeName } from "../lib/format";
+import { bytesLabel, cardText, clock, codecForm, isNoRelay, nodeLabel, typeName } from "../lib/format";
 import { utmLabel } from "../lib/geo";
 import { matchesChannel } from "../lib/channels";
 import { ChannelChip, Panel, PriorityChip, TYPE_ICON } from "./bits";
@@ -25,7 +25,11 @@ export const STATUS_KEY: Record<MessageRecord["status"], Key> = {
   received: "statusReceived", queued: "statusQueued", sent: "statusSent", delivered: "statusDelivered", failed: "statusFailed", dry_run: "statusQueued",
 };
 
-/** One report: a single meta line (who, where, when, size) and the words, big enough to read across the room. */
+const STATUS_ICON: Record<MessageRecord["status"] | "norelay", typeof Check | null> = {
+  received: null, queued: Clock, dry_run: Clock, sent: Check, delivered: CheckCheck, failed: CircleAlert, norelay: Check,
+};
+
+/** One report: a single meta line (who, when, and only what matters) and the words. */
 export function ReportCard({ rec, fresh, chips = false }: { rec: MessageRecord; fresh: boolean; chips?: boolean }) {
   const { nodes } = useData();
   const { lang } = useUi();
@@ -35,35 +39,39 @@ export function ReportCard({ rec, fresh, chips = false }: { rec: MessageRecord; 
   const when = rec.event_time ?? rec.time;
   const noRelay = isNoRelay(rec);
   const Icon = TYPE_ICON[rec.type];
-  // a plain message needs no "Message:" in front; the other types keep their word (Hazard:, Person found:)
-  const raw = rec.text[lang];
-  const prefix = `${typeName(lang, rec.type)}: `;
-  const body = rec.type === "text" && raw.startsWith(prefix) ? raw.slice(prefix.length) : raw;
+  const body = cardText(rec.text[lang], rec.type, lang, nodes);
+  const form = codecForm(rec);
   const radio = [
     rec.radio?.rssi != null ? `${rec.radio.rssi} dBm` : "", rec.radio?.snr != null ? `SNR ${rec.radio.snr.toFixed(1)}` : "",
     rec.radio?.hops != null ? `${rec.radio.hops} ${t("hops")}` : "", rec.codec.version === 0 ? t("viaMeshtasticNote") : "",
   ].filter(Boolean).join(" · ");
+  const state = noRelay ? "norelay" : rec.status;
+  const StatusIcon = rec.direction === "out" ? STATUS_ICON[state] : null;
+  const stateText = t(noRelay ? "statusNoRelay" : STATUS_KEY[rec.status]);
 
   return (
     <li className={`report report-${rec.type} dir-${rec.direction} ${fresh ? "fresh" : ""} ${compact ? "compact" : ""}`} data-seq={rec.seq}>
       <div className="report-meta">
-        <span className={`report-icon type-${rec.type}`} title={typeName(lang, rec.type)}><Icon size={15} strokeWidth={2.2} aria-label={typeName(lang, rec.type)} /></span>
-        <span className="from">{nodeLabel(rec.from, nodes)}</span>
-        {(chips || rec.to) && <ChannelChip channel={rec.channel} to={rec.to} from={rec.from} direction={rec.direction} nodes={nodes} />}
-        <span className="report-time num" title={rec.time}>{clock(when, false)}</span>
-        <PriorityChip priority={rec.priority} />
-        {rec.direction === "out" && (
-          <span className={`chip out-chip status-${noRelay ? "norelay" : rec.status}`} title={rec.status === "failed" && rec.error && !noRelay ? rec.error : undefined}>
-            {t("reportOut")} · {t(noRelay ? "statusNoRelay" : STATUS_KEY[rec.status])}
-          </span>
+        {rec.type !== "text" && (
+          <span className={`report-icon type-${rec.type}`} title={typeName(lang, rec.type)}><Icon size={14} strokeWidth={2.2} aria-label={typeName(lang, rec.type)} /></span>
         )}
+        <span className="from">{nodeLabel(rec.from, nodes)}</span>
+        <span className="report-time num" title={[rec.time, radio].filter(Boolean).join(" · ")}>{clock(when, false)}</span>
+        {(chips || rec.to) && <ChannelChip channel={rec.channel} to={rec.to} from={rec.from} direction={rec.direction} nodes={nodes} />}
+        <PriorityChip priority={rec.priority} />
         <span className="report-end">
+          {form && <span className="report-tag num">{t(form === "compact" ? "formCompact" : "formPacked")} · {bytesLabel(rec.codec.size)}</span>}
+          {StatusIcon && (
+            <span className={`out-state status-${state}`} role="img" aria-label={stateText}
+              title={rec.status === "failed" && rec.error && !noRelay ? `${stateText}: ${rec.error}` : stateText}>
+              <StatusIcon size={15} strokeWidth={2.4} aria-hidden="true" />
+            </span>
+          )}
           {pos && (
             <button className="map-pin" onClick={() => focusOn(rec.seq, rec.task_key)} title={`${t("showOnMap")} · ${utmLabel(pos.lat, pos.lon)}`} aria-label={t("showOnMap")}>
-              <MapPin size={15} aria-hidden="true" />
+              <MapPin size={14} aria-hidden="true" />
             </button>
           )}
-          <span className="report-tag num" title={radio || undefined}>{rec.codec.version === 0 ? t("formText") : t("formPacked")} · {bytesLabel(rec.codec.size)}</span>
         </span>
       </div>
       <p className="report-text">{body}</p>
@@ -74,7 +82,7 @@ export function ReportCard({ rec, fresh, chips = false }: { rec: MessageRecord; 
 export function Feed() {
   const { messages, fresh, loaded } = useData();
   const { filter } = useUi();
-  const { pick, chips, options, filter: manyChannels } = useChannels();
+  const { pick, chipOn, options, filter: manyChannels } = useChannels();
   const t = useT();
   const [, tick] = useState(0);
 
@@ -102,7 +110,7 @@ export function Feed() {
     <Panel id="feed" title={pick === "all" ? t("feed") : `${t("feed")} · #${pick}`} count={inChannel.length} className="panel-feed"
       actions={
         <label className="show-pick">
-          <span>{t("show")}:</span>
+          <span className="sr-only">{t("show")}:</span>
           <select value={value} onChange={(e) => choose(e.target.value)}>
             <option value="ch:all">{t("allChannels")}</option>
             {manyChannels && (
@@ -121,7 +129,7 @@ export function Feed() {
           <ul className="report-list" aria-busy="true">{[0, 1, 2].map((i) => <li key={i} className="report skeleton" />)}</ul>
         ) : shown.length ? (
           <ul className="report-list">
-            {shown.map((r) => <ReportCard key={r.seq} rec={r} chips={chips} fresh={nowMs - (fresh[r.seq] ?? 0) < 6000} />)}
+            {shown.map((r) => <ReportCard key={r.seq} rec={r} chips={chipOn(r.channel?.name)} fresh={nowMs - (fresh[r.seq] ?? 0) < 6000} />)}
           </ul>
         ) : <p className="empty">{inChannel.length || pick !== "all" ? t("noMatch") : t("noReports")}</p>}
       </div>

@@ -798,11 +798,13 @@ class MessengerTest {
         val p = radio.sentPrivateApp().single()
         assertEquals(1, p.channel)
         val decoded = RescueCodec.decodeAny(p.decoded!!.payload.toByteArray())
-        assertEquals(mapOf("text" to hut, "words" to 1), decoded["text"])
+        assertEquals(mapOf("text" to hut, "words" to 2), decoded["text"])
         assertEquals(pos, decoded["pos"], "the position stays in the Envelope")
         assertEquals(r.bytes.size, form.payload.size)
         val row = messages.all.single()
-        assertEquals(1, MeshText.compactDict(row))
+        assertEquals(2, MeshText.compactDict(row))
+        assertFalse(MeshText.isCompactFrame(row))
+        assertEquals(MeshText.TAG_COMPACT, MeshText.tagOf(row))
         assertEquals("Message: $hut. Position 50.69212, 7.21345.", Readable.of(row.json, "en"))
     }
 
@@ -865,9 +867,9 @@ class MessengerTest {
         assertEquals(1, MeshText.compactDict(row))
         assertEquals(hut, (Json.parseObject(row.json!!)["text"] as Map<*, *>)["text"])
         assertEquals("Message: $hut.", Readable.of(row.json, "en"))
-        // Word dictionary 2 does not exist yet: a visible "update the app" line, never guessed words.
+        // Word dictionary 9 does not exist yet: a visible "update the app" line, never guessed words.
         val unknown = org.rescuecodec.v2.proto.Envelope.newBuilder().setId(10).setText(
-            org.rescuecodec.v2.proto.Text.newBuilder().setWords(com.google.protobuf.ByteString.copyFrom(byteArrayOf(0, 0x10, 0, 0x11))).setWordsDict(2),
+            org.rescuecodec.v2.proto.Text.newBuilder().setWords(com.google.protobuf.ByteString.copyFrom(byteArrayOf(0, 0x10, 0, 0x11))).setWordsDict(9),
         ).build().toByteArray()
         radio.injectPacket(privateAppPacket(other, 12, unknown, channel = 1))
         eventually(5_000, "stored") { messages.all.size == 2 }
@@ -876,6 +878,56 @@ class MessengerTest {
         assertEquals(MessageState.RECEIVED, u.state)
         assertTrue(Readable.of(u.json, "en")!!.contains("dictionary this app does not have"), Readable.of(u.json, "en"))
         assertTrue(Readable.of(u.json, "de")!!.contains("Wörterbuch"))
+    }
+
+    @Test
+    fun withCompactOnHelloWorldIsASixByteCompactFrame() = runUnit {
+        settings.compactText = true
+        val m = messenger()
+        m.start()
+        connectTeamRadio()
+        m.routes.heardRescueCodec(other, "RescueCodec")
+        assertEquals("lean", m.textForm(mapOf("text" to mapOf("text" to "hello world")), null, null).form)
+        val r = m.submit(mapOf("text" to mapOf("text" to "hello world"))) as SubmitResult.Queued
+        assertEquals(6, r.bytes.size)
+        assertEquals(0, r.msgId, "a compact frame has no id")
+        eventually(10_000, "sent") { radio.sentPrivateApp().size == 1 }
+        val payload = radio.sentPrivateApp().single().decoded!!.payload.toByteArray()
+        assertEquals(listOf(2, 2), payload.take(2).map { it.toInt() })
+        assertEquals(mapOf("text" to "hello world", "words" to 2), wordsOf(radio.sentPrivateApp().single()))
+        val row = messages.all.single()
+        assertTrue(MeshText.isCompactFrame(row))
+        assertEquals(MeshText.TAG_COMPACT, MeshText.tagOf(row))
+        // "Ok" is 2 bytes as a normal text: smaller than any frame, so it stays a normal text (no tag).
+        m.submit(mapOf("text" to mapOf("text" to "Ok")))
+        eventually(10_000, "plain sent") { radio.sentText().size == 1 }
+        assertNull(MeshText.tagOf(messages.all.last()))
+    }
+
+    @Test
+    fun aReceivedCompactFrameIsShownAndRepeatsGoByPacketId() = runUnit {
+        val m = messenger()
+        m.start()
+        connectTeamRadio()
+        val text = "We found Aylin Demir.\nMeet at 50.6900, -1.2500"
+        val bytes = RescueCodec.encodeCompact(text)
+        radio.injectPacket(privateAppPacket(other, 21, bytes, channel = 1))
+        radio.injectPacket(privateAppPacket(other, 21, bytes, channel = 1)) // the mesh delivered it twice
+        radio.injectPacket(privateAppPacket(other, 22, bytes, channel = 1)) // the same words sent again
+        eventually(5_000, "stored") { messages.all.size == 2 }
+        delay(300)
+        assertEquals(2, messages.all.size)
+        val row = messages.all.first()
+        assertEquals("text", row.type)
+        assertEquals(text, (Json.parseObject(row.json!!)["text"] as Map<*, *>)["text"])
+        assertTrue(MeshText.isCompactFrame(row))
+        assertEquals(2, MeshText.compactDict(row))
+        // A frame with a dictionary this app does not have is named, never guessed; a cut frame is invalid.
+        radio.injectPacket(privateAppPacket(other, 23, byteArrayOf(2, 9, 0, 0x10), channel = 1))
+        radio.injectPacket(privateAppPacket(other, 24, bytes.copyOf(bytes.size - 1), channel = 1))
+        eventually(5_000, "stored") { messages.all.size == 4 }
+        assertTrue(Readable.of(messages.all[2].json, "en")!!.contains("dictionary this app does not have"))
+        assertEquals(MessageState.INVALID, messages.all[3].state)
     }
 
     @Test
