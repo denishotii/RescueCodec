@@ -47,20 +47,27 @@ object ChannelAdmin {
         current.filter { it.role != Channel.Role.DISABLED }.map { Channels.displayName(it, preset) }
 
     /** Null when [name] can be used, else the problem. Names are compared without case: "team 2" and "Team 2" clash. */
-    fun checkName(name: String, current: List<Channel>, preset: String = "LongFast"): NameProblem? {
+    fun checkName(name: String, current: List<Channel>, preset: String = "LongFast"): NameProblem? =
+        checkName(name, names(current, preset) + preset)
+
+    /** The same against a list of names already in use ([taken]), when only the names are known. */
+    fun checkName(name: String, taken: Collection<String>): NameProblem? {
         val n = name.trim()
         return when {
             n.isEmpty() -> NameProblem.EMPTY
             nameBytes(n) > MAX_NAME_BYTES -> NameProblem.TOO_LONG
-            names(current, preset).any { it.equals(n, ignoreCase = true) } || n.equals(preset, ignoreCase = true) -> NameProblem.TAKEN
+            taken.any { it.equals(n, ignoreCase = true) } -> NameProblem.TAKEN
             else -> null
         }
     }
 
     /** "Team 2", or "Team 3" when that is taken, and so on. */
-    fun suggestName(current: List<Channel>, preset: String = "LongFast"): String {
+    fun suggestName(current: List<Channel>, preset: String = "LongFast"): String = suggestName(names(current, preset) + preset)
+
+    /** The same against a list of names already in use. */
+    fun suggestName(taken: Collection<String>): String {
         var i = 2
-        while (checkName("Team $i", current, preset) != null && i < 99) i++
+        while (checkName("Team $i", taken) != null && i < 99) i++
         return "Team $i"
     }
 
