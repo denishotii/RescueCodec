@@ -180,6 +180,13 @@ fun ReportScreen(vm: ReportViewModel, snackbar: SnackbarHostState, lang: String)
         Surface(color = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 0.dp) {
           Column {
             ByteCounter(ui.textBytes, ui.sentBytes, Modifier.padding(horizontal = 16.dp), compact = true)
+            if (ui.shortened) {
+                Text(
+                    stringResource(R.string.report_text_shortened),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp).testTag("text_shortened"),
+                )
+            }
             Row(
                 Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,

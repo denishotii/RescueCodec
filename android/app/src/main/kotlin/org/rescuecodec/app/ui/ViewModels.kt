@@ -49,6 +49,7 @@ import org.rescuecodec.codec.Json
 import org.rescuecodec.codec.RescueCodec
 import org.rescuecodec.engine.Airtime
 import org.rescuecodec.engine.Extractor
+import org.rescuecodec.engine.TextFit
 
 /** Radio connection: state, scan, connect, disconnect, channel, joining a channel by link. */
 class ConnectionViewModel(app: Application, private val graph: AppGraph) : AndroidViewModel(app) {
@@ -328,6 +329,8 @@ data class ReportUi(
     val problem: String? = null,
     /** True when the phone has a position that is added to the report. */
     val hasPosition: Boolean = false,
+    /** The text was cut so it fits into 200 bytes with the position. It ends with "…". */
+    val shortened: Boolean = false,
     val busy: Boolean = false,
 )
 
@@ -414,11 +417,14 @@ class ReportViewModel(app: Application, private val graph: AppGraph) : AndroidVi
         var sent = 0
         var problem: String? = null
         var readable = ""
+        var shortened = false
         withContext(Dispatchers.Default) {
             try {
+                val out = fitForSending(withPos)
+                shortened = out != withPos
                 // A placeholder id of 2 bytes (128 and up) gives the real size of almost every message. Every message
                 // except an Ack gets an id when it is sent (spec section 14), also text and track.
-                val probe = if (ReportFields.typeOf(withPos) != "ack" && withPos["id"] == null) withPos + ("id" to 128) else withPos
+                val probe = if (ReportFields.typeOf(out) != "ack" && out["id"] == null) out + ("id" to ID_PROBE) else out
                 val bytes = RescueCodec.encode(probe)
                 sent = bytes.size
                 readable = RescueCodec.reconstruct(RescueCodec.decodeAny(bytes), lang)
@@ -431,7 +437,7 @@ class ReportViewModel(app: Application, private val graph: AppGraph) : AndroidVi
         _ui.update {
             it.copy(
                 message = message, fallback = fallback, sentBytes = sent, readable = readable,
-                problem = problem, hasPosition = withPos["pos"] != null,
+                problem = problem, hasPosition = withPos["pos"] != null, shortened = shortened,
             )
         }
     }
@@ -453,7 +459,7 @@ class ReportViewModel(app: Application, private val graph: AppGraph) : AndroidVi
         if (s.busy || s.problem != null) return
         _ui.update { it.copy(busy = true) }
         viewModelScope.launch {
-            val toSend = withPosition(msg)
+            val toSend = fitForSending(withPosition(msg))
             when (val r = graph.messenger.submit(toSend, source = "app")) {
                 is SubmitResult.Queued -> {
                     if (!s.fallback) countSaving(s.textBytes, r.bytes.size)
@@ -499,7 +505,19 @@ class ReportViewModel(app: Application, private val graph: AppGraph) : AndroidVi
         speech.release()
     }
 
-    private companion object {
+    companion object {
+        /** A 2-byte id (128 and up): the size of the real id that is added when the message is sent. */
+        private const val ID_PROBE = 128
+
+        /**
+         * A text that is too long with the position is cut to fit ([TextFit.fitText]). It is measured with a 2-byte
+         * id, the largest one [Messenger.submit] gives, so it still fits when the real id is added.
+         */
+        fun fitForSending(message: Map<String, Any?>): Map<String, Any?> {
+            if (ReportFields.typeOf(message) != "text") return message
+            if (message["id"] != null) return TextFit.fitText(message)
+            return TextFit.fitText(message + ("id" to ID_PROBE)) - "id"
+        }
     }
 }
 

@@ -285,4 +285,5 @@
     <string name="banner_persons">%1$d Pers.</string>
     <string name="counter_line">%1$d Bytes als Text → %2$d Bytes gesendet</string>
     <string name="task_grid_ref">Gitter</string>
+    <string name="report_text_shortened">Text gekürzt, damit er mit deiner Position in 200 Bytes passt.</string>
 </resources>
