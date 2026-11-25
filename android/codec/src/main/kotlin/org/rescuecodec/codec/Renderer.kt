@@ -127,6 +127,10 @@ internal object Renderer {
                 // A compact text with a word dictionary we do not have.
                 val n = body["words"]
                 fill(head.getValue("unknown_dict"), "n" to ((n as? Number)?.toLong() ?: n))
+            } else if (body.containsKey("vocab") && head.containsKey("unknown_vocab")) {
+                // A domain frame with a team vocabulary we do not have (spec section 3.8).
+                val n = body["vocab"]
+                fill(head.getValue("unknown_vocab"), "n" to ((n as? Number)?.toLong() ?: n))
             } else {
                 head.getValue("unknown")
             }

@@ -33,7 +33,8 @@ import org.rescuecodec.v2.proto.Track
  * Use [Json] to turn it into text and back. Every function throws [CodecException] for input that
  * breaks the spec rules, and never for valid input.
  *
- * Passes RescueCodec 2.1.0 conformance Level 1 (codec) and Level 2 (readable text).
+ * Passes RescueCodec 2.3.0 conformance Level 1 (codec) and Level 2 (readable text), including the compact frame
+ * (0x02, spec section 3.7) and the domain frame (0x03, spec section 3.8).
  */
 object RescueCodec {
     /** Meshtastic port used for RescueCodec packets (PRIVATE_APP). */
@@ -74,13 +75,15 @@ object RescueCodec {
 
     /**
      * Decodes a packet of any version. First byte 0x01 is a v1 packet (result has `"v": 1`), 0x02 a compact frame
-     * (spec section 3.7, `"v": 2`, a text without id), other reserved first bytes are rejected with
-     * `unsupported_version`, anything else is a v2 Envelope (`"v": 2`).
+     * (spec section 3.7, `"v": 2`, a text without id), 0x03 a domain frame (spec section 3.8, `"v": 2`, a text without
+     * id), other reserved first bytes are rejected with `unsupported_version`, anything else is a v2 Envelope
+     * (`"v": 2`).
      */
     fun decodeAny(bytes: ByteArray): Map<String, Any?> {
         if (bytes.isEmpty()) throw err("empty", "empty payload")
         if (detectVersion(bytes) == 1) return V1.decode(bytes)
         if (isCompactFrame(bytes)) return LinkedHashMap<String, Any?>().apply { put("v", 2); putAll(decodeCompact(bytes)) }
+        if (isDomainFrame(bytes)) return LinkedHashMap<String, Any?>().apply { put("v", 2); putAll(decodeDomain(bytes)) }
         val out = LinkedHashMap<String, Any?>()
         out["v"] = 2
         out.putAll(decode(bytes))
@@ -144,6 +147,79 @@ object RescueCodec {
         if (!TextWords.available(version)) return linkedMapOf("unknown" to linkedMapOf<String, Any?>("words" to version))
         val text = TextWords.decode(bytes.copyOfRange(2, bytes.size), version)
         return linkedMapOf("text" to linkedMapOf<String, Any?>("text" to text, "words" to version))
+    }
+
+    /** First byte of a domain frame (spec section 3.8): 0x03, the vocabulary id, the bit stream of N-bit codes. */
+    const val DOMAIN_FRAME: Int = 0x03
+
+    /** True when the payload is a domain frame (first byte 0x03), not an Envelope. */
+    fun isDomainFrame(bytes: ByteArray): Boolean = bytes.isNotEmpty() && (bytes[0].toInt() and 0xFF) == DOMAIN_FRAME
+
+    /**
+     * Text to domain frame: 0x03, 1 byte vocabulary id, the bit stream (spec section 3.8). [vocab] is an id (1..5).
+     * No id, no position, no time. Throws `missing_field` for an empty text, `invalid_value` for an unknown
+     * vocabulary, `too_large` over 1024 bytes of text or 200 bytes of frame.
+     */
+    fun encodeDomain(text: String, vocab: Int): ByteArray {
+        if (text.isEmpty()) throw err("missing_field", "a domain frame needs a text", "text.text")
+        if (!TextDomain.available(vocab)) {
+            val known = TextDomain.VOCABS.values.joinToString(", ") { "${it.id} ${it.domain}" }
+            throw err("invalid_value", "unknown team vocabulary, known: $known", "text.vocab")
+        }
+        if (!wellFormed(text)) throw err("invalid_value", "must be valid Unicode", "text.text")
+        val stream = try {
+            TextDomain.encode(text, vocab)
+        } catch (e: CodecException) {
+            throw CodecException(e.code, e.message ?: e.code, "text.text")
+        }
+        val data = ByteArray(stream.size + 2)
+        data[0] = DOMAIN_FRAME.toByte()
+        data[1] = vocab.toByte()
+        System.arraycopy(stream, 0, data, 2, stream.size)
+        if (data.size > Codes.MAX_ENCODE_BYTES) {
+            throw err("too_large", "${data.size} bytes, the limit is ${Codes.MAX_ENCODE_BYTES}")
+        }
+        return data
+    }
+
+    /** Like [encodeDomain] with a domain name: "emergency", "sar", "fire", "hiking" or "medical". */
+    fun encodeDomain(text: String, domain: String): ByteArray {
+        val id = TextDomain.vocabId(domain)
+            ?: throw err("invalid_value", "unknown team vocabulary '$domain', known: ${TextDomain.CURRENT.keys.joinToString(", ")}", "text.vocab")
+        return encodeDomain(text, id)
+    }
+
+    /**
+     * Domain frame to canonical JSON `{"text": {"text": ..., "vocab": id}}` (no id). A vocabulary this library does not
+     * have (ids 0 and 6..255 today, or a copy that fails the SHA-256 check) gives `{"unknown": {"vocab": id}}`, shown
+     * as "unsupported vocabulary", never as guessed words. Throws [CodecException] (`malformed`, `too_large`).
+     */
+    fun decodeDomain(bytes: ByteArray): Map<String, Any?> {
+        if (!isDomainFrame(bytes)) throw err("unsupported_version", "not a domain frame")
+        if (bytes.size > Codes.MAX_DECODE_BYTES) {
+            throw err("too_large", "${bytes.size} bytes, the limit is ${Codes.MAX_DECODE_BYTES}")
+        }
+        if (bytes.size < 2) throw err("malformed", "the domain frame is cut off (no vocabulary id)", "text.vocab")
+        val vocab = bytes[1].toInt() and 0xFF
+        if (!TextDomain.available(vocab)) return linkedMapOf("unknown" to linkedMapOf<String, Any?>("vocab" to vocab))
+        val text = TextDomain.decode(bytes.copyOfRange(2, bytes.size), vocab)
+        return linkedMapOf("text" to linkedMapOf<String, Any?>("text" to text, "vocab" to vocab))
+    }
+
+    /** False for a string with a lone UTF-16 surrogate (it has no UTF-8 form). */
+    private fun wellFormed(s: String): Boolean {
+        var i = 0
+        while (i < s.length) {
+            val c = s[i]
+            if (Character.isHighSurrogate(c)) {
+                if (i + 1 >= s.length || !Character.isLowSurrogate(s[i + 1])) return false
+                i += 2
+                continue
+            }
+            if (Character.isLowSurrogate(c)) return false
+            i++
+        }
+        return true
     }
 
     /** 1 for a v1 packet (first byte 0x01), 2 for v2, 0 for reserved versions or empty input. */
@@ -425,7 +501,11 @@ object RescueCodec {
     }
 
     private fun buildText(body: Any?): Text {
-        val b = checkKeys(body, setOf("text", "dict", "words"), "text")
+        val b = checkKeys(body, setOf("text", "dict", "words", "vocab"), "text")
+        if (b.containsKey("vocab")) {
+            // A domain frame (0x03, spec section 3.8) has no Envelope form: encodeDomain builds it.
+            throw err("invalid_value", "a text with a team vocabulary goes in a domain frame (encodeDomain), not in an Envelope", "text.vocab")
+        }
         val t = Text.newBuilder()
         val dict = if (b.containsKey("dict")) intValue(b["dict"], "text.dict", 1, 0xFFFFFFFFL) else null
         if (dict != null && dict !in TextPack.DICTS) {

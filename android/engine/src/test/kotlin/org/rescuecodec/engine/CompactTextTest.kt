@@ -69,7 +69,7 @@ class CompactTextTest {
             val off = TextMode.chooseForm(msg, true, "rescuecodec_only")
             val on = TextMode.chooseForm(msg, true, "rescuecodec_only", compact = true)
             assertTrue(on.payload.size <= off.payload.size, text)
-            val sizes = listOfNotNull(on.leanSize, on.wordsSize, on.packedSize)
+            val sizes = listOfNotNull(on.leanSize, on.wordsSize, on.packedSize, on.domainSize)
             if (on.form == "plain") {
                 assertTrue(sizes.all { on.payload.size <= it }, text) // ties keep the normal text
             } else {
@@ -90,8 +90,11 @@ class CompactTextTest {
         assertEquals(mapOf("text" to mapOf("text" to "hello world", "words" to 2)), form.message)
         val ok = TextMode.chooseForm(mapOf("id" to 3, "text" to mapOf("text" to "Ok")), true, "x", compact = true)
         assertEquals("plain", ok.form) // 2 bytes as a normal text: smaller than any frame
-        val urgent = TextMode.chooseForm(mapOf("id" to 3, "priority" to "urgent", "text" to mapOf("text" to "we need water now")), true, "x", compact = true)
+        val urgent = TextMode.chooseForm(mapOf("id" to 3, "priority" to "urgent", "text" to mapOf("text" to "we need water now")), true, "x", compact = true, vocab = "general")
         assertEquals("lean" to "urgent", urgent.form to urgent.message["priority"])
+        // A team vocabulary saves a byte here: a domain frame, the priority stays local too.
+        val auto = TextMode.chooseForm(mapOf("id" to 3, "priority" to "urgent", "text" to mapOf("text" to "we need water now")), true, "x", compact = true)
+        assertEquals("domain" to "urgent", auto.form to auto.message["priority"])
     }
 
     @Test

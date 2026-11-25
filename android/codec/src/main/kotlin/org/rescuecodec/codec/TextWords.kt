@@ -53,10 +53,10 @@ object TextWords {
     private const val SPLIT = ".,;:!?()[]{}\"…"
 
     /** An entry starting with one of these gets no space before it. */
-    private const val LEFT_ATTACH = ".,;:!?)]}…"
+    internal const val LEFT_ATTACH = ".,;:!?)]}…"
 
     /** An entry ending with one of these gets no space after it. */
-    private const val RIGHT_ATTACH = "([{"
+    internal const val RIGHT_ATTACH = "([{"
 
     /** A word dictionary: entries by token number, the index back, and the most pieces in one entry. */
     class WordDict private constructor(val entries: List<String>, val index: Map<String, Int>, val maxSpan: Int) {
@@ -166,14 +166,14 @@ object TextWords {
         return sb.toString()
     }
 
-    private fun asciiUpper(s: String): String {
+    internal fun asciiUpper(s: String): String {
         val sb = StringBuilder(s.length)
         for (c in s) sb.append(if (c in 'a'..'z') (c.code - 32).toChar() else c)
         return sb.toString()
     }
 
     /** (entry index, control or 0) for [s]: the exact entry, else CAP of an entry, else UPPER of an entry. */
-    private fun match(s: String, d: WordDict): Pair<Int, Int>? {
+    internal fun match(s: String, d: WordDict): Pair<Int, Int>? {
         d.index[s]?.let { return it to 0 }
         if (s[0] in 'A'..'Z') {
             d.index[(s[0].code + 32).toChar() + s.substring(1)]?.let { return it to CAP }
@@ -185,7 +185,7 @@ object TextWords {
         return null
     }
 
-    private fun len8(s: String): Int = s.toByteArray(Charsets.UTF_8).size
+    internal fun len8(s: String): Int = s.toByteArray(Charsets.UTF_8).size
 
     // ------------------------------------------------------------------ encode
 
@@ -367,7 +367,7 @@ object TextWords {
         }
     }
 
-    private fun strictUtf8(data: ByteArray, offset: Int, length: Int): String =
+    internal fun strictUtf8(data: ByteArray, offset: Int, length: Int): String =
         Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
             .onUnmappableCharacter(CodingErrorAction.REPORT)
             .decode(ByteBuffer.wrap(data, offset, length)).toString()
