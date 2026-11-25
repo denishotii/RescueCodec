@@ -49,6 +49,7 @@ import org.rescuecodec.engine.SendQueue
 import org.rescuecodec.engine.Task
 import org.rescuecodec.engine.TaskKey
 import org.rescuecodec.engine.TaskState
+import org.rescuecodec.engine.TextFit
 
 /** Result of [Messenger.submit]. */
 sealed interface SubmitResult {
@@ -92,6 +93,10 @@ data class AirtimeStatus(val usedMs: Double, val limitMs: Double) {
  *
  * Receive: every PRIVATE_APP packet is decoded and checked for duplicates. Reports become tasks,
  * Acks update tasks. Everything is written to the database, so a restart loses nothing.
+ *
+ * Normal Meshtastic texts (port 1, spec section 2.1): texts on the team channel and direct messages to us are stored
+ * as `text` rows marked [MeshText.SOURCE]. With [AppSettings.plainTextAsMeshtastic] on, a message with only a text
+ * also goes out that way, so the official app and radio screens show it. Reports always go on port 256.
  *
  * Tasks: [answer] sends Accept, Decline or Done as an Ack and applies it locally at once.
  */
@@ -137,6 +142,9 @@ class Messenger(
     /** Mayday task keys we already alerted for, so a copy never alerts twice. */
     private val alerted = HashSet<String>()
 
+    /** Plain texts we stored: "sender:packet id" (or "sender:bytes" without an id) to the time we got it. */
+    private val textsSeen = LinkedHashMap<String, Long>()
+
     private val _airtime = MutableStateFlow(AirtimeStatus(0.0, queue.budget.limitMs))
 
     /** Airtime used in the last hour and the legal limit (estimated). */
@@ -173,6 +181,7 @@ class Messenger(
         } catch (e: CodecException) {
             return SubmitResult.Rejected(e.code, e.field, e.message ?: e.code)
         }
+        if (type == "text" && settings.plainTextAsMeshtastic) return submitPlain(input)
         // Every message except an Ack gets an id (spec section 14), so a second "Hilfe" is a new message and not a
         // repeat of the first. It costs 1 to 2 bytes. An Ack is a repeat by design and carries none.
         if (type != "ack" && (input["id"] as? Number)?.toInt().let { it == null || it == 0 }) {
@@ -199,6 +208,35 @@ class Messenger(
             rowBySeq[q.seq] = rowId
             wake.trySend(Unit)
             SubmitResult.Queued(rowId, type, msgId, bytes, RescueCodec.reconstruct(canonical, settings.language))
+        }
+    }
+
+    /**
+     * A message with only a text, sent as a normal Meshtastic text (port 1) on the team channel (spec section 2.1).
+     * It takes the same queue, priority, airtime budget and `want_ack` as a report. Only the words go out, at most
+     * 200 bytes: no id, position or time. The row is marked [MeshText.SOURCE] and [MessageEntity.bytes] is the text.
+     */
+    private suspend fun submitPlain(input: Map<String, Any?>): SubmitResult {
+        // Checked as a RescueCodec text first, so a broken message is refused the same way with the setting on or off.
+        try {
+            RescueCodec.encode(TextFit.fitText(input))
+        } catch (e: CodecException) {
+            return SubmitResult.Rejected(e.code, e.field, e.message ?: e.code)
+        } catch (e: IllegalArgumentException) {
+            return SubmitResult.Rejected("invalid_value", null, e.message ?: "invalid message")
+        }
+        val text = TextFit.fitPlain((input["text"] as Map<*, *>)["text"] as String)
+        val canonical = MeshText.message(text, input["priority"] as? String)
+        val bytes = text.toByteArray(Charsets.UTF_8)
+        return mutex.withLock {
+            val row = MessageEntity(
+                dir = "out", node = currentNode(), type = "text", bytes = bytes, json = Json.stringify(canonical),
+                atMs = clock(), state = MessageState.QUEUED, source = MeshText.SOURCE,
+            )
+            val rowId = messages.insert(row)
+            rowBySeq[queue.enqueue(canonical, bytes).seq] = rowId
+            wake.trySend(Unit)
+            SubmitResult.Queued(rowId, "text", 0, bytes, RescueCodec.reconstruct(canonical, settings.language))
         }
     }
 
@@ -373,7 +411,8 @@ class Messenger(
             b.want_ack = true
             b.priority = prio
             b.decoded = Data.Builder().also { d ->
-                d.portnum = PortNum.PRIVATE_APP
+                // A plain text goes on the normal text port, so stock Meshtastic apps show it. Everything else on 256.
+                d.portnum = if (MeshText.isPlain(row)) PortNum.TEXT_MESSAGE_APP else PortNum.PRIVATE_APP
                 d.payload = okio.ByteString.of(*q.bytes)
             }.build()
         }.build()
@@ -548,6 +587,7 @@ class Messenger(
 
     private suspend fun onPacket(p: MeshPacket, self: Long, wantedChannel: Int?) {
         val d = p.decoded ?: return
+        if (d.portnum == PortNum.TEXT_MESSAGE_APP) return onText(p, d.payload.toByteArray(), self, wantedChannel)
         if (d.portnum != PortNum.PRIVATE_APP) return
         val from = p.from.toLong() and 0xFFFFFFFFL
         if (from == self) return
@@ -611,6 +651,51 @@ class Messenger(
         }
     }
 
+    /**
+     * A normal Meshtastic text (port 1), for example from the official app (spec section 2.1). Only a broadcast on the
+     * team channel or a direct message to us; other channels (the public LongFast chat) are not even counted.
+     * A gateway's readable copy of a RescueCodec message and the same packet twice count as duplicates.
+     */
+    private suspend fun onText(p: MeshPacket, bytes: ByteArray, self: Long, wantedChannel: Int?) {
+        val from = p.from.toLong() and 0xFFFFFFFFL
+        if (from == self) return
+        if (!MeshText.accept(p.to.toLong() and 0xFFFFFFFFL, p.channel, self, wantedChannel)) return
+        val text = String(bytes, Charsets.UTF_8)
+        if (text.isBlank()) return
+        val packetId = p.id.toLong() and 0xFFFFFFFFL
+        val now = clock()
+        if (MeshText.isCopy(text) || textSeenBefore(from, packetId, bytes, now)) {
+            stats.add(StatNames.RX_DUPLICATES)
+            return
+        }
+        stats.add(StatNames.RX_MESSAGES)
+        stats.add(StatNames.RX_BYTES, bytes.size.toLong())
+        messages.insert(
+            MessageEntity(
+                dir = "in", node = from, packetId = packetId, type = "text", bytes = bytes,
+                json = Json.stringify(MeshText.message(text)), atMs = now, state = MessageState.RECEIVED,
+                snr = p.rx_snr, rssi = p.rx_rssi, hops = if (p.hop_start > 0) (p.hop_start - p.hop_limit).coerceAtLeast(0) else null,
+                source = MeshText.SOURCE,
+            ),
+        )
+    }
+
+    /**
+     * Dedupe for plain texts: the same (sender, Meshtastic packet id) within [RequestTracker.dedupeMs] (24 h), or
+     * without a packet id the same (sender, bytes) within 10 minutes. Remembers a new text and returns false.
+     */
+    private fun textSeenBefore(from: Long, packetId: Long, bytes: ByteArray, now: Long): Boolean {
+        val key = if (packetId != 0L) "%08x:%08x".format(from, packetId)
+        else "%08x:%s".format(from, bytes.joinToString("") { "%02x".format(it) })
+        val ttl = if (packetId != 0L) tracker.dedupeMs else tracker.payloadDedupeMs
+        if (textsSeen.size > MAX_TEXTS_SEEN) textsSeen.entries.removeAll { now - it.value > tracker.dedupeMs }
+        while (textsSeen.size > MAX_TEXTS_SEEN) textsSeen.remove(textsSeen.keys.first())
+        val seen = textsSeen[key]
+        if (seen != null && now - seen < ttl) return true
+        textsSeen[key] = now
+        return false
+    }
+
     // ------------------------------------------------------------------- tasks
 
     private suspend fun persistTask(key: TaskKey, self: Long) {
@@ -649,6 +734,10 @@ class Messenger(
             for (row in messages.replaySince(since)) {
                 val msg = Json.parseObject(row.json ?: continue)
                 replayAt = row.atMs
+                if (row.dir == "in" && MeshText.isPlain(row)) {
+                    textSeenBefore(row.node, row.packetId ?: 0L, row.bytes, row.atMs)
+                    continue
+                }
                 if (row.dir == "out") {
                     if (row.node == 0L) continue
                     if (row.atMs > clock() - queue.budget.windowMs) queue.budget.record(row.bytes.size, row.atMs)
@@ -720,6 +809,9 @@ class Messenger(
 
     companion object {
         private const val DUTY_CYCLE_LIMIT_RES = 9
+
+        /** Plain texts remembered for dedupe at most (the team channel is quiet; this only bounds memory). */
+        private const val MAX_TEXTS_SEEN = 2_000
 
         /** How often a message that was handed to a link that then dropped is sent again. */
         private const val LINK_RESENDS = 1

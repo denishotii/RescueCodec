@@ -43,6 +43,20 @@ object TextFit {
         return message
     }
 
+    /**
+     * A plain Meshtastic text (port 1) cut to at most [maxBytes] bytes of UTF-8. The Python library has the same rule
+     * (`fit_plain`): a text that fits comes back unchanged (the same object); a longer one is cut to the longest
+     * prefix that ends on a whole character, trailing whitespace is stripped and [ELLIPSIS] is added.
+     * Meshtastic allows 233 bytes, we stay at 200 like every encoder (spec section 2.1).
+     */
+    fun fitPlain(text: String, maxBytes: Int = Codes.MAX_ENCODE_BYTES): String {
+        val bytes = text.toByteArray(Charsets.UTF_8)
+        if (bytes.size <= maxBytes) return text
+        var cut = (maxBytes - ELLIPSIS.toByteArray(Charsets.UTF_8).size).coerceAtLeast(0)
+        while (cut > 0 && isContinuationByte(bytes[cut])) cut-- // the cut would split a character
+        return String(bytes, 0, cut, Charsets.UTF_8).trimEnd() + ELLIPSIS
+    }
+
     /** The codec's error code for [message], or null when it encodes. */
     private fun encodeError(message: Map<String, Any?>): String? = try {
         RescueCodec.encode(message)

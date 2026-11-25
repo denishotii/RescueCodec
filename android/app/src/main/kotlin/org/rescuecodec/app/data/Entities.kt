@@ -72,7 +72,11 @@ data class MessageEntity(
     val snr: Float? = null,
     val rssi: Int? = null,
     val hops: Int? = null,
-    /** Who asked us to send it: "app", or the package name of another app (Intent API). */
+    /**
+     * Who asked us to send it: "app", or the package name of another app (Intent API).
+     * "meshtastic" ([org.rescuecodec.app.core.MeshText.SOURCE]) marks a plain Meshtastic text (port 1), sent or
+     * received: [bytes] is then the UTF-8 text and [json] the text as a canonical `text` message.
+     */
     val source: String? = null,
 ) {
     override fun equals(other: Any?) = other is MessageEntity && id == other.id && state == other.state &&

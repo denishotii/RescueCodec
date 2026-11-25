@@ -39,6 +39,14 @@ class AppSettings(private val store: KeyValueStore) {
         get() = store.getLong("allow_intent_api", 1) == 1L
         set(v) = store.putLong("allow_intent_api", if (v) 1 else 0)
 
+    /**
+     * Send a message with only a text (the extractor's text fallback) as a normal Meshtastic text (port 1) on the team
+     * channel, so the official app and radio screens show it. Reports always go compact on port 256. On by default.
+     */
+    var plainTextAsMeshtastic: Boolean
+        get() = store.getLong("plain_text_as_meshtastic", 1) == 1L
+        set(v) = store.putLong("plain_text_as_meshtastic", if (v) 1 else 0)
+
     /** Node number of the radio we talked to last (0 if never connected). */
     var lastOwnNode: Long
         get() = store.getLong("last_own_node", 0)
