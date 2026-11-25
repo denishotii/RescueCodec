@@ -461,7 +461,7 @@ class ReportViewModel(app: Application, private val graph: AppGraph) : AndroidVi
     /** The chat screen tells the composer where it sends. A new chat starts with an empty field. */
     fun setChat(chat: ChatId, isTeam: Boolean, isPublic: Boolean) {
         val only = chat is ChatId.Direct || isPublic
-        if (chat != target) clear()
+        if (target != null && chat != target) clear()
         val changed = only != textOnly
         target = chat
         targetIsTeam = isTeam

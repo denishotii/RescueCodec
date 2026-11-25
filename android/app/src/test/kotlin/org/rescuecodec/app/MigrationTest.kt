@@ -83,13 +83,14 @@ class MigrationTest {
             assertTrue(indices(table).containsAll(wanted), "$table indices ${indices(table)} lack some of $wanted")
         }
 
-        // Old rows: the team channel (the quote survives), index unknown, not public, no direct-message peer.
+        // Old rows: the team channel (the quote survives), index unknown, not public, no direct-message peer. A row that
+        // still waits to be sent has no name yet: it goes out on the team channel of that moment.
         db.createStatement().use { st ->
             st.executeQuery("SELECT channelName, channelIndex, channelPublic, peer FROM messages ORDER BY id").use { rs ->
                 var n = 0
                 while (rs.next()) {
                     n++
-                    assertEquals("Berg'wacht", rs.getString(1))
+                    assertEquals(if (n == 1) "Berg'wacht" else null, rs.getString(1))
                     rs.getInt(2); assertTrue(rs.wasNull())
                     assertEquals(0, rs.getInt(3))
                     rs.getLong(4); assertTrue(rs.wasNull())

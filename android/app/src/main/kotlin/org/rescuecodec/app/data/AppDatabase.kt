@@ -38,8 +38,8 @@ object Migrations {
 
     /**
      * Version 1 to 2: every message and task knows its channel (index, name, public) and, for a direct message, the
-     * other node. Version 1 had one channel only, so every old row gets the team channel [team]. Index unknown (null),
-     * not public (version 1 never used a public channel).
+     * other node. Version 1 had one channel only, so every old row gets the team channel [team] (rows still waiting
+     * to be sent: null, the team channel at send time). Index unknown (null), not public (version 1 never used one).
      */
     fun sql1To2(team: String): List<String> {
         val name = "'" + team.replace("'", "''") + "'"
@@ -50,7 +50,9 @@ object Migrations {
             "ALTER TABLE `messages` ADD COLUMN `peer` INTEGER",
             "CREATE INDEX IF NOT EXISTS `index_messages_channelName` ON `messages` (`channelName`)",
             "CREATE INDEX IF NOT EXISTS `index_messages_peer` ON `messages` (`peer`)",
-            "UPDATE `messages` SET `channelName` = $name",
+            // Sent and received rows were on the team channel. Rows still waiting keep no name: they go out on
+            // whatever the team channel is when the radio is back (a null name means "the team channel").
+            "UPDATE `messages` SET `channelName` = $name WHERE NOT (`dir` = 'out' AND `state` IN ('queued','held','refused_airtime'))",
             "ALTER TABLE `tasks` ADD COLUMN `channelIndex` INTEGER",
             "ALTER TABLE `tasks` ADD COLUMN `channelName` TEXT",
             "ALTER TABLE `tasks` ADD COLUMN `channelPublic` INTEGER NOT NULL DEFAULT 0",
