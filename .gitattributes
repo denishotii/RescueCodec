@@ -2,3 +2,4 @@
 spec/vocab/text-dict-v1.txt -text
 # The word dictionary maps line numbers to tokens: its bytes must be identical everywhere.
 spec/vocab/words-dict-v1.txt -text
+spec/vocab/words-dict-v2.txt -text
