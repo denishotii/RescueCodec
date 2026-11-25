@@ -19,7 +19,7 @@ sys.path.insert(0, str(ROOT))
 from rescuecodec.protocol.codec import confirmation_packet, encode_report, encode_text  # noqa: E402
 from rescuecodec.schemas import (Assistance, Breathing, Consciousness, Equipment,  # noqa: E402
                                  PersonFoundReport, Urgency)
-from rescuecodec.v2 import CodecError, decode, decode_any, encode, render  # noqa: E402
+from rescuecodec.v2 import CodecError, decode, decode_any, decode_compact, encode, encode_compact, render  # noqa: E402
 from rescuecodec.v2 import textpack, textwords  # noqa: E402
 from rescuecodec.v2.textwords import decode_words, encode_words  # noqa: E402
 
@@ -144,6 +144,48 @@ WORD_STREAMS_INVALID = [
     ("stream-two-case-controls", "CAP and UPPER before one token.", bytes.fromhex("f001f0020010"), "malformed"),
     ("stream-bad-utf8", "A literal that is not UTF-8.", bytes.fromhex("f802c328"), "malformed"),
     ("stream-too-large", "Decodes to more than 1024 bytes.", _lit(b"x" * 1000) + _lit(b"x" * 25), "too_large"),
+]
+
+
+#: Compact frames (SPEC section 3.7): 0x02, dictionary version, word stream. No Envelope, no id.
+#: (name, note, text or None, dictionary, hex: given for decode-only cases, else computed and checked)
+def _frame_text(size: int) -> str:
+    """'We need QQQ…Q now' with as many Q as give a compact frame of exactly `size` bytes."""
+    for n in range(100, 240):
+        text = "We need " + "Q" * n + " now"
+        if len(textwords.encode_words(text, 2)) + 2 == size:
+            return text
+    raise AssertionError(size)
+
+
+FRAME_200, FRAME_201 = _frame_text(200), _frame_text(201)
+COMPACT_FRAMES = [
+    ("frame-hello-world", "Two common words: 2 bytes each, 2 bytes of frame. 6 bytes on air (11 as a normal text).",
+     "hello world", 2, None),
+    ("frame-name-coordinates", "A sentence with a name and coordinates: the literal keeps every character.",
+     "We found Aylin Demir at 50.6900, 7.2134, she is conscious.", 2, None),
+    ("frame-poem", "A poem with line breaks and repeated spaces comes back exactly.",
+     "The river runs\n  under the bridge,\n\nand we wait   for morning.\n", 2, None),
+    ("frame-emoji", "Emoji and Cyrillic go as literals.", "All safe 🙂👍 see you soon ❤️ Дякую", 2, None),
+    ("frame-literal-129", "A literal of 129 bytes (past 127): the length lives in the 2-byte unit, no switch.",
+     "Code " + "Z" * 127 + " ok", 2, None),
+    ("frame-near-limit-385", "The 385-byte update of words-near-limit in one compact frame.", NEAR_LIMIT, 2, None),
+    ("frame-exactly-200", "A frame of exactly 200 bytes, the encoder limit.", FRAME_200, 2, None),
+    ("frame-dict-1", "A compact frame may also name word dictionary 1: [is] [safe] [.]",
+     None, 1, "0201" + (_tok("is") + _tok("safe") + _tok(".")).hex()),
+    ("frame-unknown-dict", "Word dictionary 9 is unknown: decoded as unknown with the number, shown as "
+     "\"dictionary this app does not have\", never as words.", None, 9, "0209" + "00100011"),
+]
+COMPACT_FRAMES_INVALID = [
+    ("frame-empty-text", "An empty text has no compact frame.", "", None, "missing_field"),
+    ("frame-no-stream", "Version byte but no word stream.", None, "0202", "malformed"),
+    ("frame-no-version", "Only the first byte.", None, "02", "malformed"),
+    ("frame-dict-0", "Word dictionary 0 does not exist.", None, "0200" + "0017", "malformed"),
+    ("frame-truncated", "hello world with its last byte missing: half a token.", None, "0202033e01", "malformed"),
+    ("frame-truncated-literal", "Cut inside a literal.", None, "0202" + "f80c" + b" Aylin".hex(), "malformed"),
+    ("frame-too-large", "234 bytes: more than Meshtastic carries.", None, "0202" + ("f8e6" + "78" * 230), "too_large"),
+    ("frame-too-long-text", "A text whose frame would be 201 bytes, over the encoder limit.", FRAME_201, None,
+     "too_large"),
 ]
 
 
@@ -318,7 +360,7 @@ INVALID_ENCODE = [
     ("text-words-empty", "A compact text must not be empty.", {"text": {"text": "", "words": 1}}, "missing_field", "text.text"),
     ("text-words-and-dict", "Give dict or words, not both.", {"text": {"text": "Hallo", "dict": 1, "words": 1}},
      "invalid_value", "text.words"),
-    ("text-words-unknown", "Word dictionary 2 does not exist yet.", {"text": {"text": "Hallo", "words": 2}},
+    ("text-words-unknown", "Word dictionary 9 does not exist yet.", {"text": {"text": "Hallo", "words": 9}},
      "invalid_value", "text.words"),
     ("text-words-1025", "A compact text is at most 1024 bytes.", {"text": {"text": "A" * 1025, "words": 1}},
      "invalid_value", "text.text"),
@@ -352,9 +394,9 @@ DECODE_ONLY = [
      packed_wire(_raw_deflate(b"A" * 1024)), {"id": 7, "text": {"text": "A" * 1024, "dict": 1}}),
     ("packed-unknown-dict", "Dictionary 2 is from a newer spec: decode as unknown, do not reject.",
      packed_wire(_raw_deflate(b"Hallo"), 2), {"id": 7, "unknown": {}}),
-    ("words-unknown-dict", "Word dictionary 2 is unknown: decode as unknown with the number, shown as "
+    ("words-unknown-dict", "Word dictionary 9 is unknown: decode as unknown with the number, shown as "
      "\"dictionary this app does not have\", never as words.",
-     words_wire(bytes.fromhex("00100011"), 2), {"id": 7, "unknown": {"words": 2}}),
+     words_wire(bytes.fromhex("00100011"), 9), {"id": 7, "unknown": {"words": 9}}),
     ("words-by-hand", "A stream built by hand: [is] [safe] [.] decodes like the encoder's own.",
      words_wire(_tok("is") + _tok("safe") + _tok(".")), {"id": 7, "text": {"text": "is safe.", "words": 1}}),
 ]
@@ -438,7 +480,7 @@ def v1_cases() -> list[tuple[str, str, bytes]]:
 
 def main() -> None:
     out: dict = {
-        "spec_version": "2.1.0",
+        "spec_version": "2.2.0",
         "about": ("RescueCodec v2 conformance vectors. See spec/SPEC.md, section 'Conformance'. "
                   "valid: encode(input) must give hex exactly; decode(hex) must give decoded. "
                   "text: Level 2, render(decoded) must give these strings. "
@@ -452,12 +494,17 @@ def main() -> None:
                   "decode_words(words, 1) must give text and encode_words(text, 1) must give words exactly. "
                   "word_streams: encode_words(text) must give words, decode_words(words) must give text. "
                   "word_streams_invalid: decode_words(words, 1) must be rejected with error. "
-                  "word_dicts: SHA-256 and entry count of each word dictionary file."),
+                  "word_dicts: SHA-256 and entry count of each word dictionary file. "
+                  "compact_frames (SPEC 3.7, first byte 0x02): encode_compact(text, dict) must give hex exactly "
+                  "(when text is given) and decode_compact(hex) must give decoded. "
+                  "compact_frames_invalid: decode_compact(hex) must be rejected with error; encode_compact(text) too "
+                  "when text is given."),
         "valid": [], "decode_only": [], "invalid_encode": [], "invalid_decode": [], "v1": [],
         "packed_text": [],
         "text_dicts": {str(n): {"file": f"vocab/{name}", "sha256": sha, "size": len(textpack.dictionary(n))}
                        for n, (name, sha) in textpack.DICTS.items()},
         "compact_text": [], "word_streams": [], "word_streams_invalid": [],
+        "compact_frames": [], "compact_frames_invalid": [],
         "word_dicts": {str(n): {"file": f"vocab/{name}", "sha256": sha, "entries": len(textwords.dictionary(n).entries),
                                 "size": (ROOT / "spec" / "vocab" / name).stat().st_size}
                        for n, (name, sha) in textwords.DICTS.items()},
@@ -477,7 +524,7 @@ def main() -> None:
         out["decode_only"].append({"name": name, "note": note, "hex": hexstr, "size": len(hexstr) // 2,
                                    "decoded": decoded})
     all_names = ([c[0] for c in VALID + DECODE_ONLY + INVALID_ENCODE + INVALID_DECODE + PACKED_TEXT + COMPACT_TEXT
-                  + WORD_STREAMS + WORD_STREAMS_INVALID]
+                  + WORD_STREAMS + WORD_STREAMS_INVALID + COMPACT_FRAMES + COMPACT_FRAMES_INVALID]
                  + [c[0] for c in v1_cases()])
     assert len(all_names) == len(set(all_names)), "case names must be unique"
     for name, note, msg, code, field in INVALID_ENCODE:
@@ -529,12 +576,47 @@ def main() -> None:
         else:
             raise AssertionError(f"{name} was accepted")
         out["word_streams_invalid"].append({"name": name, "note": note, "words": words.hex(), "error": code})
+    for name, note, text, version, hexstr in COMPACT_FRAMES:
+        if text is not None:
+            data = encode_compact(text, version)
+            assert hexstr is None or data.hex() == hexstr, name
+            hexstr = data.hex()
+        data = bytes.fromhex(hexstr)
+        decoded = decode_compact(data)
+        assert text is None or decoded == {"text": {"text": text, "words": version}}, name
+        assert decode_any(data) == {"v": 2, **decoded}, name
+        case = {"name": name, "note": note}
+        if text is not None:
+            case.update(text=text, dict=version, text_size=len(text.encode("utf-8")))
+        case.update(hex=hexstr, size=len(data), decoded=decoded,
+                    render={"en": render(decoded, "en"), "de": render(decoded, "de")})
+        out["compact_frames"].append(case)
+    for name, note, text, hexstr, code in COMPACT_FRAMES_INVALID:
+        case = {"name": name, "note": note}
+        if text is not None:
+            try:
+                encode_compact(text)
+            except CodecError as exc:
+                assert exc.code == code, (name, exc.code)
+            else:
+                raise AssertionError(f"{name} was accepted")
+            case["text"] = text
+        if hexstr is not None:
+            try:
+                decode_compact(bytes.fromhex(hexstr))
+            except CodecError as exc:
+                assert exc.code == code, (name, exc.code)
+            else:
+                raise AssertionError(f"{name} was accepted")
+            case["hex"] = hexstr
+        case["error"] = code
+        out["compact_frames_invalid"].append(case)
     for name, note, data in v1_cases():
         out["v1"].append({"name": name, "note": note, "hex": data.hex(), "size": len(data), "decoded": decode_any(data)})
     path = ROOT / "spec" / "vectors" / "codec.json"
     path.write_text(json.dumps(out, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     sections = ("valid", "decode_only", "invalid_encode", "invalid_decode", "v1", "packed_text", "compact_text",
-                "word_streams", "word_streams_invalid")
+                "word_streams", "word_streams_invalid", "compact_frames", "compact_frames_invalid")
     total = sum(len(out[k]) for k in sections)
     print(f"wrote {path.relative_to(ROOT)}: {total} cases " + ", ".join(f"{k}={len(out[k])}" for k in sections))
 

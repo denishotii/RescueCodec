@@ -4,7 +4,7 @@ import random
 import unittest
 
 from rescuecodec.engine.textmode import MIN_SAVING_BYTES, choose_form, fit_packed
-from rescuecodec.v2 import CodecError, decode, encode, render
+from rescuecodec.v2 import CodecError, decode, decode_any, encode, render
 from rescuecodec.v2 import codes as C
 from rescuecodec.v2 import rescuecodec_pb2 as pb
 from rescuecodec.v2 import textpack, textwords
@@ -42,19 +42,20 @@ class Dictionary(unittest.TestCase):
 
     def test_damaged_copy_is_not_used(self):
         self.assertTrue(textwords.available(1))
-        self.assertFalse(textwords.available(2))
+        self.assertTrue(textwords.available(2))
+        self.assertFalse(textwords.available(9))
 
 
 class Boundaries(unittest.TestCase):
     """The three spacing rules, byte by byte (SPEC section 3.6.3)."""
 
     def test_literal_owns_its_leading_space(self):
-        data = encode_words("We found Aylin Demir")
+        data = encode_words("We found Aylin Demir", 1)
         self.assertEqual(data, tok("We") + tok("found") + lit(" Aylin Demir"))         # 2 + 2 + 2 + 12 bytes
         self.assertEqual(decode_words(data, 1), "We found Aylin Demir")
 
     def test_token_after_a_literal_gets_no_implied_space(self):
-        data = encode_words("Aylin Demir is safe")
+        data = encode_words("Aylin Demir is safe", 1)
         self.assertEqual(data, lit("Aylin Demir ") + tok("is") + tok("safe"))
         self.assertEqual(decode_words(data, 1), "Aylin Demir is safe")
         # the same tokens without the space in the literal: the words touch, nothing is invented
@@ -69,18 +70,18 @@ class Boundaries(unittest.TestCase):
     def test_case_controls(self):
         self.assertEqual(decode_words(ctl(CAP) + tok("safe"), 1), "Safe")
         self.assertEqual(decode_words(ctl(UPPER) + tok("safe"), 1), "SAFE")
-        self.assertEqual(encode_words("SAFE"), ctl(UPPER) + tok("safe"))
+        self.assertEqual(encode_words("SAFE", 1), ctl(UPPER) + tok("safe"))
 
     def test_coordinates_typed_as_prose_keep_every_character(self):
         text = "Meet at 50.6900, -1.2500"
-        data = encode_words(text)
+        data = encode_words(text, 1)
         self.assertEqual(decode_words(data, 1), text)
         self.assertEqual(data, ctl(CAP) + tok("meet") + tok("at") + tok("50") + lit(".6900, -1.2500"))
 
     def test_no_near_matches(self):
         for text in ("recieve the hepl", "Teh flod", "Aylin", "Müller", "DL1ABC", "Apt 4B"):
-            self.assertEqual(decode_words(encode_words(text), 1), text)
-        self.assertNotIn("help", decode_words(encode_words("hepl"), 1))
+            self.assertEqual(decode_words(encode_words(text, 1), 1), text)
+        self.assertNotIn("help", decode_words(encode_words("hepl", 1), 1))
 
 
 class RoundTrip(unittest.TestCase):
@@ -100,7 +101,7 @@ class RoundTrip(unittest.TestCase):
 
     def test_cases(self):
         for text in self.CASES:
-            self.assertEqual(decode_words(encode_words(text), 1), text, text)
+            self.assertEqual(decode_words(encode_words(text, 1), 1), text, text)
 
     def test_random_utf8(self):
         rnd = random.Random(20261125)
@@ -111,7 +112,7 @@ class RoundTrip(unittest.TestCase):
                 lo, hi = rnd.choice(ranges)
                 chars.append(chr(rnd.randint(lo, hi)))
             text = "".join(chars)
-            self.assertEqual(decode_words(encode_words(text), 1), text)
+            self.assertEqual(decode_words(encode_words(text, 1), 1), text)
 
     def test_random_dictionary_mix(self):
         rnd = random.Random(7)
@@ -121,12 +122,12 @@ class RoundTrip(unittest.TestCase):
             if rnd.random() < 0.3:
                 text = text.upper() if rnd.random() < 0.5 else text.title()
             if text:
-                self.assertEqual(decode_words(encode_words(text), 1), text)
+                self.assertEqual(decode_words(encode_words(text, 1), 1), text)
 
     def test_shortest_stream(self):
         # The encoder may choose a literal over a token when that is shorter: "x and y" in one literal (2+7 bytes)
         # beats literal "x " + [and] + literal " y" (2+2+2+2+2 = 10 bytes).
-        self.assertEqual(encode_words("x and y"), lit("x and y"))
+        self.assertEqual(encode_words("x and y", 1), lit("x and y"))
 
 
 class Errors(unittest.TestCase):
@@ -152,7 +153,7 @@ class Errors(unittest.TestCase):
     def test_too_large(self):
         self.check(lit("x" * 1000) + lit("x" * 25), "too_large")
         with self.assertRaises(WordsError):
-            encode_words("x" * 1025)
+            encode_words("x" * 1025, 1)
 
 
 class Codec(unittest.TestCase):
@@ -177,7 +178,7 @@ class Codec(unittest.TestCase):
 
     def test_rules(self):
         for body, code, field in (({"text": "x", "words": 1, "dict": 1}, "invalid_value", "text.words"),
-                                  ({"text": "x", "words": 2}, "invalid_value", "text.words"),
+                                  ({"text": "x", "words": 9}, "invalid_value", "text.words"),
                                   ({"text": "x" * 1025, "words": 1}, "invalid_value", "text.text")):
             with self.assertRaises(CodecError) as ctx:
                 encode({"text": body})
@@ -190,7 +191,7 @@ class Codec(unittest.TestCase):
         return env.SerializeToString(deterministic=True)
 
     def test_wire_rules(self):
-        words = encode_words("is safe")
+        words = encode_words("is safe", 1)
         for fields, code, field in (({"words": words}, "missing_field", "text.words_dict"),
                                     ({"words_dict": 1, "text": "x"}, "invalid_value", "text.words_dict"),
                                     ({"words": words, "words_dict": 1, "text": "x"}, "invalid_value", "text.words"),
@@ -201,8 +202,8 @@ class Codec(unittest.TestCase):
             self.assertEqual((ctx.exception.code, ctx.exception.field), (code, field), fields)
 
     def test_unknown_dictionary_is_visible_not_guessed(self):
-        msg = decode(self.wire(words=encode_words("is safe"), words_dict=2))
-        self.assertEqual(msg, {"id": 7, "unknown": {"words": 2}})
+        msg = decode(self.wire(words=encode_words("is safe", 1), words_dict=9))
+        self.assertEqual(msg, {"id": 7, "unknown": {"words": 9}})
         self.assertIn("dictionary this app does not have", render(msg, "en"))
         self.assertIn("Wörterbuch", render(msg, "de"))
         self.assertNotIn("safe", render(msg, "en"))
@@ -248,17 +249,19 @@ class SendRule(unittest.TestCase):
                     if len(text.encode()) <= C.MAX_TEXT_BYTES:
                         self.assertEqual(choose_form(msg, want, "x").payload, old_choose(msg, want), (text, want))
 
-    def test_compact_wins_only_when_smaller(self):
+    def test_compact_sends_the_strictly_smallest(self):
         for text in self.TEXTS:
             msg = {"id": 3, "text": {"text": text}}
             off = choose_form(msg, True, "rescuecodec_only")
             on = choose_form(msg, True, "rescuecodec_only", compact=True)
             self.assertLessEqual(len(on.payload), len(off.payload))
-            if on.form == "words":
-                self.assertLess(on.words_size, len(off.payload))
-                self.assertEqual(decode(on.payload)["text"], {"text": text, "words": 1})
+            sizes = [s for s in (on.lean_size, on.words_size, on.packed_size) if s is not None]
+            if on.form == "plain":
+                self.assertTrue(all(len(on.payload) <= s for s in sizes), text)       # ties keep the normal text
             else:
-                self.assertEqual(on.payload, off.payload)            # ties and losses: the existing path
+                self.assertEqual(len(on.payload), min(sizes))
+                self.assertLess(len(on.payload), on.plain_size)
+                self.assertEqual(decode_any(on.payload)["text"]["text"], text)
 
     def test_never_compact_where_the_chat_does_not_pack(self):
         msg = {"id": 3, "text": {"text": RoundTrip.CASES[0]}}
@@ -268,9 +271,11 @@ class SendRule(unittest.TestCase):
     def test_compact_example(self):
         text = "We are at the hut, two people with us, waiting for the vehicle on the forest road"
         form = choose_form({"id": 3, "text": {"text": text}}, True, "rescuecodec_only", compact=True)
-        self.assertEqual(form.form, "words")
+        self.assertEqual(form.form, "lean")
+        self.assertEqual(form.payload[:2], b"\x02\x02")
+        self.assertLess(form.lean_size, form.words_size)
         self.assertLess(form.words_size, form.packed_size)
-        self.assertLess(form.words_size, form.plain_size)
+        self.assertLess(form.lean_size, form.plain_size)
 
     def test_long_text_on_a_packing_chat(self):
         text = ("Sector 4 fully searched, nothing found. Moving to sector 5 along the river, two people, "
@@ -279,7 +284,7 @@ class SendRule(unittest.TestCase):
         form = choose_form({"id": 3, "text": {"text": text}}, True, "x", compact=True)
         self.assertTrue(form.packed)
         self.assertFalse(form.cut)
-        self.assertEqual(decode(form.payload)["text"]["text"], text)
+        self.assertEqual(decode_any(form.payload)["text"]["text"], text)
 
     def test_too_long_is_cut_to_fit_one_packet(self):
         rnd = random.Random(3)

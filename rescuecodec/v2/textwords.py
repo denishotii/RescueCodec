@@ -4,7 +4,7 @@
     decode_words(data, 1)                           # -> "We found Aylin Demir", byte for byte
 
 The stream is a list of 16-bit big-endian units:
-    0x0000..0xEFFF  dictionary entry (line number - 1 of spec/vocab/words-dict-v1.txt)
+    0x0000..0xEFFF  dictionary entry (line number - 1 of spec/vocab/words-dict-v<N>.txt)
     0xF001          CAP    next entry with its first letter a-z written A-Z
     0xF002          UPPER  next entry with every letter a-z written A-Z
     0xF003          GLUE   no space before the next entry
@@ -27,9 +27,10 @@ from pathlib import Path
 #: Largest text a receiver decodes (bytes of UTF-8), same as for DEFLATE texts.
 MAX_TEXT_BYTES = 1024
 #: Dictionary versions: number -> (file in spec/vocab, SHA-256 of its bytes).
-DICTS = {1: ("words-dict-v1.txt", "ffe93afb4623fcd364479169281ca745cc263317a4f83ce27f77d8d37b26a0d8")}
-#: The dictionary new texts are encoded with.
-CURRENT_DICT = 1
+DICTS = {1: ("words-dict-v1.txt", "ffe93afb4623fcd364479169281ca745cc263317a4f83ce27f77d8d37b26a0d8"),
+         2: ("words-dict-v2.txt", "3b6fff5d9bb04bfd0e624e5904afaa93895ee373f7fb88c52ae903a6e9a52616")}
+#: The dictionary new texts are encoded with (2: 61,440 entries; 1 stays readable forever).
+CURRENT_DICT = 2
 
 CAP = 0xF001
 UPPER = 0xF002

@@ -577,6 +577,56 @@ def encode(msg: Mapping) -> bytes:
     return data
 
 
+#: First byte of a compact frame (SPEC section 3.7): 0x02, the word dictionary version, the word stream (3.6).
+COMPACT_FRAME = 0x02
+
+
+def is_compact_frame(data: bytes) -> bool:
+    """True when the payload is a compact frame (first byte 0x02), not an Envelope."""
+    return bool(data) and data[0] == COMPACT_FRAME
+
+
+def encode_compact(text: str, version: int = textwords.CURRENT_DICT) -> bytes:
+    """Text -> compact frame: 0x02, 1 byte word dictionary version, the word stream. No id, no position, no time.
+    Raises CodecError (missing_field for an empty text, invalid_value for an unknown dictionary, too_large)."""
+    if not isinstance(text, str):
+        raise _err("invalid_value", "must be a string", "text.text")
+    if not text:
+        raise _err("missing_field", "a compact frame needs a text", "text.text")
+    if not isinstance(version, int) or not 1 <= version <= 255 or not textwords.available(version):
+        raise _err("invalid_value", f"unknown word dictionary, known: {sorted(textwords.DICTS)}", "text.words")
+    try:
+        stream = textwords.encode_words(text, version)
+    except textwords.WordsError as exc:
+        raise _err(exc.code, str(exc), "text.text") from exc
+    data = bytes((COMPACT_FRAME, version)) + stream
+    if len(data) > C.MAX_ENCODE_BYTES:
+        raise _err("too_large", f"{len(data)} bytes, the limit is {C.MAX_ENCODE_BYTES}")
+    return data
+
+
+def decode_compact(data: bytes) -> dict:
+    """Compact frame -> canonical JSON {"text": {"text": ..., "words": n}} (no id). A dictionary this library does not
+    have (or whose copy fails the SHA-256 check) gives {"unknown": {"words": n}}. Raises CodecError."""
+    data = bytes(data)
+    if not data or data[0] != COMPACT_FRAME:
+        raise _err("unsupported_version", "not a compact frame")
+    if len(data) > C.MAX_DECODE_BYTES:
+        raise _err("too_large", f"{len(data)} bytes, the limit is {C.MAX_DECODE_BYTES}")
+    if len(data) < 2:
+        raise _err("malformed", "the compact frame is cut off (no dictionary version)", "text.words_dict")
+    version = data[1]
+    if version == 0:
+        raise _err("malformed", "word dictionary 0 does not exist", "text.words_dict")
+    if not textwords.available(version):
+        return {"unknown": {"words": version}}          # shown as "dictionary this app does not have"
+    try:
+        text = textwords.decode_words(data[2:], version)
+    except textwords.WordsError as exc:
+        raise _err(exc.code, str(exc), "text.words") from exc
+    return {"text": {"text": text, "words": version}}
+
+
 def detect_version(data: bytes) -> int:
     """1 for a v1 packet (first byte 0x01), 2 for v2, 0 for reserved/unknown versions or empty input."""
     if not data:

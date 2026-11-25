@@ -10,7 +10,7 @@ import time as _time
 from rescuecodec.protocol import codec as v1
 from rescuecodec.schemas import Assistance, Breathing, Consciousness, Equipment, Urgency
 from rescuecodec.v2 import codes as C
-from rescuecodec.v2.codec import CodecError, decode, detect_version
+from rescuecodec.v2.codec import COMPACT_FRAME, CodecError, decode, decode_compact, detect_version
 
 _CONSCIOUSNESS = {Consciousness.CONSCIOUS: "conscious", Consciousness.UNCONSCIOUS: "unconscious"}
 _BREATHING = {Breathing.YES: "normal", Breathing.NO: "none"}
@@ -77,11 +77,13 @@ def decode_v1(data: bytes) -> dict:
 def decode_any(data: bytes) -> dict:
     """Decode a RescueCodec payload of any version.
 
-    First byte 0x01 -> v1 (result has "v": 1). Bytes 0x00 and 0x02..0x07 -> reserved,
-    rejected with "unsupported_version". Anything else -> v2 (result has "v": 2).
+    First byte 0x01 -> v1 (result has "v": 1). 0x02 -> compact frame (SPEC section 3.7, "v": 2, a text without
+    id). Bytes 0x00 and 0x03..0x07 -> reserved, rejected with "unsupported_version". Anything else -> v2 Envelope.
     """
     if not data:
         raise CodecError("empty", "empty payload")
+    if data[0] == COMPACT_FRAME:
+        return {"v": 2, **decode_compact(data)}
     version = detect_version(data)
     if version == 1:
         return decode_v1(bytes(data))

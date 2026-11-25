@@ -1,6 +1,6 @@
 {
- "spec_version": "2.1.0",
- "about": "RescueCodec v2 conformance vectors. See spec/SPEC.md, section 'Conformance'. valid: encode(input) must give hex exactly; decode(hex) must give decoded. text: Level 2, render(decoded) must give these strings. decode_only: decode(hex) must give decoded. invalid_encode / invalid_decode: must be rejected; error codes should match. v1: decode_any(hex) must give decoded. packed_text: unpack(deflate, dict) must give text, decode(hex) must give decoded, and decode(encode(decoded)) must give decoded (compressors may make other bytes). text_dicts: SHA-256 of each text dictionary file. compact_text: encode(input) must give hex exactly, decode(hex) must give decoded, decode_words(words, 1) must give text and encode_words(text, 1) must give words exactly. word_streams: encode_words(text) must give words, decode_words(words) must give text. word_streams_invalid: decode_words(words, 1) must be rejected with error. word_dicts: SHA-256 and entry count of each word dictionary file.",
+ "spec_version": "2.2.0",
+ "about": "RescueCodec v2 conformance vectors. See spec/SPEC.md, section 'Conformance'. valid: encode(input) must give hex exactly; decode(hex) must give decoded. text: Level 2, render(decoded) must give these strings. decode_only: decode(hex) must give decoded. invalid_encode / invalid_decode: must be rejected; error codes should match. v1: decode_any(hex) must give decoded. packed_text: unpack(deflate, dict) must give text, decode(hex) must give decoded, and decode(encode(decoded)) must give decoded (compressors may make other bytes). text_dicts: SHA-256 of each text dictionary file. compact_text: encode(input) must give hex exactly, decode(hex) must give decoded, decode_words(words, 1) must give text and encode_words(text, 1) must give words exactly. word_streams: encode_words(text) must give words, decode_words(words) must give text. word_streams_invalid: decode_words(words, 1) must be rejected with error. word_dicts: SHA-256 and entry count of each word dictionary file. compact_frames (SPEC 3.7, first byte 0x02): encode_compact(text, dict) must give hex exactly (when text is given) and decode_compact(hex) must give decoded. compact_frames_invalid: decode_compact(hex) must be rejected with error; encode_compact(text) too when text is given.",
  "valid": [
   {
    "name": "found-minimal",
@@ -1726,13 +1726,13 @@
   },
   {
    "name": "words-unknown-dict",
-   "note": "Word dictionary 2 is unknown: decode as unknown with the number, shown as \"dictionary this app does not have\", never as words.",
-   "hex": "08076a082204001000112802",
+   "note": "Word dictionary 9 is unknown: decode as unknown with the number, shown as \"dictionary this app does not have\", never as words.",
+   "hex": "08076a082204001000112809",
    "size": 12,
    "decoded": {
     "id": 7,
     "unknown": {
-     "words": 2
+     "words": 9
     }
    }
   },
@@ -2442,11 +2442,11 @@
   },
   {
    "name": "text-words-unknown",
-   "note": "Word dictionary 2 does not exist yet.",
+   "note": "Word dictionary 9 does not exist yet.",
    "input": {
     "text": {
      "text": "Hallo",
-     "words": 2
+     "words": 9
     }
    },
    "error": "invalid_value",
@@ -3433,12 +3433,234 @@
    "error": "too_large"
   }
  ],
+ "compact_frames": [
+  {
+   "name": "frame-hello-world",
+   "note": "Two common words: 2 bytes each, 2 bytes of frame. 6 bytes on air (11 as a normal text).",
+   "text": "hello world",
+   "dict": 2,
+   "text_size": 11,
+   "hex": "0202033e0124",
+   "size": 6,
+   "decoded": {
+    "text": {
+     "text": "hello world",
+     "words": 2
+    }
+   },
+   "render": {
+    "en": "Message: hello world.",
+    "de": "Nachricht: hello world."
+   }
+  },
+  {
+   "name": "frame-name-coordinates",
+   "note": "A sentence with a name and coordinates: the literal keeps every character.",
+   "text": "We found Aylin Demir at 50.6900, 7.2134, she is conscious.",
+   "dict": 2,
+   "text_size": 58,
+   "hex": "02026920f81f2041796c696e2044656d69722061742035302e363930302c20372e3231333400011f622a290000",
+   "size": 45,
+   "decoded": {
+    "text": {
+     "text": "We found Aylin Demir at 50.6900, 7.2134, she is conscious.",
+     "words": 2
+    }
+   },
+   "render": {
+    "en": "Message: We found Aylin Demir at 50.6900, 7.2134, she is conscious.",
+    "de": "Nachricht: We found Aylin Demir at 50.6900, 7.2134, she is conscious."
+   }
+  },
+  {
+   "name": "frame-poem",
+   "note": "A poem with line breaks and repeated spaces comes back exactly.",
+   "text": "The river runs\n  under the bridge,\n\nand we wait   for morning.\n",
+   "dict": 2,
+   "text_size": 63,
+   "hex": "020270dc10d9f8030a2020010834adf8032c0a0a00108d64f803202020001900d7f8022e0a",
+   "size": 37,
+   "decoded": {
+    "text": {
+     "text": "The river runs\n  under the bridge,\n\nand we wait   for morning.\n",
+     "words": 2
+    }
+   },
+   "render": {
+    "en": "Message: The river runs\n  under the bridge,\n\nand we wait   for morning.\n.",
+    "de": "Nachricht: The river runs\n  under the bridge,\n\nand we wait   for morning.\n."
+   }
+  },
+  {
+   "name": "frame-emoji",
+   "note": "Emoji and Cyrillic go as literals.",
+   "text": "All safe 🙂👍 see you soon ❤️ Дякую",
+   "dict": 2,
+   "text_size": 48,
+   "hex": "0202078c0354f80a20f09f9982f09f918d2000c3d41cf81220e29da4efb88f20d094d18fd0bad183d18e",
+   "size": 42,
+   "decoded": {
+    "text": {
+     "text": "All safe 🙂👍 see you soon ❤️ Дякую",
+     "words": 2
+    }
+   },
+   "render": {
+    "en": "Message: All safe 🙂👍 see you soon ❤️ Дякую.",
+    "de": "Nachricht: All safe 🙂👍 see you soon ❤️ Дякую."
+   }
+  },
+  {
+   "name": "frame-literal-129",
+   "note": "A literal of 129 bytes (past 127): the length lives in the 2-byte unit, no switch.",
+   "text": "Code ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ ok",
+   "dict": 2,
+   "text_size": 135,
+   "hex": "0202ac74f881205a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a201013",
+   "size": 137,
+   "decoded": {
+    "text": {
+     "text": "Code ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ ok",
+     "words": 2
+    }
+   },
+   "render": {
+    "en": "Message: Code ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ ok.",
+    "de": "Nachricht: Code ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ ok."
+   }
+  },
+  {
+   "name": "frame-near-limit-385",
+   "note": "The 385-byte update of words-near-limit in one compact frame.",
+   "text": "Update from team 3 at 14:20. We searched the whole north side of the valley along the river and the old mill. No trace of the missing hiker so far. The path near the bridge is flooded, please use the forest road instead. Two of us are tired but fine. We need more batteries for the radios, water and a dry blanket. Next report in one hour. Wind from the west, light rain, ridge in fog.",
+   "dict": 2,
+   "text_size": 385,
+   "hex": "0202f001178b0025020d0566004109bff8013a05b90000007c1552105702251bfd56410ed1757e227182fc000004ef468900127db2d93f15080000d8ca0d13c2ad05ca0001003e01ed27bb02410635000013e00ddb66190060072f0000007c2a8c08a2013d27df00010030050f08390f3000003bf27a346e500000f00105eb0025283c000183180001958b0013291c0000",
+   "size": 145,
+   "decoded": {
+    "text": {
+     "text": "Update from team 3 at 14:20. We searched the whole north side of the valley along the river and the old mill. No trace of the missing hiker so far. The path near the bridge is flooded, please use the forest road instead. Two of us are tired but fine. We need more batteries for the radios, water and a dry blanket. Next report in one hour. Wind from the west, light rain, ridge in fog.",
+     "words": 2
+    }
+   },
+   "render": {
+    "en": "Message: Update from team 3 at 14:20. We searched the whole north side of the valley along the river and the old mill. No trace of the missing hiker so far. The path near the bridge is flooded, please use the forest road instead. Two of us are tired but fine. We need more batteries for the radios, water and a dry blanket. Next report in one hour. Wind from the west, light rain, ridge in fog.",
+    "de": "Nachricht: Update from team 3 at 14:20. We searched the whole north side of the valley along the river and the old mill. No trace of the missing hiker so far. The path near the bridge is flooded, please use the forest road instead. Two of us are tired but fine. We need more batteries for the radios, water and a dry blanket. Next report in one hour. Wind from the west, light rain, ridge in fog."
+   }
+  },
+  {
+   "name": "frame-exactly-200",
+   "note": "A frame of exactly 200 bytes, the encoder limit.",
+   "text": "We need QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ now",
+   "dict": 2,
+   "text_size": 202,
+   "hex": "0202049cf8c02051515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151200090",
+   "size": 200,
+   "decoded": {
+    "text": {
+     "text": "We need QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ now",
+     "words": 2
+    }
+   },
+   "render": {
+    "en": "Message: We need QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ now.",
+    "de": "Nachricht: We need QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ now."
+   }
+  },
+  {
+   "name": "frame-dict-1",
+   "note": "A compact frame may also name word dictionary 1: [is] [safe] [.]",
+   "hex": "02010017035d0000",
+   "size": 8,
+   "decoded": {
+    "text": {
+     "text": "is safe.",
+     "words": 1
+    }
+   },
+   "render": {
+    "en": "Message: is safe.",
+    "de": "Nachricht: is safe."
+   }
+  },
+  {
+   "name": "frame-unknown-dict",
+   "note": "Word dictionary 9 is unknown: decoded as unknown with the number, shown as \"dictionary this app does not have\", never as words.",
+   "hex": "020900100011",
+   "size": 6,
+   "decoded": {
+    "unknown": {
+     "words": 9
+    }
+   },
+   "render": {
+    "en": "Message encoded with a dictionary this app does not have (word dictionary 9), please update the app.",
+    "de": "Nachricht mit einem Wörterbuch, das diese App nicht hat (Wörterbuch 9), bitte App aktualisieren."
+   }
+  }
+ ],
+ "compact_frames_invalid": [
+  {
+   "name": "frame-empty-text",
+   "note": "An empty text has no compact frame.",
+   "text": "",
+   "error": "missing_field"
+  },
+  {
+   "name": "frame-no-stream",
+   "note": "Version byte but no word stream.",
+   "hex": "0202",
+   "error": "malformed"
+  },
+  {
+   "name": "frame-no-version",
+   "note": "Only the first byte.",
+   "hex": "02",
+   "error": "malformed"
+  },
+  {
+   "name": "frame-dict-0",
+   "note": "Word dictionary 0 does not exist.",
+   "hex": "02000017",
+   "error": "malformed"
+  },
+  {
+   "name": "frame-truncated",
+   "note": "hello world with its last byte missing: half a token.",
+   "hex": "0202033e01",
+   "error": "malformed"
+  },
+  {
+   "name": "frame-truncated-literal",
+   "note": "Cut inside a literal.",
+   "hex": "0202f80c2041796c696e",
+   "error": "malformed"
+  },
+  {
+   "name": "frame-too-large",
+   "note": "234 bytes: more than Meshtastic carries.",
+   "hex": "0202f8e67878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+   "error": "too_large"
+  },
+  {
+   "name": "frame-too-long-text",
+   "note": "A text whose frame would be 201 bytes, over the encoder limit.",
+   "text": "We need QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ now",
+   "error": "too_large"
+  }
+ ],
  "word_dicts": {
   "1": {
    "file": "vocab/words-dict-v1.txt",
    "sha256": "ffe93afb4623fcd364479169281ca745cc263317a4f83ce27f77d8d37b26a0d8",
    "entries": 8192,
    "size": 66607
+  },
+  "2": {
+   "file": "vocab/words-dict-v2.txt",
+   "sha256": "3b6fff5d9bb04bfd0e624e5904afaa93895ee373f7fb88c52ae903a6e9a52616",
+   "entries": 61440,
+   "size": 623992
   }
  }
 }

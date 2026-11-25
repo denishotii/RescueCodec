@@ -30,7 +30,8 @@ from rescuecodec.gateway.radio.base import (BROADCAST, PORT_PRIVATE_APP, PORT_TE
                                             RadioAdapter, RadioPacket)
 from rescuecodec.gateway.store import Store
 from rescuecodec.v2 import codes as C
-from rescuecodec.v2.codec import (CodecError, decode, effective_priority, encode, message_type, node_from_json,
+from rescuecodec.v2.codec import (CodecError, decode, effective_priority, encode, is_compact_frame, message_type,
+                                  node_from_json,
                                   resolve_time)
 from rescuecodec.v2.compat import decode_any
 from rescuecodec.v2.render import render
@@ -220,6 +221,9 @@ class GatewayService:
                 if record["direction"] == "in" and is_plain(record):
                     self._text_seen_before(record["from"], (record.get("radio") or {}).get("packet_id"),
                                            bytes.fromhex(record["codec"]["hex"]), when.timestamp())
+                elif record["direction"] == "in" and record["codec"].get("form") == "lean":
+                    self._text_seen_before(record["from"], (record.get("radio") or {}).get("packet_id"),
+                                           bytes.fromhex(record["codec"]["hex"]), when.timestamp())
                 elif record["direction"] == "in":
                     self.deduper.seen(record["from"], message, bytes.fromhex(record["codec"]["hex"]), when.timestamp())
                 self._apply_to_board(record, message, when)
@@ -275,6 +279,8 @@ class GatewayService:
         if packed_words(message) is not None:
             codec["packed"] = True               # a packed text: `message.text.text` holds the unpacked words
             codec["form"] = text_form(message)   # "deflate" or "words" (compact text)
+            if is_compact_frame(payload):
+                codec["form"] = "lean"           # compact frame 0x02: the word stream without an Envelope (no id)
         return {"key": key, "direction": direction, "from": sender, "type": kind, "priority": priority, "status": status,
                 "error": None, "time": iso(now), "event_time": event_time, "codec": codec,
                 "radio": radio, "channel": channel, "to": to, "message": public, "text": readable(message),
@@ -489,7 +495,10 @@ class GatewayService:
         self._note_node(packet.sender, channel["name"], PORT_PRIVATE_APP)
         now = datetime.now(timezone.utc)
         with self.lock:
-            if self.deduper.seen(packet.sender, message, packet.payload, now.timestamp()):
+            # A compact frame (0x02) has no id: like a normal text, the Meshtastic packet id finds repeats.
+            if (self._text_seen_before(packet.sender, packet.packet_id, packet.payload, now.timestamp())
+                    if is_compact_frame(packet.payload)
+                    else self.deduper.seen(packet.sender, message, packet.payload, now.timestamp())):
                 self._counters["duplicates"] += 1
                 log.debug("duplicate from %s dropped", packet.sender)
                 return
@@ -689,7 +698,7 @@ class GatewayService:
                 raise ApiError(409, "bad_request", "the same message is already queued")
             record = self.store.insert(build("queued"))
             self._queued[item.seq] = _Out(record["seq"], want_ack, port, target_json["index"], to)
-            if assigned and not plain:
+            if assigned and not plain and not is_compact_frame(payload):    # a compact frame carries no id
                 self.store.commit_message_id(assigned)
             self._count(record)
             task = self._apply_to_board(record, canonical, now)

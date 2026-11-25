@@ -7,8 +7,9 @@ Rule (spec/SPEC.md section 2.3). Same rule as TextMode in the Kotlin engine.
    packet in the last 24 h); a channel is packed when no Meshtastic user (a node that sent port 1 texts there and no
    port 256 packet) was heard on it in the last 24 h.
 4. Packed only when the packet is at least 3 bytes smaller than the words as a normal text. Else normal text.
-5. Compact text (opt-in setting, off by default): on a chat that packs, the word-token form is built too and is sent
-   when its whole payload is smaller than what rule 4 picked (ties keep rule 4). SPEC section 3.6.
+5. Compact text (opt-in setting, off by default): on a chat that packs, every complete form is built (normal text,
+   DEFLATE Envelope, word tokens in the Envelope, compact frame 0x02) and the strictly smallest goes out; the normal
+   text when it is smaller or equal. SPEC sections 2.3, 3.6 and 3.7.
 6. A chat that packs takes up to 400 bytes of text; the packet stays at most 200 bytes (fit_packed cuts the rest).
 Example: "We are at the hut, two people with us, waiting for the vehicle on the forest road" is 81 B as a normal
 text and 42 B packed with an id (no position), so it goes packed on a RescueCodec channel.
@@ -21,7 +22,7 @@ from typing import Any
 
 from rescuecodec.engine.extract import ELLIPSIS, fit_plain
 from rescuecodec.v2 import codes as C
-from rescuecodec.v2.codec import CodecError, decode, encode
+from rescuecodec.v2.codec import CodecError, decode, encode, encode_compact
 from rescuecodec.v2.textpack import CURRENT_DICT
 from rescuecodec.v2.textwords import CURRENT_DICT as CURRENT_WORDS
 
@@ -59,10 +60,11 @@ class TextForm:
     plain_size: int                 # bytes as a normal Meshtastic text (cut to 200 bytes like fit_plain)
     packed_size: int | None         # bytes as a DEFLATE packed RescueCodec text, None when it cannot be built (over 200 B)
     reason: str                     # why: a wants_packed reason, or "no_saving" / "too_large"
-    form: str = "plain"             # "plain", "deflate" or "words"
-    words_size: int | None = None   # bytes as a compact word-token text, None when not tried or over 200 B
+    form: str = "plain"             # "plain", "deflate", "words" (tokens in the Envelope) or "lean" (compact frame)
+    words_size: int | None = None   # bytes as word tokens in the Envelope, None when not tried or over 200 B
     text: str = ""                  # the words that go out (shortened with "…" when they did not fit)
     cut: bool = False               # True when the text was shortened to fit one packet
+    lean_size: int | None = None    # bytes as a compact frame (0x02), None when not tried, over 200 B or with a position
 
 
 def _rest(message: Mapping) -> dict[str, Any]:
@@ -73,6 +75,17 @@ def _payload(rest: Mapping, body: dict[str, Any]) -> bytes | None:
     try:
         return encode({**rest, "text": body})
     except CodecError:                           # over 200 bytes, or over 1024 bytes of text
+        return None
+
+
+def _lean(rest: Mapping, words: str) -> bytes | None:
+    """The compact frame of a text, or None: it has no id, position or time, so a message with `pos` or `time`
+    (they would be lost) does not get one, nor a text over 200 bytes."""
+    if rest.get("pos") or rest.get("time"):
+        return None
+    try:
+        return encode_compact(words, CURRENT_WORDS)
+    except CodecError:
         return None
 
 
@@ -98,9 +111,10 @@ def choose_form(message: Mapping, want_packed: bool, reason: str = "", compact: 
     """Build the forms of a text message and pick one. `message` is a canonical text message; its id, pos, time
     and priority go only into the packed forms. Never raises for a text message.
 
-    Existing rule (compact off): DEFLATE when it fits and saves at least 3 bytes against the normal text, else the
-    normal text. With `compact` (the chat must pack, `want_packed`), the word-token form is built too and replaces
-    the existing choice only when its whole payload is smaller, or when the existing choice would cut the text.
+    Compact off: DEFLATE when it fits and saves at least 3 bytes against the normal text, else the normal text.
+    Compact on (the chat must pack, `want_packed`): the complete payloads of the compact frame (0x02, no id), the word
+    tokens in the Envelope and DEFLATE are built, and the strictly smallest goes out (ties: compact frame, then
+    words, then DEFLATE); the normal text when it is smaller or equal, unless it would cut the text.
     A chat that packs takes up to 400 bytes of text; what does not fit one packet is shortened (fit_packed)."""
     words = message["text"]["text"]
     rest = _rest(message)
@@ -109,7 +123,8 @@ def choose_form(message: Mapping, want_packed: bool, reason: str = "", compact: 
         def fits(w: str) -> bool:
             return (len(w.encode("utf-8")) <= C.MAX_ENCODE_BYTES
                     or _payload(rest, {"text": w, "dict": CURRENT_DICT}) is not None
-                    or (compact and _payload(rest, {"text": w, "words": CURRENT_WORDS}) is not None))
+                    or (compact and (_lean(rest, w) is not None
+                                     or _payload(rest, {"text": w, "words": CURRENT_WORDS}) is not None)))
         fitted = fit_packed(words, fits)
         cut = fitted != words
         words = fitted
@@ -120,18 +135,40 @@ def choose_form(message: Mapping, want_packed: bool, reason: str = "", compact: 
         plain_msg = {"priority": message["priority"], **plain_msg}
     packed_payload = _payload(rest, {"text": words, "dict": CURRENT_DICT})
     packed_size = len(packed_payload) if packed_payload is not None else None
-    words_payload = _payload(rest, {"text": words, "words": CURRENT_WORDS}) if compact and want_packed else None
-    words_size = len(words_payload) if words_payload is not None else None
+    if compact and want_packed:
+        return _smallest(message, rest, words, plain, plain_msg, packed_payload, reason, cut)
     if want_packed and packed_payload is not None and packed_size <= len(plain_bytes) - MIN_SAVING_BYTES:
-        existing = TextForm(True, packed_payload, decode(packed_payload), len(plain_bytes), packed_size, reason,
-                            "deflate", words_size, words, cut)
-    else:
-        why = reason if not want_packed else ("too_large" if packed_payload is None else "no_saving")
-        existing = TextForm(False, plain_bytes, plain_msg, len(plain_bytes), packed_size, why, "plain", words_size,
-                            plain, cut or plain != words)
-    if words_payload is not None:
-        lossy = existing.form == "plain" and plain != words
-        if len(words_payload) < len(existing.payload) or lossy:
-            return TextForm(True, words_payload, decode(words_payload), len(plain_bytes), packed_size, reason, "words",
-                            words_size, words, cut)
-    return existing
+        return TextForm(True, packed_payload, decode(packed_payload), len(plain_bytes), packed_size, reason, "deflate",
+                        None, words, cut)
+    why = reason if not want_packed else ("too_large" if packed_payload is None else "no_saving")
+    return TextForm(False, plain_bytes, plain_msg, len(plain_bytes), packed_size, why, "plain", None, plain,
+                    cut or plain != words)
+
+
+def _smallest(message: Mapping, rest: Mapping, words: str, plain: str, plain_msg: dict[str, Any],
+              packed_payload: bytes | None, reason: str, cut: bool) -> TextForm:
+    """Compact on, a chat that packs: the strictly smallest complete payload; the normal text on a tie."""
+    plain_bytes = plain.encode("utf-8")
+    lean = _lean(rest, words)
+    words_payload = _payload(rest, {"text": words, "words": CURRENT_WORDS})
+    sizes = {"lean": len(lean) if lean is not None else None,
+             "words": len(words_payload) if words_payload is not None else None,
+             "deflate": len(packed_payload) if packed_payload is not None else None}
+    packed = [(size, order, name) for order, (name, size) in enumerate(sizes.items()) if size is not None]
+    best = min(packed) if packed else None
+    lossy = plain != words                       # the normal text would be cut, a packed form keeps it whole
+    if best is not None and (best[0] < len(plain_bytes) or lossy):
+        name = best[2]
+        if name == "lean":
+            payload = lean
+            msg: dict[str, Any] = {"text": {"text": words, "words": CURRENT_WORDS}}
+            if message.get("priority"):          # not on the air (like a normal text): the radio's packet priority
+                msg = {"priority": message["priority"], **msg}
+        else:
+            payload = words_payload if name == "words" else packed_payload
+            msg = decode(payload)
+        return TextForm(True, payload, msg, len(plain_bytes), sizes["deflate"], reason, name, sizes["words"], words,
+                        cut, sizes["lean"])
+    why = "too_large" if best is None else "no_saving"
+    return TextForm(False, plain_bytes, plain_msg, len(plain_bytes), sizes["deflate"], why, "plain", sizes["words"],
+                    plain, cut or plain != words, sizes["lean"])
