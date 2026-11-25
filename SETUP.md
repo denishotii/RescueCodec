@@ -1,6 +1,6 @@
 # Run RescueCodec from Denis's MacBook
 
-Everything runs from this one Mac. Nobody else installs anything. Teammates only need an Android phone (for the app) or a browser (to watch the dashboard).
+Everything runs from this one Mac. Nobody else installs anything. (Another laptop: `SETUP-NEW-DEVICE.md`.) Teammates only need an Android phone (for the app) or a browser (to watch the dashboard).
 
 ```
 Phone + app --Bluetooth--> field radio (T1000-E / T-Watch) ~~LoRa~~ Heltec V3 --USB--> this Mac: gateway + dashboard
@@ -260,4 +260,5 @@ Tests: `.venv/bin/python -m pytest -q`
 - `README.md`: what is in the repo.
 - `docs/INTEGRATE.md`: use RescueCodec from other apps (REST, MQTT, TAK, Python, Kotlin, TypeScript, Android Intent).
 - `docs/VOICE.md`: offline speech.
-- `OFFLINE.md`: every download and its licence, if you ever set up a second machine.
+- `SETUP-NEW-DEVICE.md`: set up another laptop from zero.
+- `OFFLINE.md`: every download and its licence.
