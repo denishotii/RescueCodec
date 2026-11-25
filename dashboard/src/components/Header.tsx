@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ChartColumn, Moon, Sun, Tv, X } from "lucide-react";
+import { ChartColumn, Ellipsis, Moon, Sun, Tv, X } from "lucide-react";
 import { useData, useNow, useT } from "../state/hooks";
 import { setUi, useUi } from "../state/ui";
 import { clock, fmtNum } from "../lib/format";
@@ -19,12 +19,11 @@ function Mark() {
 
 /** One line in the header: what went on air against plain text. The full numbers live in Details. */
 function Saving({ onOpen }: { onOpen: () => void }) {
-  const { stats, nodes } = useData();
+  const { stats } = useData();
   const t = useT();
   const onAir = stats ? (stats.bytes_in.value ?? 0) + (stats.bytes_out.value ?? 0) : 0;
   const asText = stats?.text_equivalent_bytes.value ?? 0;
   const ratio = stats?.size_ratio.value;
-  const radios = Object.keys(nodes).length;
   const tip = stats
     ? `${t("bytesOnAir")}: ${t(stats.bytes_in.source)}. ${t("asText")}: ${t(stats.text_equivalent_bytes.source)}. ${t(stats.text_equivalent_bytes.source === "measured" ? "measuredTip" : "estimatedTip")}`
     : t("details");
@@ -37,7 +36,6 @@ function Saving({ onOpen }: { onOpen: () => void }) {
           {ratio ? <> · <em>{fmtNum(ratio, 1)}× {t("smaller")}</em></> : null}
         </span>
       ) : <span className="saving-line">{t("details")}</span>}
-      <span className="saving-radios num">{radios} {t("radiosShort")}</span>
     </button>
   );
 }
@@ -69,17 +67,98 @@ function DetailsDrawer({ open, onClose }: { open: boolean; onClose: () => void }
   );
 }
 
+/** One pill for the link that matters: is a radio on the gateway, and which one. */
+function StatusPill() {
+  const { conn, health, nodes, lastContact } = useData();
+  const t = useT();
+  const radio = health?.radio;
+  let tone: "ok" | "wait" | "bad" = "ok";
+  let label: string;
+  if (conn === "offline") { tone = "bad"; label = t("offline"); }
+  else if (!health) { tone = "wait"; label = conn === "reconnecting" ? t("reconnecting") : t("connecting"); }
+  else if (!radio?.connected) { tone = "bad"; label = t("radioNotConnected"); }
+  else {
+    // the radio's own name from /v2/nodes ("Base"), the node id only when no name is known
+    const me = (radio.node && nodes[radio.node]) || Object.values(nodes).find((n) => n.is_gateway);
+    const name = me?.long_name || me?.short_name || radio.node;
+    label = `${t("radioConnected")}${name ? ` · ${name}` : ""}`;
+    if (conn === "reconnecting") tone = "wait";
+  }
+  const tip = radio?.connected
+    ? [radio.node, radio.region, radio.preset, radio.channel ? `#${radio.channel}` : null, radio.firmware].filter(Boolean).join(" · ")
+    : undefined;
+  return (
+    <p className={`status-pill status-${tone}`} role="status" title={tip}>
+      <span className="dot" aria-hidden="true" />
+      <span className="status-label">{label}</span>
+      {lastContact && conn === "offline" && <span className="muted num">{t("lastData")} {clock(new Date(lastContact).toISOString(), false)}</span>}
+      {radio?.connected && radio.channel_error && <span className="status-err" role="alert">{radio.channel_error}</span>}
+    </p>
+  );
+}
+
+/** MQTT shows only once it has been up in this session (the gateway does not say whether it is configured). */
+function MqttPill() {
+  const { health, conn } = useData();
+  const t = useT();
+  const seen = useRef(false);
+  const up = !!health?.mqtt.connected && conn !== "offline";
+  if (up) seen.current = true;
+  if (!seen.current) return null;
+  return (
+    <p className={`status-pill status-${up ? "ok" : "bad"} status-small`} role="status">
+      <span className="dot" aria-hidden="true" /><span>{t("mqtt")}</span>
+    </p>
+  );
+}
+
+/** Room view, theme and the Details drawer: things a command post sets once. */
+function Menu({ onDetails }: { onDetails: () => void }) {
+  const ui = useUi();
+  const { nodes } = useData();
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("pointerdown", away);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("pointerdown", away); document.removeEventListener("keydown", esc); };
+  }, [open]);
+  const dark = ui.theme === "dark";
+  return (
+    <div className="menu-wrap" ref={ref}>
+      <button className="icon-btn" aria-expanded={open} aria-haspopup="true" aria-label={t("menu")} title={t("menu")} onClick={() => setOpen((o) => !o)}>
+        <Ellipsis size={18} aria-hidden="true" />
+      </button>
+      {open && (
+        <div className="menu" role="group" aria-label={t("menu")}>
+          <button className="menu-item" onClick={() => { setOpen(false); onDetails(); }}>
+            <ChartColumn size={16} aria-hidden="true" /><span>{t("detailsTitle")}</span>
+            <span className="menu-state num">{Object.keys(nodes).length} {t("radiosShort")}</span>
+          </button>
+          <button className="menu-item" aria-pressed={ui.room} onClick={() => setUi({ room: !ui.room })}>
+            <Tv size={16} aria-hidden="true" /><span>{t("room")}</span>
+            <span className="menu-state">{ui.room ? "✓" : ""}</span>
+          </button>
+          <button className="menu-item" onClick={() => setUi({ theme: dark ? "light" : "dark" })}>
+            {dark ? <Sun size={16} aria-hidden="true" /> : <Moon size={16} aria-hidden="true" />}
+            <span>{t("theme")}</span>
+            <span className="menu-state">{dark ? t("dark") : t("light")}</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Header() {
-  const { conn, health, lastContact } = useData();
   const ui = useUi();
   const t = useT();
   const [details, setDetails] = useState(false);
   useNow(5000);
-
-  const connLabel = conn === "live" ? t("connected") : conn === "connecting" ? t("connecting") : conn === "reconnecting" ? t("reconnecting") : t("offline");
-  const radio = health?.radio;
-  const stale = conn === "offline"; // radio and MQTT state is unknown while the gateway is out of reach
-  const radioOk = !!radio?.connected && !stale;
 
   return (
     <header className="topbar">
@@ -91,24 +170,10 @@ export function Header() {
         </div>
       </div>
 
-      <ul className="status-row" aria-label="Status">
-        <li className={`status status-${conn === "live" ? "ok" : conn === "offline" ? "bad" : "wait"}`}>
-          <span className="dot" aria-hidden="true" />
-          <span>{connLabel}</span>
-          {lastContact && conn !== "live" && <span className="muted num">{t("lastData")} {clock(new Date(lastContact).toISOString(), false)}</span>}
-        </li>
-        <li className={`status status-${health && !stale ? (radioOk ? "ok" : "bad") : "idle"}`}>
-          <span className="dot" aria-hidden="true" />
-          <span title={radioOk ? [radio?.region, radio?.preset, radio?.channel].filter(Boolean).join(" · ") : undefined}>
-            {stale ? `${t("radio")}: ?` : radioOk ? `${t("radio")} ${radio?.node ?? ""}` : t("radioOff")}
-          </span>
-          {radioOk && radio?.channel_error && <span role="alert">{radio.channel_error}</span>}
-        </li>
-        <li className={`status status-${health?.mqtt.connected && !stale ? "ok" : "idle"}`}>
-          <span className="dot" aria-hidden="true" />
-          <span>{t("mqtt")}</span>
-        </li>
-      </ul>
+      <div className="status-row" aria-label="Status">
+        <StatusPill />
+        <MqttPill />
+      </div>
 
       <Saving onOpen={() => setDetails(true)} />
 
@@ -118,13 +183,7 @@ export function Header() {
             <button key={l} className={ui.lang === l ? "on" : ""} aria-pressed={ui.lang === l} onClick={() => setUi({ lang: l })}>{l.toUpperCase()}</button>
           ))}
         </div>
-        <button className="icon-btn" aria-pressed={ui.room} title={ui.room ? t("roomOn") : t("roomOff")} aria-label={t("room")} onClick={() => setUi({ room: !ui.room })}>
-          <Tv size={18} aria-hidden="true" />
-        </button>
-        <button className="icon-btn" title={t("theme")} aria-label={`${t("theme")}: ${ui.theme === "dark" ? t("dark") : t("light")}`}
-          onClick={() => setUi({ theme: ui.theme === "dark" ? "light" : "dark" })}>
-          {ui.theme === "dark" ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
-        </button>
+        <Menu onDetails={() => setDetails(true)} />
       </div>
       <DetailsDrawer open={details} onClose={() => setDetails(false)} />
     </header>

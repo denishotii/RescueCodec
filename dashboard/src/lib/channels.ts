@@ -28,3 +28,12 @@ export function matchesChannel(pick: ChannelPick, name: string | null | undefine
 
 /** Chips and the filter only help when more than one channel is around. */
 export const showChannels = (names: string[]) => names.length > 1;
+
+/**
+ * A card names its channel only when more than one channel is in use, and not for the gateway's own channel:
+ * the exceptions get a label, the usual traffic stays clean.
+ */
+export function chipFor(many: boolean, name: string | null | undefined, home: string | null | undefined): boolean {
+  if (!many || !name) return false;
+  return !home || name.toLowerCase() !== home.toLowerCase();
+}

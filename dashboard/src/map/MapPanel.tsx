@@ -6,7 +6,7 @@ import {
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import { Protocol } from "pmtiles";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { Download, Ellipsis, Layers, LocateFixed, Mountain, Square } from "lucide-react";
+import { Download, Ellipsis, Layers, LocateFixed, Map as MapIcon, Mountain, Square } from "lucide-react";
 import { api, config } from "../api/client";
 import { useData, useT } from "../state/hooks";
 import { setUi, useUi, type Layers as LayerKeys } from "../state/ui";
@@ -75,7 +75,31 @@ const LAYER_LABEL: Record<keyof LayerKeys, Key> = {
   finds: "layerFinds", tracks: "layerTracks", sectors: "layerSectors", hazards: "layerHazards", nodes: "layerNodes",
 };
 
+/** MapLibre needs WebGL2. Some projector laptops and headless browsers have none. */
+export function hasWebGL2(): boolean {
+  try { return !!document.createElement("canvas").getContext("webgl2"); } catch { return false; }
+}
+
+/** A calm note in place of the map; every other panel keeps working. */
+export function MapUnavailable() {
+  const t = useT();
+  return (
+    <Panel id="map" title={t("map")} className="panel-map">
+      <div className="map-wrap map-off" role="status">
+        <MapIcon size={32} aria-hidden="true" />
+        <p>{t("mapNoWebgl")}</p>
+      </div>
+    </Panel>
+  );
+}
+
 export function MapPanel() {
+  const [ok] = useState(hasWebGL2);
+  const [failed, setFailed] = useState(false);
+  return ok && !failed ? <MapView onFail={() => setFailed(true)} /> : <MapUnavailable />;
+}
+
+function MapView({ onFail }: { onFail: () => void }) {
   const { messages, tasks, nodes } = useData();
   const ui = useUi();
   const t = useT();
@@ -110,11 +134,18 @@ export function MapPanel() {
   // create the map once
   useEffect(() => {
     if (!host.current) return;
-    ensureProtocol();
-    const m = new MlMap({
-      container: host.current, style: buildStyle(ui.theme, ui.lang, ui.room), center: homeCenter(), zoom: config.home?.zoom ?? 11.6, maxPitch: 75,
-      attributionControl: false, canvasContextAttributes: { antialias: true },
-    });
+    let m: MlMap;
+    try {
+      ensureProtocol();
+      m = new MlMap({
+        container: host.current, style: buildStyle(ui.theme, ui.lang, ui.room), center: homeCenter(), zoom: config.home?.zoom ?? 11.6, maxPitch: 75,
+        attributionControl: false, canvasContextAttributes: { antialias: true },
+      });
+    } catch (e) {
+      console.error("map could not start", e);
+      onFail();
+      return;
+    }
     m.addControl(new AttributionControl({ compact: true }), "bottom-right");
     m.addControl(new NavigationControl({ visualizePitch: true }), "top-right");
     m.addControl(new ScaleControl({ unit: "metric" }), "bottom-left");
@@ -193,7 +224,7 @@ export function MapPanel() {
       else if (rec?.message.pos) target = [rec.message.pos.lon, rec.message.pos.lat];
     }
     if (target) map.flyTo({ center: target, zoom: Math.max(map.getZoom(), 14.5), duration: 900 });
-    if (ui.tab !== "map" && window.matchMedia("(max-width: 1199px)").matches) setUi({ tab: "map" });
+    if (ui.tab !== "map" && window.matchMedia("(max-width: 1099px)").matches) setUi({ tab: "map" });
     const id = setTimeout(() => setSelected(null), 6000);
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -3,7 +3,7 @@ import { toUtm, utmLabel, circlePolygon } from "../src/lib/geo";
 import { airtimeSaving, loraAirtimeSeconds, packetAirtime } from "../src/lib/airtime";
 import { applyStatus, lastSeq, mergeMessages, upsertMessage } from "../src/state/store";
 import type { MessageRecord } from "../src/api/types";
-import { isNoRelay } from "../src/lib/format";
+import { cardText, codecForm, isNoRelay, stripPosition } from "../src/lib/format";
 import { t } from "../src/lib/i18n";
 import { buildMapModel } from "../src/map/data";
 
@@ -122,5 +122,25 @@ describe("map model", () => {
     expect(ends["!aaaa0001"]).toMatchObject({ lat: 50.3, lon: 7.3, label: "0001" });
     expect(ends["!bbbb0002"]).toMatchObject({ lat: 50.2, lon: 7.2 });
     expect(ends["!aaaa0001"].color).not.toBe(ends["!bbbb0002"].color);
+  });
+});
+
+describe("card text", () => {
+  const nodes = { "!9ea67594": { node: "!9ea67594", num: 1, long_name: "D-Node 2", last_heard: null, is_gateway: false } };
+  it("drops the position the gateway appends", () => {
+    expect(stripPosition("Hazard: path blocked. Position 50.94891, 6.98153 (estimated).")).toBe("Hazard: path blocked.");
+    expect(stripPosition("MAYDAY. Position 50.94871, -6.98163.")).toBe("MAYDAY.");
+    expect(stripPosition("Gefahr: Weg blockiert. Position 50.9, 6.9 (geschätzt). Zeit 14:32 UTC.")).toBe("Gefahr: Weg blockiert. Zeit 14:32 UTC.");
+    expect(stripPosition("Meet at 50.6900, -1.2500.")).toBe("Meet at 50.6900, -1.2500.");
+  });
+  it("names known radios and drops the Message: prefix", () => {
+    expect(cardText("Accepted #6757: from !9ea67594, by Lili.", "ack", "en", nodes)).toBe("Accepted #6757: from D-Node 2, by Lili.");
+    expect(cardText("Message: hello from !00000001.", "text", "en", nodes)).toBe("hello from !00000001.");
+  });
+  it("tags only compressed messages", () => {
+    expect(codecForm(rec(1, { codec: { version: 0, size: 4, hex: "" } }))).toBeNull();
+    expect(codecForm(rec(1, { message: { text: { text: "x", words: 1 } } }))).toBe("compact");
+    expect(codecForm(rec(1, { message: { text: { text: "x", dict: 1 } } }))).toBe("packed");
+    expect(codecForm(rec(1, { type: "hazard", message: { hazard: { kind: "blocked_path" } } }))).toBe("packed");
   });
 });

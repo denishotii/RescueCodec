@@ -55,6 +55,9 @@ const en = {
   quickRecall: "Recall all", quickStatus: "Status check", quickMeet: "Meet at …", quickRequest: "+ Request", quickHazard: "+ Hazard",
   quickGroup: "Quick messages", rateLimited: "Too many messages, send again in", noTarget: "No channel to send on yet.",
   sendShortcut: "Enter sends, Shift+Enter new line",
+  panelCrashed: "This panel hit an error. The rest keeps working.", retry: "Try again",
+  mapNoWebgl: "Map needs WebGL2: open in Chrome/Safari with graphics acceleration.",
+  radioConnected: "Radio connected", radioNotConnected: "Radio not connected", menu: "Menu", formCompact: "compact",
 } as const;
 
 export type Key = keyof typeof en;
@@ -114,6 +117,9 @@ const de: Record<Key, string> = {
   quickRecall: "Alle zurück", quickStatus: "Statusabfrage", quickMeet: "Treffpunkt …", quickRequest: "+ Anforderung", quickHazard: "+ Gefahr",
   quickGroup: "Schnellnachrichten", rateLimited: "Zu viele Nachrichten, nochmal senden in", noTarget: "Noch kein Kanal zum Senden.",
   sendShortcut: "Enter sendet, Umschalt+Enter neue Zeile",
+  panelCrashed: "Dieser Bereich hatte einen Fehler. Der Rest läuft weiter.", retry: "Nochmal versuchen",
+  mapNoWebgl: "Die Karte braucht WebGL2: in Chrome/Safari mit Grafikbeschleunigung öffnen.",
+  radioConnected: "Funk verbunden", radioNotConnected: "Funk nicht verbunden", menu: "Menü", formCompact: "kompakt",
 };
 
 export const dict: Record<Lang, Record<Key, string>> = { en, de };
