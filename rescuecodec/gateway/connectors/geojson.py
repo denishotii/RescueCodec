@@ -26,6 +26,7 @@ def feature(record: dict[str, Any], state: str | None) -> dict[str, Any] | None:
     return {"type": "Feature", "geometry": geometry,
             "properties": {"seq": record["seq"], "key": record["key"], "type": record["type"], "from": record["from"],
                            "priority": record["priority"], "state": state,
+                           "channel": (record.get("channel") or {}).get("name"), "to": record.get("to"),
                            "acc": (message.get("pos") or {}).get("acc", "gps"),
                            "time": record["event_time"] or record["time"],
                            "text_en": record["text"]["en"], "text_de": record["text"]["de"]}}

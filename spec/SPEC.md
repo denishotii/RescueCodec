@@ -51,12 +51,28 @@ RescueCodec apps and gateways also show and send normal Meshtastic texts (`TEXT_
 
 | Rule | Value |
 |---|---|
-| Receive | Only a broadcast on the team channel (the channel of section 14), or a direct message to the receiver's own node on any channel. Never a text on another channel: at an event, dozens of radios chat on the public LongFast channel. |
+| Receive | Only a broadcast on a channel the receiver listens on (its private channels, section 2.2), or a direct message to the receiver's own node on any channel. Never a text on a public channel unless the person turns that on: at an event, dozens of radios chat on the public LongFast channel. |
 | Store and show | As a normal `text` message (`{"text": {"text": "..."}}`) with sender, time and the radio facts (RSSI, SNR, hops, packet id). It has no id and is never a task. The gateway marks the record with `codec.version: 0`, the Android app with `source = "meshtastic"`, so a UI can show a small "via Meshtastic" hint. A received text may be up to 233 bytes and is kept as sent. |
 | Duplicates | The same (sender node, Meshtastic packet id) within 24 hours is a repeat. Two texts with the same words but different packet ids are two messages. |
 | Readable copies | A gateway that posts the readable line of a RescueCodec message on port 1 (`--text-over-air`, `also_plain`) MUST start it with `[RC] ` (bracket, R, C, bracket, space). Receivers MUST NOT show a port 1 text that starts with `[RC] `: they already have the message from port 256, which goes on the same channel. Stock apps show the copy as it is. A plain text is never copied again. |
 | Send | A message whose body is `text` goes out as a port 1 broadcast on the team channel while the setting is on (app: "Send plain text as normal Meshtastic text", gateway: `--text-as-meshtastic`, both on by default). Only the words go out: no id, `pos` or `time`. It uses the same send queue, rank, priority (section 2 table), airtime budget and `want_ack` as a RescueCodec text. All other types always go out on port 256. |
 | Size | At most 200 bytes of UTF-8 (Meshtastic allows 233). A longer text is cut to the longest prefix that ends on a whole character, trailing spaces go, and "…" is added (`fit_plain` in Python, `TextFit.fitPlain` in Kotlin). |
+
+### 2.2 Several channels and direct messages
+
+A radio can have up to 8 channels. Our base radio has four: the public LongFast, "MeshMeister", "draeger-srs" and "RescueCodec".
+
+| Rule | Value |
+|---|---|
+| Name | A channel is known by its **name**. The index can differ from radio to radio. An empty primary name shows as the modem preset's name, for example "LongFast". |
+| Public | A channel is public when it has no key or the 1-byte default key. Anyone can read it. |
+| Listen | Receivers listen on port 256 and port 1 on **every private channel** (the gateway: `--channels all`, the default, or `--channels NAME,NAME`). Broadcasts on public channels are ignored unless the person turns them on (gateway `--show-public`). Direct messages to the receiver's own node are always kept, on any channel. |
+| Record | Every stored message carries `channel: {index, name, public}` and `to`. `to` is the peer for a direct message we sent, our own node for one we received, and null for a broadcast. |
+| Send | A message goes out on the default channel (the one named `RescueCodec`, section 14) unless the sender picks another one by name. Reports (port 256) never go out on a public channel. A direct message is always a port 1 text. |
+| Answer | An Ack always goes out on the **same channel** as the report it answers, so the reporting team hears it. |
+| Duplicates | Unchanged. The same report heard on two channels is one report (same sender and id). |
+
+Example record fields: `"channel": {"index": 2, "name": "draeger-srs", "public": false}, "to": null`.
 
 Why a prefix and not content matching for copies: the copy and the original may arrive in any order and over different relays, and the readable line of the copy may be cut. A fixed prefix is checked on one packet, with no memory and no timing.
 
@@ -330,7 +346,7 @@ The Python reference is `rescuecodec/v2/` (`encode`, `decode`, `decode_any`, `re
 - **No personal names** in any field. Team labels are like "Trupp 3" or "DLRG 2". Free text SHOULD avoid names too. Found persons are described by age group and state only. Node long names show in the gateway's node list, so ask teams to name radios by team, not by person.
 - **Spoofing**: a member of the channel can send fake reports or Acks. That is the same trust model as voice radio. The gateway logs the sender node of everything, and a person checks before acting.
 - **Duplicates**: the mesh can deliver a packet twice. Receivers dedupe by (sender node, id) within 24 hours, and by (sender node, payload bytes) within 10 minutes for messages without an id. Because senders give every message but an Ack an id, the payload rule is a fallback for older senders.
-- **Channel**: port 256 is free for any app, and a radio that also has the public LongFast channel hears other teams' packets on it. Receivers MUST accept RescueCodec packets only from their private channel (the Meshtastic channel index of the packet), and senders MUST send only on it. The gateway and the app find it by the name `RescueCodec`, else the only channel with its own key, and refuse to send when there is none.
+- **Channel**: port 256 is free for any app, and a radio that also has the public LongFast channel hears other teams' packets on it. Receivers MUST accept RescueCodec packets only from private channels (the Meshtastic channel index of the packet, section 2.2), or as a direct message to their own node, and senders MUST NOT send reports on a public channel. The default channel for sending is the one named `RescueCodec`, else the only channel with its own key. When there is none, sending without a named channel is refused.
 - **Acks and the channel key**: the channel key is the only trust boundary. Anyone who holds it can send an Ack for any task, and a `done` closes it for everyone. Receivers bound the memory they spend on Acks for tasks they have not seen (500 placeholders, 30 minutes).
 - **Strict parsing**: decoders reject anything outside the rules in section 5 and never pass unchecked data on.
 - **Location** is sensitive. The gateway API listens on localhost by default. It refuses to listen on another address without a token (`--token`), checks the Origin of every WebSocket (CORS does not protect WebSockets), and limits how many messages the API may queue per minute.

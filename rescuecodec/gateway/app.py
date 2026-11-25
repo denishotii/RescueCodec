@@ -88,6 +88,12 @@ def csv_filter(value: str | None, allowed: tuple[str, ...], name: str) -> list[s
     return items
 
 
+def channel_filter(value: str | None) -> list[str] | None:
+    """?channel=A,B -> ["A", "B"] (channel names, compared without case)."""
+    names = [part.strip() for part in (value or "").split(",") if part.strip()]
+    return names or None
+
+
 def bearer_token(authorization: str | None, query_token: str | None) -> str | None:
     """The token a client sent: `Authorization: Bearer ...`, or ?token=... (browsers cannot set headers on a WebSocket)."""
     if authorization and authorization[:7].lower() == "bearer ":
@@ -180,7 +186,7 @@ def create_app(service: GatewayService, *, hub: ConnectorHub | None = None, stat
     # ------------------------------------------------------------ messages
     @app.post("/v2/messages", status_code=202)
     def send_message(body: dict[str, Any] = Body(...)):
-        unknown = set(body) - {"message", "want_ack", "dry_run"}
+        unknown = set(body) - {"message", "want_ack", "dry_run", "channel", "to"}
         if unknown:
             raise ApiError(400, "bad_request", f"unknown key {sorted(unknown)[0]!r}", sorted(unknown)[0])
         if "message" not in body:
@@ -188,12 +194,14 @@ def create_app(service: GatewayService, *, hub: ConnectorHub | None = None, stat
         for flag in ("want_ack", "dry_run"):
             if flag in body and not isinstance(body[flag], bool):
                 raise ApiError(400, "bad_request", f"{flag} must be true or false", flag)
-        return service.send_message(body["message"], want_ack=body.get("want_ack", True), dry_run=body.get("dry_run", False))
+        return service.send_message(body["message"], want_ack=body.get("want_ack", True), dry_run=body.get("dry_run", False),
+                                    channel=body.get("channel"), to=body.get("to"))
 
     @app.get("/v2/messages")
     def list_messages(since_seq: int = Query(0, ge=0), type: str | None = None, direction: Literal["in", "out"] | None = None,
-                      limit: int = Query(100, ge=1, le=1000)):
-        return service.list_messages(since_seq, csv_filter(type, MESSAGE_TYPES, "type"), direction, limit)
+                      limit: int = Query(100, ge=1, le=1000), channel: str | None = None):
+        return service.list_messages(since_seq, csv_filter(type, MESSAGE_TYPES, "type"), direction, limit,
+                                     channel_filter(channel))
 
     @app.get("/v2/messages/{seq}")
     def get_message(seq: int):
@@ -203,7 +211,7 @@ def create_app(service: GatewayService, *, hub: ConnectorHub | None = None, stat
 
     @app.post("/v2/text", status_code=202)
     def send_text(body: dict[str, Any] = Body(...)):
-        unknown = set(body) - {"text", "priority", "also_plain"}
+        unknown = set(body) - {"text", "priority", "also_plain", "channel", "to"}
         if unknown:
             raise ApiError(400, "bad_request", f"unknown key {sorted(unknown)[0]!r}", sorted(unknown)[0])
         if "text" not in body:
@@ -211,14 +219,15 @@ def create_app(service: GatewayService, *, hub: ConnectorHub | None = None, stat
         also_plain = body.get("also_plain", False)
         if not isinstance(also_plain, bool):
             raise ApiError(400, "bad_request", "also_plain must be true or false", "also_plain")
-        return service.send_text(body["text"], body.get("priority"), also_plain)
+        return service.send_text(body["text"], body.get("priority"), also_plain, body.get("channel"), body.get("to"))
 
     # ------------------------------------------------------------ tasks
     @app.get("/v2/tasks")
-    def list_tasks(state: str | None = None, type: str | None = None):
+    def list_tasks(state: str | None = None, type: str | None = None, channel: str | None = None):
         states = csv_filter(state, TASK_STATES, "state")
         types = csv_filter(type, MESSAGE_TYPES, "type")
-        return {"items": service.list_tasks(set(states) if states else None, set(types) if types else None)}
+        return {"items": service.list_tasks(set(states) if states else None, set(types) if types else None,
+                                            channel_filter(channel))}
 
     @app.get("/v2/tasks/{key}")
     def get_task(key: str):
@@ -236,8 +245,8 @@ def create_app(service: GatewayService, *, hub: ConnectorHub | None = None, stat
 
     # ------------------------------------------------------------ export and tools
     @app.get("/v2/export.geojson")
-    def export_geojson(since_seq: int = Query(0, ge=0), type: str | None = None):
-        data = service.geojson(since_seq, csv_filter(type, MESSAGE_TYPES, "type"))
+    def export_geojson(since_seq: int = Query(0, ge=0), type: str | None = None, channel: str | None = None):
+        data = service.geojson(since_seq, csv_filter(type, MESSAGE_TYPES, "type"), channel_filter(channel))
         return Response(json.dumps(data, ensure_ascii=False), media_type="application/geo+json")
 
     @app.post("/v2/encode")

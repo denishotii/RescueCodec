@@ -3,6 +3,7 @@
 Topics (prefix `rescuecodec/v2` by default):
   <prefix>/messages     every MessageRecord, received and sent
   <prefix>/<type>       the same record on a per-type topic: found, track, sector, request, hazard, mayday, ack, text
+  <prefix>/channels/<name>  the same record on a per-channel topic, for example rescuecodec/v2/channels/draeger-srs
   <prefix>/tasks        a Task object whenever a task is created or changes
   <prefix>/readable     the plain English line of each message (for dashboards and chat bots)
   <prefix>/status       "online" or "offline" (retained, last will)
@@ -17,6 +18,11 @@ from collections.abc import Callable
 from typing import Any
 
 log = logging.getLogger("rescuecodec.gateway.mqtt")
+
+
+def topic_part(name: str) -> str:
+    """A channel name as one MQTT topic level: no '/', '+', '#' or spaces."""
+    return "".join("_" if c in "/+# " else c for c in name) or "_"
 
 
 class MqttConnector:
@@ -89,6 +95,9 @@ class MqttConnector:
         if event == "message":
             self.publish("messages", data)
             self.publish(data["type"], data)
+            name = (data.get("channel") or {}).get("name")
+            if name:
+                self.publish(f"channels/{topic_part(name)}", data)
             self.publish("readable", data["text"]["en"])
         elif event == "task":
             if data.get("type"):

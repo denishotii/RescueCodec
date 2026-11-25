@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 PORT_PRIVATE_APP = 256
@@ -15,6 +15,41 @@ BROADCAST = "^all"
 #: also_plain). Stock apps show it as is. RescueCodec receivers drop texts that start with it: they already have the
 #: message from port 256 (SPEC section 2.1).
 TEXT_COPY_PREFIX = "[RC] "
+
+
+@dataclass(frozen=True)
+class Channel:
+    """One channel of the radio. A channel is known by its NAME (the index can differ between radios). An empty
+    primary name shows as the modem preset's name, for example "LongFast". Public = no key or the default key."""
+    index: int
+    name: str
+    public: bool
+
+    def as_json(self) -> dict[str, Any]:
+        return {"index": self.index, "name": self.name, "public": self.public}
+
+
+#: modem preset -> the name Meshtastic shows for a primary channel without a name
+PRESET_DISPLAY_NAME = {"LONG_FAST": "LongFast", "LONG_SLOW": "LongSlow", "VERY_LONG_SLOW": "VLongSlow",
+                       "MEDIUM_SLOW": "MediumSlow", "MEDIUM_FAST": "MediumFast", "SHORT_SLOW": "ShortSlow",
+                       "SHORT_FAST": "ShortFast", "LONG_MODERATE": "LongMod", "SHORT_TURBO": "ShortTurbo",
+                       "LONG_TURBO": "LongTurbo"}
+
+
+def listening_channels(channels: list[Channel], default: Channel | None, names: list[str] | None,
+                       show_public: bool) -> list[Channel]:
+    """The channels the gateway hears broadcasts on: every private channel (or only the ones in `names`), public ones
+    only with `show_public`, and always the default channel we send on."""
+    wanted = {n.lower() for n in names} if names else None
+    out = []
+    for channel in channels:
+        if default is not None and channel.index == default.index:
+            out.append(channel)
+        elif channel.public and not show_public:
+            continue
+        elif wanted is None or channel.name.lower() in wanted:
+            out.append(channel)
+    return out
 
 
 @dataclass
@@ -37,8 +72,9 @@ class RadioInfo:
     connected: bool = False
     kind: str = "none"             # serial | tcp | ble | sim | none
     node: str | None = None
-    channel: str | None = None     # name of the channel we send on
+    channel: str | None = None     # name of the default channel we send on
     channel_index: int | None = None
+    channels: list[Channel] = field(default_factory=list)   # every channel we listen on (the default one too)
     channel_error: str | None = None   # why no safe channel was found (messages are refused then)
     other_channel: int = 0             # port 256 packets dropped because they came in on another channel
     region: str | None = None
@@ -49,6 +85,7 @@ class RadioInfo:
     def as_health(self, port: int = PORT_PRIVATE_APP) -> dict[str, Any]:
         return {"connected": self.connected, "kind": self.kind, "node": self.node, "port": port,
                 "channel": self.channel, "channel_index": self.channel_index,
+                "channels": [c.as_json() for c in self.channels],
                 "channel_error": self.channel_error, "other_channel": self.other_channel, "region": self.region, "preset": self.preset, "firmware": self.firmware}
 
 
@@ -80,9 +117,30 @@ class RadioAdapter(ABC):
 
     @abstractmethod
     def send(self, payload: bytes, *, port: int = PORT_PRIVATE_APP, want_ack: bool = False, priority: int | None = None,
-             channel: int | None = None, hop_limit: int | None = None, on_result: ResultCallback | None = None) -> int:
-        """Broadcast `payload` on the channel (None = the radio's resolved private channel). Returns the radio packet id.
+             channel: int | None = None, hop_limit: int | None = None, on_result: ResultCallback | None = None,
+             to: str | None = None) -> int:
+        """Send `payload` on the channel (None = the radio's resolved private channel), as a broadcast or, with `to`,
+        as a direct message to that node. Returns the radio packet id.
         Raises RuntimeError when not connected or when no safe channel exists."""
+
+    def channels(self) -> list[Channel]:
+        """Every enabled channel on the radio, private and public. Empty while not connected."""
+        return []
+
+    def listen_channels(self) -> list[Channel]:
+        """The channels we hear broadcasts on (see listening_channels)."""
+        return []
+
+    def default_channel(self) -> Channel | None:
+        """The channel we send on when nothing else is asked for. None when there is no safe one."""
+        return None
+
+    def channel_by_index(self, index: int) -> Channel | None:
+        return next((c for c in self.channels() if c.index == index), None)
+
+    def channel_by_name(self, name: str) -> Channel | None:
+        """Channel names are compared without case, like the Android app does."""
+        return next((c for c in self.channels() if c.name.lower() == name.lower()), None)
 
     def nodes(self) -> list[dict[str, Any]]:
         """Nodes the radio knows. Keys: node, num, short_name, long_name, hw_model, role, last_heard (unix s),
@@ -94,9 +152,9 @@ def node_id(num: int) -> str:
     return f"!{num & 0xFFFFFFFF:08x}"
 
 
-def is_team_text(packet: RadioPacket, own_node: str | None, team_channel: int | None) -> bool:
-    """Is this plain Meshtastic text (port 1) for us? A broadcast only on the team channel (the same channel as
-    port 256), or a direct message to our own node on any channel. Never the public LongFast chatter."""
+def is_for_us(packet: RadioPacket, own_node: str | None, listening: set[int] | list[int]) -> bool:
+    """Is this packet (port 256 or port 1) for us? A broadcast only on a channel we listen on, or a direct message to
+    our own node on any channel. The public LongFast chatter stays out unless --show-public adds it."""
     if packet.to == BROADCAST:
-        return team_channel is not None and packet.channel == team_channel
+        return packet.channel in listening
     return own_node is not None and packet.to == own_node

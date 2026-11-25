@@ -1,5 +1,5 @@
 import { Moon, Sun, Tv } from "lucide-react";
-import { useData, useNow, useT } from "../state/hooks";
+import { useChannels, useData, useNow, useT } from "../state/hooks";
 import { setUi, useUi } from "../state/ui";
 import { clock } from "../lib/format";
 
@@ -18,6 +18,7 @@ export function Header() {
   const { conn, health, lastContact } = useData();
   const ui = useUi();
   const t = useT();
+  const channels = useChannels();
   useNow(5000);
 
   const connLabel = conn === "live" ? t("connected") : conn === "connecting" ? t("connecting") : conn === "reconnecting" ? t("reconnecting") : t("offline");
@@ -54,6 +55,19 @@ export function Header() {
       </ul>
 
       <div className="controls">
+        {channels.filter && (
+          <div className="seg seg-channels" role="group" aria-label={t("channel")}>
+            <button className={channels.pick === "all" ? "on" : ""} aria-pressed={channels.pick === "all"} title={t("allChannels")}
+              onClick={() => setUi({ channel: "all" })}>{t("all")}</button>
+            {channels.options.map((name) => {
+              const on = channels.pick.toLowerCase() === name.toLowerCase();
+              return (
+                <button key={name} className={on ? "on" : ""} aria-pressed={on} title={`${t("channel")} ${name}`}
+                  onClick={() => setUi({ channel: name })}>#{name}</button>
+              );
+            })}
+          </div>
+        )}
         <div className="seg" role="group" aria-label={t("language")}>
           {(["en", "de"] as const).map((l) => (
             <button key={l} className={ui.lang === l ? "on" : ""} aria-pressed={ui.lang === l} onClick={() => setUi({ lang: l })}>{l.toUpperCase()}</button>

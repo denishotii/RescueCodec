@@ -45,6 +45,7 @@ const en = {
   noPosition: "No position",
   mapOffline: "Offline map",
   tabActions: "Actions", tabFeed: "Reports", tabMap: "Map", tabStats: "Traffic", tabNodes: "Radios",
+  channel: "Channel", allChannels: "All channels", direct: "Direct", directTip: "Direct message, not on the whole channel",
 } as const;
 
 export type Key = keyof typeof en;
@@ -94,6 +95,7 @@ const de: Record<Key, string> = {
   noPosition: "Keine Position",
   mapOffline: "Offline-Karte",
   tabActions: "Aufgaben", tabFeed: "Meldungen", tabMap: "Karte", tabStats: "Funkverkehr", tabNodes: "Funkgeräte",
+  channel: "Kanal", allChannels: "Alle Kanäle", direct: "Direkt", directTip: "Direktnachricht, nicht an den ganzen Kanal",
 };
 
 export const dict: Record<Lang, Record<Key, string>> = { en, de };

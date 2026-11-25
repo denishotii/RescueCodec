@@ -8,7 +8,7 @@ import sys
 from typing import Any
 
 from rescuecodec.gateway import __version__
-from rescuecodec.gateway.config import GatewayConfig, split_host_port
+from rescuecodec.gateway.config import GatewayConfig, parse_channels, split_host_port
 
 
 def env(name: str, default: Any = None) -> Any:
@@ -29,9 +29,14 @@ def build_parser() -> argparse.ArgumentParser:
     radio.add_argument("--emulator", action="store_true", default=env_flag("EMULATOR"), help="in-memory radio, no hardware (env EMULATOR=1)")
     radio.add_argument("--emulator-demo", action="store_true", default=env_flag("EMULATOR_DEMO"), help="with --emulator: a pretend team reports and accepts")
     radio.add_argument("--channel", type=int, default=int(env("CHANNEL")) if env("CHANNEL") is not None else None,
-                       help="Meshtastic channel index to send on. Default: find the channel named RescueCodec, else the only channel with its own key. "
-                       "Never the public default key unless you name the index here")
-    radio.add_argument("--channel-name", default=env("CHANNEL_NAME", "RescueCodec"), help="name of the private team channel (default RescueCodec)")
+                       help="index of the default channel for sending (when a request names no channel). Default: the channel named "
+                       "by --channel-name, else the only channel with its own key. Never the public default key unless you name the index here")
+    radio.add_argument("--channel-name", default=env("CHANNEL_NAME", "RescueCodec"), help="name of the default channel for sending (default RescueCodec)")
+    radio.add_argument("--channels", metavar="all|NAME,NAME", default=env("CHANNELS", "all"),
+                       help="channels to listen on, by name. all (default) = every private channel. The default channel is always "
+                       "included, and direct messages to our node are always kept. Public channels also need --show-public")
+    radio.add_argument("--show-public", action="store_true", default=env_flag("SHOW_PUBLIC"),
+                       help="also show broadcasts on public channels (no key or the default key, for example LongFast). Off by default")
     radio.add_argument("--hop-limit", type=int, default=env("HOP_LIMIT"), help="hop limit for sent packets (default: the radio's setting)")
     svc = p.add_argument_group("service")
     svc.add_argument("--db", default=env("DB", "rescuecodec-gateway.db"), help="SQLite file (default ./rescuecodec-gateway.db, use :memory: for none)")
@@ -72,7 +77,8 @@ def build_parser() -> argparse.ArgumentParser:
 def config_from_args(args: argparse.Namespace) -> GatewayConfig:
     cfg = GatewayConfig(
         tcp=args.tcp, serial=args.serial, emulator=args.emulator or args.emulator_demo, emulator_demo=args.emulator_demo,
-        channel_index=args.channel, channel_name=args.channel_name, hop_limit=int(args.hop_limit) if args.hop_limit is not None else None,
+        channel_index=args.channel, channel_name=args.channel_name, listen_channels=parse_channels(args.channels),
+        show_public=bool(args.show_public), hop_limit=int(args.hop_limit) if args.hop_limit is not None else None,
         db_path=args.db, team=args.team, preset=args.preset, ack_timeout_s=args.ack_timeout,
         text_over_air=args.text_over_air, text_lang=args.text_lang, text_as_meshtastic=str(args.text_as_meshtastic).lower() in ("on", "1", "true", "yes"),
         mqtt=args.mqtt, mqtt_user=args.mqtt_user, mqtt_password=args.mqtt_password, mqtt_prefix=args.mqtt_prefix,
@@ -86,11 +92,12 @@ def config_from_args(args: argparse.Namespace) -> GatewayConfig:
 
 def build_radio(cfg: GatewayConfig):
     from rescuecodec.gateway.radio import EmulatorRadio, MeshtasticRadio
+    channels = {"channel_name": cfg.channel_name, "listen": cfg.listen_channels, "show_public": cfg.show_public}
     if cfg.emulator:
-        return EmulatorRadio(demo=cfg.emulator_demo)
+        return EmulatorRadio(demo=cfg.emulator_demo, **channels)
     if cfg.tcp:
-        return MeshtasticRadio("tcp", cfg.tcp, channel_name=cfg.channel_name, channel_index=cfg.channel_index)
-    return MeshtasticRadio("serial", cfg.serial or "auto", channel_name=cfg.channel_name, channel_index=cfg.channel_index)
+        return MeshtasticRadio("tcp", cfg.tcp, channel_index=cfg.channel_index, **channels)
+    return MeshtasticRadio("serial", cfg.serial or "auto", channel_index=cfg.channel_index, **channels)
 
 
 def build_app(cfg: GatewayConfig):

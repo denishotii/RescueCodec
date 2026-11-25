@@ -13,8 +13,10 @@ class GatewayConfig:
     serial: str | None = None             # "auto" or a device path
     emulator: bool = False
     emulator_demo: bool = False
-    channel_index: int | None = None      # Meshtastic channel used for sending. None = find the channel named channel_name
-    channel_name: str = "RescueCodec"     # name of the private team channel on the radio
+    channel_index: int | None = None      # default channel for sending. None = find the channel named channel_name
+    channel_name: str = "RescueCodec"     # name of the default channel for sending (the private team channel)
+    listen_channels: list[str] | None = None   # channel names to listen on. None = every private channel ("all")
+    show_public: bool = False             # also show broadcasts on public channels (LongFast, default key)
     port_num: int = 256                   # PRIVATE_APP
     hop_limit: int | None = None          # None = the radio's own setting
 
@@ -65,6 +67,14 @@ class GatewayConfig:
         if not is_loopback(self.host) and not self.token:
             raise ValueError(f"--host {self.host} is reachable from other computers and the API can send on the radio: "
                              "set --token (or RESCUECODEC_TOKEN), or use --host 127.0.0.1")
+
+
+def parse_channels(value: str | None) -> list[str] | None:
+    """--channels: "all" (or empty) -> None, "A,B" -> ["A", "B"]."""
+    if value is None or value.strip().lower() in ("", "all"):
+        return None
+    names = [part.strip() for part in value.split(",") if part.strip()]
+    return names or None
 
 
 def is_loopback(host: str) -> bool:
