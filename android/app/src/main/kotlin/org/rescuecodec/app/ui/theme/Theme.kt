@@ -24,10 +24,10 @@ import androidx.compose.ui.unit.sp
 import org.rescuecodec.app.R
 
 /**
- * Design world: an emergency tool, so plain neutral surfaces (white by day, near black by night, high contrast for
- * sunlight) and colour only for meaning, with the meanings everyone knows:
- * red is Mayday, SOS, urgent and errors; amber is open, someone must act; green is done, OK and connected;
- * blue is accepted and in progress, and the one accent (my own bubbles, primary buttons); grey is neutral info.
+ * Design world: the same map sheet as the command-post dashboard, in two lights.
+ * Day is paper, night is the same sheet under a red-filter lamp. Neutrals lean to forest green.
+ * Colour has jobs: red is Mayday, amber is open, blue is accepted, green is done.
+ * The primary colour is plain ink, so the four state colours are the only colour on screen.
  */
 @Immutable
 class RcColors(
@@ -45,72 +45,78 @@ class RcColors(
     val chatGround: Color,
     /** Sender name colours: never red, amber, green or blue, so they cannot be read as a state. */
     val senders: List<Color>,
+    /** The grey ring around the mic and the outline of chips. */
+    val ring: Color,
+    /** Muted text: times, small notes. */
+    val muted: Color,
     val dark: Boolean,
 )
 
 private val LightRc = RcColors(
-    mayday = Color(0xFFC5221F), onMayday = Color(0xFFFFFFFF), maydaySoft = Color(0xFFFCE8E6), maydayText = Color(0xFFA50E0E),
-    open = Color(0xFF9C4A00), openSoft = Color(0xFFFEEFD6), openSolid = Color(0xFFF29900),
-    accepted = Color(0xFF0B57D0), acceptedSoft = Color(0xFFE3ECFC), acceptSolid = Color(0xFF0B57D0),
-    done = Color(0xFF137333), doneSoft = Color(0xFFE4F3E8), doneSolid = Color(0xFF137333),
-    declined = Color(0xFF5F6368), declinedSoft = Color(0xFFEDEFF1),
-    measured = Color(0xFF137333), estimated = Color(0xFF9C4A00),
-    ink3 = Color(0xFF454B52), surface3 = Color(0xFFE9ECEF), line = Color(0xFFD5D9DE),
+    mayday = Color(0xFFC40D19), onMayday = Color(0xFFFFFFFF), maydaySoft = Color(0xFFFBE2E2), maydayText = Color(0xFFA30A14),
+    open = Color(0xFF9A4F00), openSoft = Color(0xFFFBE8C9), openSolid = Color(0xFFE08A14),
+    accepted = Color(0xFF14578C), acceptedSoft = Color(0xFFD8E9F6), acceptSolid = Color(0xFF14578C),
+    done = Color(0xFF23653A), doneSoft = Color(0xFFD9ECDC), doneSolid = Color(0xFF23653A),
+    declined = Color(0xFF5B5F62), declinedSoft = Color(0xFFE4E5E3),
+    measured = Color(0xFF23653A), estimated = Color(0xFF8A4B00),
+    ink3 = Color(0xFF3A4A40), surface3 = Color(0xFFDDE3D4), line = Color(0xFFC3CAB8),
     onSolid = Color(0xFFFFFFFF),
-    mine = Color(0xFFDCE8FC), onMine = Color(0xFF0E1726),
-    chatGround = Color(0xFFF1F3F5),
-    senders = listOf(Color(0xFF7B3FA0), Color(0xFF00737A), Color(0xFF8A5A2B), Color(0xFFB0306A), Color(0xFF4A5694), Color(0xFF5F6B12)),
+    mine = Color(0xFFDDE3D4), onMine = Color(0xFF17231C),
+    chatGround = Color(0xFFE6EADF),
+    senders = listOf(Color(0xFF17231C)),
+    ring = Color(0xFF7E8C82), muted = Color(0xFF5E6E63),
     dark = false,
 )
 
 private val DarkRc = RcColors(
-    mayday = Color(0xFFE5383F), onMayday = Color(0xFFFFFFFF), maydaySoft = Color(0xFF3D1517), maydayText = Color(0xFFFF8F94),
-    open = Color(0xFFFFB74D), openSoft = Color(0xFF3A2A10), openSolid = Color(0xFFFFB74D),
-    accepted = Color(0xFF8AB4F8), acceptedSoft = Color(0xFF16284A), acceptSolid = Color(0xFF2F6FDB),
-    done = Color(0xFF6DD58C), doneSoft = Color(0xFF12301C), doneSolid = Color(0xFF2B8A4B),
-    declined = Color(0xFFA9AFB6), declinedSoft = Color(0xFF25282C),
-    measured = Color(0xFF6DD58C), estimated = Color(0xFFFFB74D),
-    ink3 = Color(0xFFC4C9CF), surface3 = Color(0xFF2A2E33), line = Color(0xFF33373D),
+    mayday = Color(0xFFE5202C), onMayday = Color(0xFFFFFFFF), maydaySoft = Color(0xFF3A1417), maydayText = Color(0xFFFF8A91),
+    open = Color(0xFFF2AD4E), openSoft = Color(0xFF3A2A10), openSolid = Color(0xFFF2AD4E),
+    accepted = Color(0xFF6CB9F2), acceptedSoft = Color(0xFF12293B), acceptSolid = Color(0xFF2D7FC2),
+    done = Color(0xFF77CF90), doneSoft = Color(0xFF12301D), doneSolid = Color(0xFF2F8A4C),
+    declined = Color(0xFFA3ADB0), declinedSoft = Color(0xFF20282A),
+    measured = Color(0xFF77CF90), estimated = Color(0xFFF2AD4E),
+    ink3 = Color(0xFFC9D4CC), surface3 = Color(0xFF21322A), line = Color(0xFF2A3C33),
     onSolid = Color(0xFFFFFFFF),
-    mine = Color(0xFF1E3A66), onMine = Color(0xFFEEF2F8),
-    chatGround = Color(0xFF0B0C0E),
-    senders = listOf(Color(0xFFD0A4F0), Color(0xFF6FD3D8), Color(0xFFE2B47F), Color(0xFFF2A0C6), Color(0xFFA9B4F5), Color(0xFFC6D26B)),
+    mine = Color(0xFF21322A), onMine = Color(0xFFE5EDE6),
+    chatGround = Color(0xFF0B1310),
+    senders = listOf(Color(0xFFE5EDE6)),
+    ring = Color(0xFF7E8C82), muted = Color(0xFF9DB0A4),
     dark = true,
 )
 
 private val LightScheme: ColorScheme = lightColorScheme(
-    primary = Color(0xFF0B57D0), onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFFDCE8FC), onPrimaryContainer = Color(0xFF0E1726),
-    secondary = Color(0xFF454B52), onSecondary = Color(0xFFFFFFFF),
-    secondaryContainer = Color(0xFFE9ECEF), onSecondaryContainer = Color(0xFF111418),
-    tertiary = Color(0xFF0B57D0), onTertiary = Color(0xFFFFFFFF),
-    error = Color(0xFFC5221F), onError = Color(0xFFFFFFFF),
-    errorContainer = Color(0xFFFCE8E6), onErrorContainer = Color(0xFF7A0A0A),
-    background = Color(0xFFFFFFFF), onBackground = Color(0xFF111418),
-    surface = Color(0xFFFFFFFF), onSurface = Color(0xFF111418),
-    surfaceVariant = Color(0xFFF1F3F5), onSurfaceVariant = Color(0xFF4A5159),
-    surfaceContainerLowest = Color(0xFFFFFFFF), surfaceContainerLow = Color(0xFFF7F8F9),
-    surfaceContainer = Color(0xFFF1F3F5), surfaceContainerHigh = Color(0xFFE9ECEF), surfaceContainerHighest = Color(0xFFDFE3E7),
-    outline = Color(0xFF737A82), outlineVariant = Color(0xFFD5D9DE),
-    inverseSurface = Color(0xFF1F2328), inverseOnSurface = Color(0xFFF1F3F5), inversePrimary = Color(0xFF8AB4F8),
-    scrim = Color(0x99000000),
+    primary = Color(0xFF17231C), onPrimary = Color(0xFFF6F7F1),
+    primaryContainer = Color(0xFFDDE3D4), onPrimaryContainer = Color(0xFF17231C),
+    secondary = Color(0xFF435349), onSecondary = Color(0xFFF6F7F1),
+    secondaryContainer = Color(0xFFDDE3D4), onSecondaryContainer = Color(0xFF17231C),
+    tertiary = Color(0xFF14578C), onTertiary = Color(0xFFFFFFFF),
+    error = Color(0xFFC40D19), onError = Color(0xFFFFFFFF),
+    errorContainer = Color(0xFFFBE2E2), onErrorContainer = Color(0xFF7A0710),
+    background = Color(0xFFE6EADF), onBackground = Color(0xFF17231C),
+    surface = Color(0xFFF6F7F1), onSurface = Color(0xFF17231C),
+    surfaceVariant = Color(0xFFEAEEE3), onSurfaceVariant = Color(0xFF3A4A40),
+    surfaceContainerLowest = Color(0xFFFFFFFF), surfaceContainerLow = Color(0xFFF6F7F1),
+    surfaceContainer = Color(0xFFEFF2E9), surfaceContainerHigh = Color(0xFFEAEEE3), surfaceContainerHighest = Color(0xFFDDE3D4),
+    outline = Color(0xFF6B7B70), outlineVariant = Color(0xFFC3CAB8),
+    inverseSurface = Color(0xFF17231C), inverseOnSurface = Color(0xFFF6F7F1), inversePrimary = Color(0xFFE5EDE6),
+    scrim = Color(0x8017231C),
 )
 
 private val DarkScheme: ColorScheme = darkColorScheme(
-    primary = Color(0xFF8AB4F8), onPrimary = Color(0xFF0A1A33),
-    primaryContainer = Color(0xFF1E3A66), onPrimaryContainer = Color(0xFFEEF2F8),
-    secondary = Color(0xFFC4C9CF), onSecondary = Color(0xFF111418),
-    secondaryContainer = Color(0xFF2A2E33), onSecondaryContainer = Color(0xFFECEEF0),
-    tertiary = Color(0xFF8AB4F8), onTertiary = Color(0xFF0A1A33),
-    error = Color(0xFFFF6B70), onError = Color(0xFF2B0003),
-    errorContainer = Color(0xFF3D1517), onErrorContainer = Color(0xFFFFB3B6),
-    background = Color(0xFF0B0C0E), onBackground = Color(0xFFECEEF0),
-    surface = Color(0xFF16181B), onSurface = Color(0xFFECEEF0),
-    surfaceVariant = Color(0xFF1D2024), onSurfaceVariant = Color(0xFFB9BFC6),
-    surfaceContainerLowest = Color(0xFF0B0C0E), surfaceContainerLow = Color(0xFF131518),
-    surfaceContainer = Color(0xFF16181B), surfaceContainerHigh = Color(0xFF1D2024), surfaceContainerHighest = Color(0xFF2A2E33),
-    outline = Color(0xFF8B929A), outlineVariant = Color(0xFF33373D),
-    inverseSurface = Color(0xFFECEEF0), inverseOnSurface = Color(0xFF16181B), inversePrimary = Color(0xFF0B57D0),
+    primary = Color(0xFFE5EDE6), onPrimary = Color(0xFF0B1310),
+    primaryContainer = Color(0xFF21322A), onPrimaryContainer = Color(0xFFE5EDE6),
+    secondary = Color(0xFFAEBDB3), onSecondary = Color(0xFF0B1310),
+    secondaryContainer = Color(0xFF21322A), onSecondaryContainer = Color(0xFFE5EDE6),
+    tertiary = Color(0xFF6CB9F2), onTertiary = Color(0xFF0B1310),
+    error = Color(0xFFE5202C), onError = Color(0xFFFFFFFF),
+    errorContainer = Color(0xFF3A1417), onErrorContainer = Color(0xFFFFB3B8),
+    background = Color(0xFF0B1310), onBackground = Color(0xFFE5EDE6),
+    surface = Color(0xFF121C17), onSurface = Color(0xFFE5EDE6),
+    surfaceVariant = Color(0xFF18251F), onSurfaceVariant = Color(0xFFC9D4CC),
+    surfaceContainerLowest = Color(0xFF0B1310), surfaceContainerLow = Color(0xFF121C17),
+    surfaceContainer = Color(0xFF15211B), surfaceContainerHigh = Color(0xFF18251F), surfaceContainerHighest = Color(0xFF21322A),
+    outline = Color(0xFF8FA196), outlineVariant = Color(0xFF2A3C33),
+    inverseSurface = Color(0xFFE5EDE6), inverseOnSurface = Color(0xFF0B1310), inversePrimary = Color(0xFF17231C),
     scrim = Color(0x99000000),
 )
 
@@ -156,7 +162,7 @@ private val RcTypography = Typography(
     labelSmall = t(Barlow, FontWeight.SemiBold, 12, 16, 0.3),
 )
 
-/** Plain corners: 6 to 16 dp, rounder for chat bubbles (see the chat package). */
+/** Tight, plain corners, like the dashboard: 6 to 12 dp. */
 private val RcShapes = Shapes(
     extraSmall = RoundedCornerShape(4.dp),
     small = RoundedCornerShape(6.dp),
@@ -165,7 +171,7 @@ private val RcShapes = Shapes(
     extraLarge = RoundedCornerShape(16.dp),
 )
 
-/** Day, night, or follow the phone. */
+/** Day, night, or follow the phone. For now the app always uses [DAY] (see RescueRoot); the night code stays. */
 enum class ThemeMode { AUTO, DAY, NIGHT;
     companion object { fun of(name: String?) = entries.firstOrNull { it.name.equals(name, true) } ?: AUTO }
 }
