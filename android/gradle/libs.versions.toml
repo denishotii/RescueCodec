@@ -17,6 +17,7 @@ vosk = "0.3.75"
 camerax = "1.7.0"
 zxing = "3.5.4"
 junit = "4.13.2"
+sqliteJdbc = "3.41.2.2"
 androidxTestRunner = "1.7.0"
 androidxTestExt = "1.3.0"
 
@@ -37,6 +38,7 @@ protobuf-protoc = { module = "com.google.protobuf:protoc", version.ref = "protob
 snakeyaml = { module = "org.yaml:snakeyaml", version.ref = "snakeyaml" }
 
 junit = { module = "junit:junit", version.ref = "junit" }
+sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqliteJdbc" }
 kotlin-test-junit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
 kable-core = { module = "com.juul.kable:kable-core", version.ref = "kable" }
 meshtastic-sdk-testing = { module = "org.meshtastic:sdk-testing", version.ref = "meshtasticSdk" }

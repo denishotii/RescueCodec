@@ -214,6 +214,11 @@ private fun ColumnScope.Footer(m: MessageEntity, mine: Boolean, expanded: Boolea
             )
             Text("·", style = MaterialTheme.typography.bodySmall, color = muted)
         }
+        // A normal Meshtastic text (port 1), not a RescueCodec message: a small quiet hint.
+        if (org.rescuecodec.app.core.MeshText.isPlain(m)) {
+            Text(stringResource(R.string.via_meshtastic), style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp), color = muted, modifier = Modifier.testTag("via_meshtastic_${m.id}"))
+            Text("·", style = MaterialTheme.typography.bodySmall, color = muted)
+        }
         Text(timeOf(m.atMs), style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp), color = muted)
         if (mine) Ticks(m.state)
     }

@@ -47,6 +47,26 @@ class AppSettings(private val store: KeyValueStore) {
         get() = store.getLong("plain_text_as_meshtastic", 1) == 1L
         set(v) = store.putLong("plain_text_as_meshtastic", if (v) 1 else 0)
 
+    /** Show the public channel (no key or the default key, for example LongFast) in the chat list. Off by default. */
+    var showPublicChannel: Boolean
+        get() = store.getLong("show_public_channel", 0) == 1L
+        set(v) = store.putLong("show_public_channel", if (v) 1 else 0)
+
+    /** Name of the team channel when we last knew it, so the chat list and old rows find it without a radio. */
+    var lastTeamChannel: String
+        get() = store.getString("last_team_channel") ?: CHANNEL_NAME
+        set(v) = store.putString("last_team_channel", v.ifBlank { null })
+
+    /** The radio's channels when we last saw them ("index|public|name" per line), so the chat list works offline. */
+    var lastRadioChannels: String?
+        get() = store.getString("last_radio_channels")
+        set(v) = store.putString("last_radio_channels", v)
+
+    /** Key of the chat the person had open last ("ch:RescueCodec", "dm:0badf00d"). The app opens it at start. */
+    var lastChat: String?
+        get() = store.getString("last_chat")
+        set(v) = store.putString("last_chat", v)
+
     /** Node number of the radio we talked to last (0 if never connected). */
     var lastOwnNode: Long
         get() = store.getLong("last_own_node", 0)

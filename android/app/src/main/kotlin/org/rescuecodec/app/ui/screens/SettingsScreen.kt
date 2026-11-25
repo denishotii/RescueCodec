@@ -140,6 +140,14 @@ fun SettingsScreen(vm: SettingsViewModel, connection: ConnectionViewModel, lang:
             }
             Switch(checked = plainText, onCheckedChange = { plainText = it; appSettings.plainTextAsMeshtastic = it }, modifier = Modifier.testTag("plain_text_switch"))
         }
+        val showPublic by vm.showPublic.collectAsStateWithLifecycle()
+        Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.set_show_public), style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.set_show_public_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Switch(checked = showPublic, onCheckedChange = { vm.setShowPublic(it) }, modifier = Modifier.testTag("show_public_switch"))
+        }
 
         SectionHeader(stringResource(R.string.set_voice))
         RcCard {
@@ -188,7 +196,7 @@ fun SettingsScreen(vm: SettingsViewModel, connection: ConnectionViewModel, lang:
                 BigButton(stringResource(R.string.set_licences), { licences = true }, Modifier.fillMaxWidth().testTag("licences_button"), outlined = true)
             }
         }
-        Spacer(Modifier.height(88.dp)) // room for the SOS button
+        Spacer(Modifier.height(16.dp))
     }
     if (licences) LicencesDialog { licences = false }
 }

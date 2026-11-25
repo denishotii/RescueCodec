@@ -86,7 +86,7 @@ private sealed interface Entry {
 }
 
 /**
- * Team: one conversation, the team channel. Newest at the bottom, like any messenger. My messages on the right with
+ * One conversation: a channel or a direct message. Newest at the bottom, like any messenger. My messages on the right with
  * status ticks, others on the left with their name. Reports are cards with Accept and Done, answers are small
  * centred lines. The composer sits at the bottom.
  */
@@ -106,6 +106,11 @@ fun ChatScreen(
 ) {
     val loaded by chat.messages.collectAsStateWithLifecycle()
     val messages = loaded.orEmpty()
+    val names by chat.names.collectAsStateWithLifecycle()
+    val isTeam by chat.isTeam.collectAsStateWithLifecycle()
+    val isPublic by chat.isPublic.collectAsStateWithLifecycle()
+    // The composer sends to this chat: reports on a channel, text only in a direct message or on the public channel.
+    LaunchedEffect(chat.chat, isTeam, isPublic) { reportVm.setChat(chat.chat, isTeam, isPublic) }
     val speak by messagesVm.speaker.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -136,6 +141,8 @@ fun ChatScreen(
     var newestSeen by remember { mutableLongStateOf(-1L) }
     var unseen by remember { mutableIntStateOf(0) }
     val newest = messages.firstOrNull()?.id ?: 0L
+    // The person sees this chat: what is in it now is read.
+    LaunchedEffect(newest, loaded != null) { if (loaded != null) chat.markRead() }
     LaunchedEffect(newest) {
         if (newestSeen < 0) { newestSeen = newest; return@LaunchedEffect }
         if (newest > newestSeen) {
@@ -175,6 +182,7 @@ fun ChatScreen(
 
     Column(Modifier.fillMaxSize().background(Rc.colors.chatGround)) {
         RadioBanner(link, radioChannel, onOpenRadio)
+        if (chat.chat is org.rescuecodec.app.core.ChatId.Direct || isPublic) ChatHint(stringResource(if (isPublic) R.string.chat_public_hint else R.string.chat_direct_hint))
         Box(Modifier.weight(1f).fillMaxWidth()) {
             if (loaded == null) {
                 // Still reading the database: show nothing rather than a false "No messages yet".
@@ -193,7 +201,7 @@ fun ChatScreen(
                             is Entry.Msg -> {
                                 val m = e.m
                                 val task = m.taskKey?.let { tasksByKey[it] }
-                                val name = teams[m.node] ?: stringResource(R.string.sender_node, TeamAlerts.shortNode(m.node))
+                                val name = names[m.node]?.label ?: teams[m.node] ?: stringResource(R.string.sender_node, TeamAlerts.shortNode(m.node))
                                 ChatRow(m, task, task?.type, lang, name, fix, actions)
                             }
                         }
@@ -238,6 +246,14 @@ private fun RadioBanner(link: LinkState, channel: ChannelChoice, onOpenRadio: ()
                 Text(stringResource(R.string.action_connect), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             }
         }
+    }
+}
+
+/** One quiet line under the top bar: what this chat carries (direct message or public channel: text only). */
+@Composable
+private fun ChatHint(text: String) {
+    Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth().testTag("chat_hint")) {
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
     }
 }
 

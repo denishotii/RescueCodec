@@ -29,6 +29,7 @@ import org.meshtastic.sdk.NodeId
 import org.meshtastic.sdk.RadioClient
 import org.meshtastic.sdk.SendFailure
 import org.meshtastic.sdk.SendState
+import org.meshtastic.sdk.nodeMap
 import org.rescuecodec.app.data.MessageDao
 import org.rescuecodec.app.data.MessageEntity
 import org.rescuecodec.app.data.MessageState
@@ -85,20 +86,23 @@ data class AirtimeStatus(val usedMs: Double, val limitMs: Double) {
 /**
  * Sends and receives RescueCodec messages through the connected radio.
  *
- * Send: [submit] puts a message into the [SendQueue] of `:engine` (Mayday first, airtime budget).
- * A loop hands queued messages to the radio as PRIVATE_APP (port 256) broadcasts on the team
- * channel, with `want_ack` and a Meshtastic priority taken from the message priority (spec
- * section 2). The radio's answer decides the state of the message: sent, delivered (a neighbour
- * repeated it), not confirmed, or refused because of the legal airtime limit (we try again later).
+ * Send: [submit] puts a message into the [SendQueue] of `:engine` (Mayday first, one airtime budget for all
+ * channels). A loop hands queued messages to the radio as PRIVATE_APP (port 256) broadcasts on the message's channel
+ * (by name; no name means the team channel), with `want_ack` and a Meshtastic priority taken from the message priority
+ * (spec section 2). A direct message is a port 1 text with `to` set to the other node. The radio's answer decides the
+ * state of the message: sent, delivered (a neighbour repeated it), not confirmed, or refused because of the legal
+ * airtime limit (we try again later). A message whose channel is not on the radio waits; it never goes elsewhere.
  *
- * Receive: every PRIVATE_APP packet is decoded and checked for duplicates. Reports become tasks,
- * Acks update tasks. Everything is written to the database, so a restart loses nothing.
+ * Receive: port 256 and port 1 on every private channel of the radio, the public channel only when
+ * [AppSettings.showPublicChannel] is on, and direct messages to our node on any channel. Every row keeps its channel
+ * (index, name, public) and, for a direct message, the other node. Reports become tasks, Acks update tasks.
+ * Everything is written to the database, so a restart loses nothing.
  *
- * Normal Meshtastic texts (port 1, spec section 2.1): texts on the team channel and direct messages to us are stored
- * as `text` rows marked [MeshText.SOURCE]. With [AppSettings.plainTextAsMeshtastic] on, a message with only a text
- * also goes out that way, so the official app and radio screens show it. Reports always go on port 256.
+ * Normal Meshtastic texts (port 1, spec section 2.1) are stored as `text` rows marked [MeshText.SOURCE]. With
+ * [AppSettings.plainTextAsMeshtastic] on, a message with only a text also goes out that way, so the official app and
+ * radio screens show it. Reports always go on port 256, never on a public channel.
  *
- * Tasks: [answer] sends Accept, Decline or Done as an Ack and applies it locally at once.
+ * Tasks: [answer] sends Accept, Decline or Done as an Ack on the report's channel and applies it locally at once.
  */
 class Messenger(
     private val scope: CoroutineScope,
@@ -126,6 +130,10 @@ class Messenger(
     private val alerts: MaydayAlerts = MaydayAlerts.NONE,
     /** Airtime budget of the send queue. The default follows the region and preset in the settings. */
     budget: AirtimeBudget = AirtimeBudget(Airtime(settings.modemPreset), settings.region),
+    /** Names of the other radios, filled from the radio's node list. */
+    private val nodes: NodeDirectory? = null,
+    /** How long a message whose channel is not on the radio waits before we look again. */
+    private val parkMs: Long = 5_000,
 ) {
     private val mutex = Mutex()
     private val wake = Channel<Unit>(Channel.CONFLATED)
@@ -141,6 +149,9 @@ class Messenger(
 
     /** Mayday task keys we already alerted for, so a copy never alerts twice. */
     private val alerted = HashSet<String>()
+
+    /** Channel of each task: answers go out on it. Filled from reports (sent and received); the table keeps it too. */
+    private val taskChannel = HashMap<TaskKey, ChannelRef>()
 
     /** Plain texts we stored: "sender:packet id" (or "sender:bytes" without an id) to the time we got it. */
     private val textsSeen = LinkedHashMap<String, Long>()
@@ -160,6 +171,14 @@ class Messenger(
     /** Enabled channels of the connected radio, for the channel picker. */
     val channelOptions: StateFlow<List<ChannelOption>> = _channelOptions.asStateFlow()
 
+    private val _radioChannels = MutableStateFlow<List<RadioChannel>?>(loadRadioChannels())
+
+    /**
+     * Switched-on channels of the radio with their display names, for the chat list. The last known list stays while
+     * no radio is connected (null if we never saw one).
+     */
+    val radioChannels: StateFlow<List<RadioChannel>?> = _radioChannels.asStateFlow()
+
     /** Starts the loops. Safe to call twice. Restores tracker and queue from the database first. */
     suspend fun start() {
         if (started) return
@@ -172,16 +191,29 @@ class Messenger(
     // ------------------------------------------------------------------ sending
 
     /**
-     * Puts [message] (canonical JSON shape as a map) into the send queue. Every message except an Ack gets an id if it has none. [source] says who asked: "app" or a package name.
+     * Puts [message] (canonical JSON shape as a map) into the send queue. Every message except an Ack gets an id if it
+     * has none. [source] says who asked: "app" or a package name.
+     *
+     * Where it goes: [channel] by name, or the team channel when null. With [peer] set it is a direct message to that
+     * node: text only, as a normal Meshtastic text (port 1). A public channel takes plain texts and answers only,
+     * never a report (it would leak positions and injuries).
      */
-    suspend fun submit(message: Map<String, Any?>, source: String = "app"): SubmitResult {
+    suspend fun submit(message: Map<String, Any?>, source: String = "app", channel: String? = null, peer: Long? = null): SubmitResult {
         val input = LinkedHashMap(message)
         val type = try {
             RescueCodec.messageType(input)
         } catch (e: CodecException) {
             return SubmitResult.Rejected(e.code, e.field, e.message ?: e.code)
         }
-        if (type == "text" && settings.plainTextAsMeshtastic) return submitPlain(input)
+        if (peer != null) {
+            if (type != "text") return SubmitResult.Rejected("direct_text_only", null, "A direct message carries text only. Reports go on a channel.")
+            return submitPlain(input, null, peer)
+        }
+        val public = channel != null && _radioChannels.value?.firstOrNull { it.name == channel }?.isPublic == true
+        if (public && type != "text" && type != "ack") {
+            return SubmitResult.Rejected("public_channel", null, "Reports never go on a public channel. Send them on a private channel.")
+        }
+        if (type == "text" && (settings.plainTextAsMeshtastic || public)) return submitPlain(input, channel, null)
         // Every message except an Ack gets an id (spec section 14), so a second "Hilfe" is a new message and not a
         // repeat of the first. It costs 1 to 2 bytes. An Ack is a repeat by design and carries none.
         if (type != "ack" && (input["id"] as? Number)?.toInt().let { it == null || it == 0 }) {
@@ -202,6 +234,7 @@ class Messenger(
             val row = MessageEntity(
                 dir = "out", node = currentNode(), type = type, msgId = msgId, bytes = bytes,
                 json = Json.stringify(canonical), atMs = clock(), state = MessageState.QUEUED, source = source,
+                channelName = channel,
             )
             val rowId = messages.insert(row)
             val q = queue.enqueue(canonical, bytes)
@@ -212,11 +245,12 @@ class Messenger(
     }
 
     /**
-     * A message with only a text, sent as a normal Meshtastic text (port 1) on the team channel (spec section 2.1).
-     * It takes the same queue, priority, airtime budget and `want_ack` as a report. Only the words go out, at most
-     * 200 bytes: no id, position or time. The row is marked [MeshText.SOURCE] and [MessageEntity.bytes] is the text.
+     * A message with only a text, sent as a normal Meshtastic text (port 1) on [channel] (null: the team channel), or
+     * to [peer] as a direct message (spec section 2.1). It takes the same queue, priority, airtime budget and
+     * `want_ack` as a report. Only the words go out, at most 200 bytes: no id, position or time. The row is marked
+     * [MeshText.SOURCE] and [MessageEntity.bytes] is the text.
      */
-    private suspend fun submitPlain(input: Map<String, Any?>): SubmitResult {
+    private suspend fun submitPlain(input: Map<String, Any?>, channel: String?, peer: Long?): SubmitResult {
         // Checked as a RescueCodec text first, so a broken message is refused the same way with the setting on or off.
         try {
             RescueCodec.encode(TextFit.fitText(input))
@@ -231,7 +265,7 @@ class Messenger(
         return mutex.withLock {
             val row = MessageEntity(
                 dir = "out", node = currentNode(), type = "text", bytes = bytes, json = Json.stringify(canonical),
-                atMs = clock(), state = MessageState.QUEUED, source = MeshText.SOURCE,
+                atMs = clock(), state = MessageState.QUEUED, source = MeshText.SOURCE, channelName = channel, peer = peer,
             )
             val rowId = messages.insert(row)
             rowBySeq[queue.enqueue(canonical, bytes).seq] = rowId
@@ -274,13 +308,16 @@ class Messenger(
         val self = currentNode()
         if (self == 0L) return AnswerResult.RadioUnknown
         val ack: Map<String, Any?>
+        val channel: String?
         mutex.withLock {
             val task = tracker[taskKey] ?: return AnswerResult.UnknownTask
             val own = task.answers.lastOrNull { it.from == self }?.status ?: "open"
             if (status !in ALLOWED_MOVES[own].orEmpty()) return AnswerResult.InvalidMove(own, status)
             ack = RequestTracker.ackFor(task, status, etaMin, teamLabelFor(settings.teamLabel))
+            // The answer goes out on the same channel as the report, so the team that sent it hears it.
+            channel = channelOfTask(taskKey)?.name
         }
-        return when (val r = submit(ack, source = "app")) {
+        return when (val r = submit(ack, source = "app", channel = channel)) {
             is SubmitResult.Rejected -> AnswerResult.Rejected(r.code, r.message)
             is SubmitResult.Queued -> {
                 mutex.withLock {
@@ -311,6 +348,18 @@ class Messenger(
                         wake.trySend(Unit)
                     }
                 }
+                // Names of the other radios, for senders, notifications and new direct messages.
+                if (nodes != null) launch {
+                    try {
+                        client.nodeMap().collect { m ->
+                            nodes.update(m.values.map { n -> NodeName(n.num.toLong() and 0xFFFFFFFFL, n.user?.long_name.orEmpty(), n.user?.short_name.orEmpty(), n.channel) })
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        log("node list failed: $e")
+                    }
+                }
                 sendLoop(client, self)
             }
         }
@@ -323,10 +372,9 @@ class Messenger(
                 client.packets.collect { p ->
                     try {
                         val self = nodeOf(client).takeIf { it != 0L } ?: settings.lastOwnNode
-                        // Only our private channel counts. Port 256 is free for any app, and on a radio that also has
-                        // LongFast, other teams' packets arrive there. No safe channel known: drop (never guess).
-                        val wanted = (ChannelChoice.resolve(client.channels.value, settings.channelIndex) as? ChannelChoice.Ready)?.index
-                        mutex.withLock { onPacket(p, self, wanted) }
+                        // Every private channel of the radio counts; the public one only when the person wants it.
+                        val radio = Channels.list(client.channels.value, presetOf(client))
+                        mutex.withLock { onPacket(p, self, radio, settings.showPublicChannel) }
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
@@ -346,20 +394,20 @@ class Messenger(
             try {
                 var item: Pair<QueuedMessage, Long>? = null
                 var waitMs: Long? = null
-                var channelIdx = -1
-                var blocked = false
+                var route: ChannelRef? = null
                 mutex.withLock {
                     reconcile()
                     val choice = evaluateChannel(client)
-                    if (choice is ChannelChoice.Ready) channelIdx = choice.index
-                    else {
-                        blocked = true
-                        markChannelProblem(choice)
-                    }
-                    val q = if (blocked) null else queue.poll()
+                    val radio = Channels.list(client.channels.value, presetOf(client))
+                    // A message whose channel is not on the radio waits aside, so it never blocks the others.
+                    parkUnroutable(radio, choice)
+                    val q = queue.poll()
                     if (q != null) {
-                        item = q to (rowBySeq.remove(q.seq) ?: -1L)
-                    } else if (!blocked) {
+                        val rowId = rowBySeq.remove(q.seq) ?: -1L
+                        val row = if (rowId >= 0) messages.get(rowId) else null
+                        route = row?.let { (route(it, radio, choice) as? Route.Go)?.channel }
+                        item = q to rowId
+                    } else {
                         waitMs = queue.waitMs()
                         if (waitMs != null && waitMs!! > 0) markHeld(waitMs!!)
                     }
@@ -368,11 +416,13 @@ class Messenger(
                 val next = item
                 if (next == null) {
                     val w = waitMs
-                    val sleep = if (blocked) 5_000L else if (w == null || w == Long.MAX_VALUE) 30_000L else w.coerceIn(100L, 5_000L)
+                    val sleep = if (w == null || w == Long.MAX_VALUE) 30_000L else w.coerceIn(100L, 5_000L)
                     withTimeoutOrNull(sleep) { wake.receive() }
                     continue
                 }
-                if (next.second >= 0) withContext(NonCancellable) { dispatch(client, self, next.first, next.second, channelIdx) }
+                val ch = route
+                if (next.second >= 0 && ch?.index != null) withContext(NonCancellable) { dispatch(client, self, next.first, next.second, ch) }
+                else if (next.second >= 0) mutex.withLock { requeue(next.second, "Waiting for the channel.", delayMs = parkMs) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -400,14 +450,15 @@ class Messenger(
 
     // ------------------------------------------------------------ sending, inner
 
-    private suspend fun dispatch(client: RadioClient, self: Long, q: QueuedMessage, rowId: Long, channelIdx: Int) {
+    private suspend fun dispatch(client: RadioClient, self: Long, q: QueuedMessage, rowId: Long, channel: ChannelRef) {
         val row = messages.get(rowId) ?: return
         val canonical = q.message
         val type = row.type
         val prio = meshPriority(RescueCodec.effectivePriority(canonical))
         val packet = MeshPacket.Builder().also { b ->
-            b.to = NodeId.BROADCAST.raw
-            b.channel = channelIdx
+            // A direct message goes to its node (the radio encrypts it for that node when it knows its key).
+            b.to = row.peer?.toInt() ?: NodeId.BROADCAST.raw
+            b.channel = channel.index ?: 0
             b.want_ack = true
             b.priority = prio
             b.decoded = Data.Builder().also { d ->
@@ -431,10 +482,12 @@ class Messenger(
                 row.copy(
                     node = self, packetId = handle.id.raw.toLong() and 0xFFFFFFFFL, state = MessageState.SENT,
                     detail = null, retryAtMs = null, taskKey = key?.toString() ?: row.taskKey,
-                    atMs = clock(),
+                    atMs = clock(), channelIndex = channel.index, channelName = channel.name ?: row.channelName,
+                    channelPublic = channel.isPublic,
                 ),
             )
             if (key != null) {
+                taskChannel[key] = channel
                 tracker.onSent(self, canonical)
                 persistTask(key, self)
             }
@@ -534,7 +587,8 @@ class Messenger(
         val row = messages.get(rowId) ?: return
         if (row.state == MessageState.CANCELLED) return
         val canonical = row.json?.let { Json.parseObject(it) } ?: return
-        messages.update(row.copy(state = MessageState.QUEUED, detail = detail, retryAtMs = null))
+        val next = row.copy(state = MessageState.QUEUED, detail = detail, retryAtMs = null)
+        if (next != row) messages.update(next)
         rowBySeq[queue.enqueue(canonical, row.bytes).seq] = rowId
         wake.trySend(Unit)
     }
@@ -585,16 +639,20 @@ class Messenger(
 
     // --------------------------------------------------------------- receiving
 
-    private suspend fun onPacket(p: MeshPacket, self: Long, wantedChannel: Int?) {
+    private suspend fun onPacket(p: MeshPacket, self: Long, radio: List<RadioChannel>, showPublic: Boolean) {
         val d = p.decoded ?: return
-        if (d.portnum == PortNum.TEXT_MESSAGE_APP) return onText(p, d.payload.toByteArray(), self, wantedChannel)
-        if (d.portnum != PortNum.PRIVATE_APP) return
+        if (d.portnum != PortNum.TEXT_MESSAGE_APP && d.portnum != PortNum.PRIVATE_APP) return
         val from = p.from.toLong() and 0xFFFFFFFFL
         if (from == self) return
-        if (wantedChannel == null || p.channel != wantedChannel) {
-            stats.add(StatNames.RX_OTHER_CHANNEL)
+        // Port 256 is free for any app, and other teams use it on their channels too: only the channels we show.
+        val to = p.to.toLong() and 0xFFFFFFFFL
+        val inbound = Channels.inbound(to, from, p.channel, self, radio, showPublic)
+        if (inbound == null) {
+            if (d.portnum == PortNum.PRIVATE_APP && to == MeshText.BROADCAST) stats.add(StatNames.RX_OTHER_CHANNEL)
             return
         }
+        if (d.portnum == PortNum.TEXT_MESSAGE_APP) return onText(p, d.payload.toByteArray(), from, inbound)
+        val ch = inbound.channel
         val bytes = d.payload.toByteArray()
         val now = clock()
         val hops = if (p.hop_start > 0) (p.hop_start - p.hop_limit).coerceAtLeast(0) else null
@@ -607,6 +665,7 @@ class Messenger(
                     dir = "in", node = from, packetId = p.id.toLong() and 0xFFFFFFFFL, type = "unknown", bytes = bytes, json = null,
                     atMs = now, state = MessageState.INVALID, detail = "${e.code}${e.field?.let { " ($it)" } ?: ""}",
                     snr = p.rx_snr, rssi = p.rx_rssi, hops = hops,
+                    channelIndex = ch.index, channelName = ch.name, channelPublic = ch.isPublic, peer = inbound.peer,
                 ),
             )
             return
@@ -639,27 +698,29 @@ class Messenger(
                 msgId = (canonical["id"] as? Number)?.toInt() ?: 0, bytes = bytes, json = Json.stringify(canonical),
                 atMs = now, state = MessageState.RECEIVED, taskKey = taskKey?.toString(),
                 snr = p.rx_snr, rssi = p.rx_rssi, hops = hops,
+                channelIndex = ch.index, channelName = ch.name, channelPublic = ch.isPublic, peer = inbound.peer,
             ),
         )
         if (taskKey != null) {
+            // The report's own channel wins; an answer that came first only fills the gap until the report arrives.
+            if (RequestTracker.taskType(canonical) != null) taskChannel[taskKey] = ch
+            else if (taskKey !in taskChannel && tasks.get(taskKey.toString())?.channelName == null) taskChannel[taskKey] = ch
             persistTask(taskKey, self)
             val key = taskKey.toString()
             if (MaydayAlerts.shouldAlert(type, from, self, outcome, tracker[taskKey]?.state, key in alerted)) {
                 alerted.add(key)
-                alerts.show(key, from, MaydayAlerts.reasonOf(canonical))
+                alerts.show(key, from, MaydayAlerts.reasonOf(canonical), ch.name)
             }
         }
     }
 
     /**
-     * A normal Meshtastic text (port 1), for example from the official app (spec section 2.1). Only a broadcast on the
-     * team channel or a direct message to us; other channels (the public LongFast chat) are not even counted.
+     * A normal Meshtastic text (port 1), for example from the official app (spec section 2.1), already checked by
+     * [Channels.inbound]: a broadcast on a channel we show, or a direct message to us.
      * A gateway's readable copy of a RescueCodec message and the same packet twice count as duplicates.
      */
-    private suspend fun onText(p: MeshPacket, bytes: ByteArray, self: Long, wantedChannel: Int?) {
-        val from = p.from.toLong() and 0xFFFFFFFFL
-        if (from == self) return
-        if (!MeshText.accept(p.to.toLong() and 0xFFFFFFFFL, p.channel, self, wantedChannel)) return
+    private suspend fun onText(p: MeshPacket, bytes: ByteArray, from: Long, inbound: Inbound) {
+        val ch = inbound.channel
         val text = String(bytes, Charsets.UTF_8)
         if (text.isBlank()) return
         val packetId = p.id.toLong() and 0xFFFFFFFFL
@@ -676,6 +737,7 @@ class Messenger(
                 json = Json.stringify(MeshText.message(text)), atMs = now, state = MessageState.RECEIVED,
                 snr = p.rx_snr, rssi = p.rx_rssi, hops = if (p.hop_start > 0) (p.hop_start - p.hop_limit).coerceAtLeast(0) else null,
                 source = MeshText.SOURCE,
+                channelIndex = ch.index, channelName = ch.name, channelPublic = ch.isPublic, peer = inbound.peer,
             ),
         )
     }
@@ -700,6 +762,7 @@ class Messenger(
 
     private suspend fun persistTask(key: TaskKey, self: Long) {
         val t: Task = tracker[key] ?: return
+        val ch = channelOfTask(key)
         val answers = t.answers.map { a ->
             linkedMapOf<String, Any?>("from" to a.from, "status" to a.status, "team" to a.team, "eta" to a.etaMin, "at" to a.atMs)
         }
@@ -711,10 +774,16 @@ class Messenger(
                 createdMs = t.createdMs, updatedMs = t.updatedMs, answersJson = Json.stringify(answers),
                 ownStatus = if (self == 0L) null else t.answers.lastOrNull { it.from == self }?.status,
                 rank = if (t.type == "mayday") 0 else 1,
+                channelIndex = ch?.index, channelName = ch?.name, channelPublic = ch?.isPublic ?: false,
             ),
         )
         if (MaydayAlerts.shouldClear(t.type, t.state)) alerts.clear(key.toString())
     }
+
+    /** The channel of task [key]: from this run, else the one stored with the task. Null if unknown (the team channel). */
+    private suspend fun channelOfTask(key: TaskKey): ChannelRef? =
+        taskChannel[key] ?: tasks.get(key.toString())?.takeIf { it.channelName != null }?.let { ChannelRef(it.channelIndex, it.channelName, it.channelPublic) }
+            ?.also { taskChannel[key] = it }
 
     /** Our own Accept, Decline or Done counts as soon as we make it, and again when it is really sent. */
     private suspend fun applyOwnAck(msg: Map<String, Any?>, self: Long) {
@@ -783,14 +852,74 @@ class Messenger(
 
     /** Works out the channel again from the radio's channel list and the setting, and publishes it. */
     private fun evaluateChannel(client: RadioClient?): ChannelChoice {
+        val preset = client?.let { presetOf(it) } ?: ""
         val choice = if (client == null) {
             ChannelChoice.Waiting("No radio connected.")
         } else {
-            ChannelChoice.resolve(client.channels.value, settings.channelIndex)
+            ChannelChoice.resolve(client.channels.value, settings.channelIndex, preset)
         }
         _channel.value = choice
-        _channelOptions.value = ChannelChoice.options(client?.channels?.value)
+        _channelOptions.value = ChannelChoice.options(client?.channels?.value, preset)
+        if (choice is ChannelChoice.Ready && choice.name.isNotBlank() && settings.lastTeamChannel != choice.name) settings.lastTeamChannel = choice.name
+        val list = client?.channels?.value?.takeIf { it.isNotEmpty() }?.let { Channels.list(it, preset) }
+        if (list != null && list != _radioChannels.value) {
+            _radioChannels.value = list
+            settings.lastRadioChannels = list.joinToString("\n") { "${it.index}|${if (it.isPublic) 1 else 0}|${it.name}" }
+        }
         return choice
+    }
+
+    private fun loadRadioChannels(): List<RadioChannel>? = settings.lastRadioChannels?.lines()?.mapNotNull { l ->
+        val p = l.split('|', limit = 3)
+        if (p.size != 3) null else p[0].toIntOrNull()?.let { RadioChannel(it, p[2], p[1] == "1") }
+    }?.takeIf { it.isNotEmpty() }
+
+    /** Where an outgoing row goes now: a channel of the radio, wait (with the reason), or never (with the reason). */
+    private sealed interface Route {
+        data class Go(val channel: ChannelRef) : Route
+        data class Wait(val why: String) : Route
+        data class Refuse(val why: String) : Route
+    }
+
+    private fun route(row: MessageEntity, radio: List<RadioChannel>, choice: ChannelChoice): Route {
+        if (row.peer != null) {
+            // A direct message goes on the channel the radio heard that node on (Meshtastic does the same), else the
+            // primary channel. With current firmware the radio encrypts it for that node alone.
+            val idx = nodes?.channelOf(row.peer) ?: 0
+            val ch = radio.firstOrNull { it.index == idx } ?: radio.firstOrNull { it.index == 0 }
+            return Route.Go(ch?.let { ChannelRef.of(it) } ?: ChannelRef(idx, null, false))
+        }
+        val ch = if (row.channelName == null) {
+            val c = choice as? ChannelChoice.Ready ?: return Route.Wait(choice.text())
+            radio.firstOrNull { it.index == c.index } ?: return Route.Wait(choice.text())
+        } else {
+            radio.firstOrNull { it.name == row.channelName }
+                ?: return Route.Wait("Channel \"${row.channelName}\" is not on this radio. The message waits until it is.")
+        }
+        if (ch.isPublic && !MeshText.isPlain(row) && row.type != "ack") return Route.Refuse("Reports never go on a public channel.")
+        return Route.Go(ChannelRef.of(ch))
+    }
+
+    /** Takes queued messages that cannot go now out of the queue for a while ([parkMs]), with the reason on the row. */
+    private suspend fun parkUnroutable(radio: List<RadioChannel>, choice: ChannelChoice) {
+        for (q in queue.snapshot()) {
+            val rowId = rowBySeq[q.seq] ?: continue
+            val row = messages.get(rowId) ?: continue
+            when (val r = route(row, radio, choice)) {
+                is Route.Go -> Unit
+                is Route.Wait -> {
+                    queue.cancel(q.seq)
+                    rowBySeq.remove(q.seq)
+                    if (row.detail != r.why) messages.update(row.copy(detail = r.why))
+                    requeue(rowId, r.why, delayMs = parkMs)
+                }
+                is Route.Refuse -> {
+                    queue.cancel(q.seq)
+                    rowBySeq.remove(q.seq)
+                    finish(rowId, MessageState.FAILED, r.why, StatNames.TX_FAILED)
+                }
+            }
+        }
     }
 
     /** Call after the person changed the channel setting. */
@@ -799,13 +928,9 @@ class Messenger(
         wake.trySend(Unit)
     }
 
-    /** Puts the reason on every waiting message, once, so the outbox says why nothing leaves. */
-    private suspend fun markChannelProblem(choice: ChannelChoice) {
-        val text = choice.text()
-        for (row in messages.waiting()) {
-            if (row.state == MessageState.QUEUED && row.detail != text) messages.update(row.copy(detail = text))
-        }
-    }
+    /** The modem preset's name ("LongFast"): the name of a channel that has none. */
+    private fun presetOf(client: RadioClient): String =
+        Channels.presetName(client.configBundle.value?.configs?.firstNotNullOfOrNull { it.lora })
 
     companion object {
         private const val DUTY_CYCLE_LIMIT_RES = 9

@@ -116,6 +116,8 @@ dependencies {
     testImplementation(libs.kotlin.test.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.meshtastic.sdk.testing)
+    // A real SQLite on the JVM for the Room migration test (runs the migration SQL against the exported schemas).
+    testImplementation(libs.sqlite.jdbc)
 
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.compose.ui.test.junit4)

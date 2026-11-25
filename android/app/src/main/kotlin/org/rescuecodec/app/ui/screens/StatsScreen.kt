@@ -93,7 +93,7 @@ fun StatsScreen(vm: StatsViewModel, lang: String) {
             stringResource(R.string.stat_bytes_traffic), "${s.bytesSent} / ${s.bytesReceived} B", measured = true,
             note = stringResource(R.string.stat_bytes_traffic_note), tag = "stat_traffic",
         )
-        Spacer(Modifier.height(88.dp)) // room for the SOS button
+        Spacer(Modifier.height(16.dp))
     }
 }
 

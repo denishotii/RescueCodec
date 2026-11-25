@@ -205,7 +205,7 @@ fun ConnectScreen(vm: ConnectionViewModel, snackbar: SnackbarHostState) {
                 JoinPanel(vm, join, connected) { pasted = "" }
             }
         }
-        Spacer(Modifier.height(88.dp)) // room for the SOS button
+        Spacer(Modifier.height(16.dp))
     }
 
     if (scanner) {
@@ -237,16 +237,40 @@ private fun JoinPanel(vm: ConnectionViewModel, join: ConnectionViewModel.JoinSta
         is ConnectionViewModel.JoinState.Failed -> Text(stringResource(R.string.join_failed, join.reason), color = c.maydayText, style = MaterialTheme.typography.bodyMedium)
         is ConnectionViewModel.JoinState.Preview -> {
             val link = join.link
+            val plan = join.plan
             Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.testTag("join_preview")) {
                 Text(stringResource(R.string.join_found, link.primaryName.ifEmpty { stringResource(R.string.channel_no_name) }, link.channels.size), style = MaterialTheme.typography.titleMedium)
-                if (!link.allPrivate) Text(stringResource(R.string.join_public_warning), color = c.maydayText, style = MaterialTheme.typography.bodyMedium)
-                if (!connected) Text(stringResource(R.string.join_need_radio), color = c.open, style = MaterialTheme.typography.bodyMedium)
+                if (!connected || plan == null) {
+                    Text(stringResource(R.string.join_need_radio), color = c.open, style = MaterialTheme.typography.bodyMedium)
+                } else {
+                    // Say exactly what will happen before anything is written: added, updated, kept, skipped, region.
+                    Text(stringResource(R.string.join_plan_title), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.testTag("join_plan")) {
+                        plan.add.forEach { (slot, s) -> PlanLine(stringResource(R.string.join_plan_add, s.name, slot), c.done) }
+                        plan.update.forEach { (slot, s) -> PlanLine(stringResource(R.string.join_plan_update, s.name, slot), c.open) }
+                        plan.already.forEach { PlanLine(stringResource(R.string.join_plan_have, it), null) }
+                        plan.keptPrimary.forEach { PlanLine(stringResource(R.string.join_plan_keep_primary, it), null) }
+                        plan.skippedPublic.forEach { PlanLine(stringResource(R.string.join_plan_skip_public, it), null) }
+                        plan.noRoom.forEach { PlanLine(stringResource(R.string.join_plan_no_room, it), c.maydayText) }
+                        if (plan.add.isEmpty() && plan.update.isEmpty()) PlanLine(stringResource(R.string.join_plan_nothing), null)
+                        PlanLine(plan.lora?.let { stringResource(R.string.join_plan_region_set, it.region.name) } ?: stringResource(R.string.join_plan_region_keep), if (plan.lora != null) c.open else null)
+                    }
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    BigButton(stringResource(R.string.join_apply), { vm.applyJoin() }, Modifier.weight(1f).testTag("join_apply"), enabled = connected && link.allPrivate)
+                    BigButton(stringResource(R.string.join_apply), { vm.applyJoin() }, Modifier.weight(1f).testTag("join_apply"), enabled = connected && plan?.writes == true)
                     BigButton(stringResource(R.string.action_cancel), { vm.clearJoin(); onClear() }, Modifier.weight(0.7f), outlined = true)
                 }
             }
         }
+    }
+}
+
+/** One line of the join plan, with a dot in the colour of its meaning (green added, amber changed, red not possible). */
+@Composable
+private fun PlanLine(text: String, color: androidx.compose.ui.graphics.Color?) {
+    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        StatusDot(color ?: MaterialTheme.colorScheme.outline, Modifier.padding(top = 7.dp), size = 8.dp)
+        Text(text, style = MaterialTheme.typography.bodyMedium)
     }
 }
 

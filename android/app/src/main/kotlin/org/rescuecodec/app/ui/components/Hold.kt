@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package org.rescuecodec.app.ui.components
 
+import androidx.compose.material3.Surface
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -201,6 +202,33 @@ fun ComposerMic(
         }
         Box(Modifier.size(52.dp).clip(CircleShape).background(disc), contentAlignment = Alignment.Center) {
             RcIcon(if (ready || listening) R.drawable.ic_mic else R.drawable.ic_mic_off, null, tint = fg, size = 26.dp)
+        }
+    }
+}
+
+/**
+ * SOS on the screens without the composer (chat list, Tasks, menu screens): a slim bar under the content with the same
+ * red disc at the bottom left, where it sits in the composer too. It covers nothing. While it is held, the hold strip
+ * shows above it.
+ */
+@Composable
+fun SosBar(onConfirm: () -> Unit, modifier: Modifier = Modifier) {
+    val progress = remember { mutableFloatStateOf(0f) }
+    var holding by remember { mutableStateOf(false) }
+    Column(modifier.fillMaxWidth().testTag("sos_bar")) {
+        if (holding || progress.floatValue >= 1f) SosHoldStrip(progress.floatValue)
+        Surface(color = MaterialTheme.colorScheme.surface) {
+            Column {
+                Hairline()
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 8.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    SosButton(onConfirm, progress, { holding = it })
+                    Text(stringResource(R.string.sos_hold), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         }
     }
 }

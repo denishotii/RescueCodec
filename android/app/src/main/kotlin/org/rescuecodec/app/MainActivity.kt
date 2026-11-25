@@ -14,6 +14,7 @@ import org.rescuecodec.app.radio.RadioTarget
 import org.rescuecodec.app.service.AppForeground
 import org.rescuecodec.app.service.RadioService
 import org.rescuecodec.app.ui.AppViewModelFactory
+import org.rescuecodec.app.ui.NavRequest
 import org.rescuecodec.app.ui.ReportViewModel
 import org.rescuecodec.app.ui.RescueRoot
 import org.rescuecodec.app.ui.Screen
@@ -27,7 +28,7 @@ import org.rescuecodec.app.ui.Screen
  */
 class MainActivity : ComponentActivity() {
     /** A screen asked for by an intent while the app is already open (counter, screen). */
-    private val navRequest = mutableStateOf<Pair<Int, Screen>?>(null)
+    private val navRequest = mutableStateOf<NavRequest?>(null)
     private var navCounter = 0
 
     private fun screenFrom(intent: Intent?): Screen? =
@@ -36,7 +37,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        screenFrom(intent)?.let { navRequest.value = ++navCounter to it }
+        screenFrom(intent)?.let { navRequest.value = NavRequest(++navCounter, it, intent.getStringExtra("chat")) }
         injectReportText(intent)
     }
 
@@ -74,7 +75,9 @@ class MainActivity : ComponentActivity() {
             }
         }
         val initial = screenFrom(intent) ?: Screen.TEAM
-        setContent { RescueRoot(graph, initial, navRequest.value) }
+        // A notification names the chat to open ("chat" extra); otherwise the app opens the last chat used.
+        val initialChat = intent?.getStringExtra("chat")?.takeIf { initial == Screen.TEAM }
+        setContent { RescueRoot(graph, initial, navRequest.value, initialChat) }
         injectReportText(intent)
     }
 
