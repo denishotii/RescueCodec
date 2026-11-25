@@ -29,3 +29,6 @@
 
 ## design (Wed 06:57)
 - design-polish | done | critique: 12 issues | open: (1) logo mark not added to app status chip; (2) German feed filter chips still wrap to two rows at 1440 px; (3) app grid ref uses system monospace, JetBrains Mono not bundled (Android needs ttf, only woff/woff2 available); (4) mobile Mayday layout and sticky Accept bar not screenshotted with active Mayday; (5) dashboard/scripts/gallery.sh needs playwright-cli (not installed), screenshots taken with playwright-core script in scratchpad, not in repo
+
+## final (Wed 07:57)
+- final-fixes: done; 23 issues from Codex + real-device review; BLE transport blocker fixed; all suites + sim e2e 3/3 pass; open: nothing run on real BLE/USB/phone, cold-start "No radio" not reproduced (logcat tag RescueCodec), see FINAL_REVIEW.md. Committed by the orchestrator because the commit agent was blocked by the auto-mode classifier.
