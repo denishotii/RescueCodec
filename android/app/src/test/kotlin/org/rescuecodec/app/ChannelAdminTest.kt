@@ -91,6 +91,25 @@ class ChannelAdminTest {
         assertEquals("draeger-srs", ChannelJoin.parse(text)?.primaryName)
     }
 
+    /** The QR the sheet draws decodes (ZXing, as our scanner reads it) to the same link, and Join reads that link. */
+    @Test
+    fun theQrCodeDecodesToTheShareLink() {
+        val text = assertNotNull(ChannelAdmin.shareLink(radio, 1, eu))
+        val m = assertNotNull(org.rescuecodec.app.ui.screens.qrMatrix(text))
+        val quiet = 4
+        val scale = 4
+        val side = (m.width + 2 * quiet) * scale
+        val px = IntArray(side * side) { i ->
+            val x = i % side / scale - quiet
+            val y = i / side / scale - quiet
+            if (x in 0 until m.width && y in 0 until m.height && m[x, y]) 0xFF000000.toInt() else 0xFFFFFFFF.toInt()
+        }
+        val bitmap = com.google.zxing.BinaryBitmap(com.google.zxing.common.HybridBinarizer(com.google.zxing.RGBLuminanceSource(side, side, px)))
+        val read = com.google.zxing.qrcode.QRCodeReader().decode(bitmap).text
+        assertEquals(text, read)
+        assertEquals("RescueCodec", ChannelJoin.parse(read)?.primaryName)
+    }
+
     @Test
     fun aPublicOrUnknownChannelHasNoShareLink() {
         assertNull(ChannelAdmin.shareLink(radio, 0, eu), "the public default channel is not shared as a team channel")
