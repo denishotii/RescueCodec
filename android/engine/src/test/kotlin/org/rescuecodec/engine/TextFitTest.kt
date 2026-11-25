@@ -97,4 +97,21 @@ class TextFitTest {
         val noBody = mapOf("id" to 7)
         assertSame(noBody, TextFit.fitText(noBody))
     }
+
+    @Test
+    fun plainTextIsCutTo200BytesOnACharacterBoundary() {
+        val short = "Treffpunkt am Gasthaus"
+        assertSame(short, TextFit.fitPlain(short))
+        val exact = "a".repeat(200)
+        assertSame(exact, TextFit.fitPlain(exact))
+        for (text in listOf("ü".repeat(150), "a" + "ü".repeat(150), "€".repeat(100), "Weg ".repeat(80), "\uD83D\uDE91".repeat(70))) {
+            val cut = TextFit.fitPlain(text)
+            val size = utf8(cut).size
+            assertTrue(size in 195..200, "$size bytes")
+            assertTrue(cut.endsWith(TextFit.ELLIPSIS))
+            assertEquals(cut, strictUtf8(utf8(cut)), "no broken character")
+            assertTrue(text.startsWith(cut.dropLast(1).trimEnd()))
+        }
+        assertEquals("a".repeat(196) + "…", TextFit.fitPlain("a".repeat(196) + " " + "b".repeat(50)), "a trailing space goes")
+    }
 }

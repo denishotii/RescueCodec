@@ -38,6 +38,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import org.rescuecodec.app.AppGraph
 import org.rescuecodec.app.BuildConfig
 import org.rescuecodec.app.R
 import org.rescuecodec.app.ui.ConnectionViewModel
@@ -59,6 +60,8 @@ fun SettingsScreen(vm: SettingsViewModel, connection: ConnectionViewModel, lang:
     val theme by vm.theme.collectAsStateWithLifecycle()
     var team by remember { mutableStateOf(vm.teamLabel) }
     var allowApi by remember { mutableStateOf(connection.allowIntentApi()) }
+    val appSettings = remember { AppGraph.from(context).settings }
+    var plainText by remember { mutableStateOf(appSettings.plainTextAsMeshtastic) }
     var licences by remember { mutableStateOf(false) }
     val region = vm.region
     val preset = vm.preset
@@ -117,6 +120,13 @@ fun SettingsScreen(vm: SettingsViewModel, connection: ConnectionViewModel, lang:
                 InfoRow(stringResource(R.string.set_airtime_11), "%.2f s".format(Airtime(preset).millis(11) / 1000.0))
                 Text(stringResource(R.string.set_radio_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+        }
+        Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.set_plain_text), style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.set_plain_text_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Switch(checked = plainText, onCheckedChange = { plainText = it; appSettings.plainTextAsMeshtastic = it }, modifier = Modifier.testTag("plain_text_switch"))
         }
 
         SectionHeader(stringResource(R.string.set_voice))

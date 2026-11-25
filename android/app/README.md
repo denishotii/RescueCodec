@@ -25,6 +25,8 @@ This module holds the radio and data layer, and the screens and voice on top of 
 3. The radio answers: `sent`, `delivered` (a neighbour repeated it), `not_confirmed`, or `refused_airtime` (the radio's own limit). Refused messages are tried again later.
 4. Incoming packets on port 256 are decoded, checked for duplicates and written as `received`. Reports become tasks, Acks change task states.
 5. `Messenger.answer(key, "accepted" | "declined" | "done")` sends an Ack and applies it at once.
+6. Normal Meshtastic texts (port 1, spec section 2.1), for example from the official app: a broadcast on the team channel or a direct message to us is stored as a `text` row with `source = "meshtastic"` (`MeshText.isPlain(row)`, for a "via Meshtastic" hint). Other channels (the public LongFast chat) are ignored. The same packet twice and readable copies that start with `[RC] ` are dropped as duplicates.
+7. Setting "Send plain text as normal Meshtastic text" (`AppSettings.plainTextAsMeshtastic`, on by default): a message with only a text goes out as a port 1 text on the team channel instead of a RescueCodec text, through the same queue, priority, airtime budget and `want_ack`. Only the words go out (at most 200 bytes, no position). Reports always go on port 256.
 
 Everything is in the database, so a restart loses nothing: the queue, the tasks, the duplicate memory and the used airtime are rebuilt.
 

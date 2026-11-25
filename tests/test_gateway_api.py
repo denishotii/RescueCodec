@@ -106,7 +106,7 @@ class Sending(unittest.TestCase):
             self.assertEqual(c["key"], "0000e001-2")
 
     def test_the_same_text_twice_is_two_messages(self):
-        with gateway() as gw:
+        with gateway(text_as_meshtastic=False) as gw:                 # RescueCodec texts on port 256
             first = gw.post("/v2/text", text="Hilfe").json()
             second = gw.post("/v2/text", text="Hilfe").json()
             self.assertNotEqual(first["seq"], second["seq"])
@@ -200,14 +200,14 @@ class Sending(unittest.TestCase):
         with gateway(text_over_air="out") as gw:
             gw.post("/v2/messages", message=FOUND)
             line = wait_for(lambda: gw.radio.plain_texts)
-            self.assertTrue(line[0].startswith("Person found: child"))
+            self.assertTrue(line[0].startswith("[RC] Person found: child"))     # marked as a copy (SPEC section 2.1)
 
 
     def test_text_over_air_in_relays_what_we_hear_for_stock_apps(self):
         with gateway(text_over_air="in", text_lang="de") as gw:
             gw.hear({"id": 7, **FOUND})
             line = wait_for(lambda: gw.radio.plain_texts)
-            self.assertTrue(line[0].startswith("Person gefunden: Kind"))
+            self.assertTrue(line[0].startswith("[RC] Person gefunden: Kind"))
 
     def test_text_over_air_is_off_by_default(self):
         with gateway() as gw:
@@ -218,7 +218,7 @@ class Sending(unittest.TestCase):
             self.assertEqual(gw.radio.plain_texts, [])
 
     def test_long_text_with_position_is_cut_to_fit(self):
-        with gateway() as gw:
+        with gateway(text_as_meshtastic=False) as gw:                 # as a RescueCodec text on port 256
             text = ("Fußweg über den Bach zerstört, nördlich gehts nicht weiter. " * 4).encode("utf-8")[:180].decode("utf-8", "ignore")
             response = gw.post("/v2/messages", message={"pos": {"lat": 52.52001, "lon": 13.40495, "acc": "estimated"},
                                                         "text": {"text": text}})

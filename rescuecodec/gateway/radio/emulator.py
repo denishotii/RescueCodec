@@ -12,8 +12,8 @@ import threading
 import time
 from typing import Any
 
-from rescuecodec.gateway.radio.base import (BROADCAST, PORT_PRIVATE_APP, RadioAdapter, RadioInfo, RadioPacket,
-                                            ResultCallback)
+from rescuecodec.gateway.radio.base import (BROADCAST, PORT_PRIVATE_APP, PORT_TEXT_MESSAGE, RadioAdapter, RadioInfo,
+                                            RadioPacket, ResultCallback, is_team_text)
 from rescuecodec.transport.base import Packet
 from rescuecodec.transport.emulator import MeshEmulator
 from rescuecodec.v2 import decode_any, encode
@@ -38,6 +38,8 @@ class EmulatorRadio(RadioAdapter):
         self._connected = False
         self._ids = itertools.count(1)
         self.plain_texts: list[str] = []         # text-port packets "sent" (the emulator does not deliver them)
+        self.sent: list[dict[str, Any]] = []     # every packet handed to send(): port, payload, want_ack, priority, channel
+        self._text_ids = itertools.count(0x7000_0001)
         self._timers: list[threading.Timer] = []
         self._stopped = False
 
@@ -90,6 +92,8 @@ class EmulatorRadio(RadioAdapter):
         if not self._connected:
             raise RuntimeError("no Meshtastic radio connected")
         packet_id = next(self._ids)
+        self.sent.append({"port": port, "payload": bytes(payload), "want_ack": want_ack, "priority": priority,
+                          "channel": channel})
         if port != PORT_PRIVATE_APP:
             self.plain_texts.append(bytes(payload).decode("utf-8", "replace"))
             delivered, reason = True, None
@@ -107,6 +111,20 @@ class EmulatorRadio(RadioAdapter):
     def inject(self, sender: str, payload: bytes, *, to: str = BROADCAST) -> None:
         """Pretend that `sender` transmitted `payload` (for tests and demos)."""
         self.mesh.send(sender, self.node, bytes(payload))
+
+    def inject_text(self, sender: str, text: str | bytes, *, to: str = BROADCAST, channel: int = 0,
+                    packet_id: int | None = None) -> bool:
+        """Pretend that `sender` sent a plain Meshtastic text (port 1), for example from the official app.
+        Channel 0 is the emulator's team channel. Like a real radio, a text on another channel or a direct message to
+        another node is not passed on. Returns True if the gateway got it."""
+        packet = RadioPacket(sender=sender, to=to, port=PORT_TEXT_MESSAGE,
+                             payload=text.encode("utf-8") if isinstance(text, str) else bytes(text),
+                             packet_id=packet_id if packet_id is not None else next(self._text_ids), hops=0,
+                             channel=channel, via="sim")
+        if not self._connected or not is_team_text(packet, self.node, 0):
+            return False
+        self.on_packet(packet)
+        return True
 
     def _on_mesh_packet(self, packet: Packet) -> None:
         hops = max(0, len(packet.hops) - 2) if packet.hops else 0

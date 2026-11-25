@@ -45,6 +45,25 @@ curl -s -X POST localhost:8000/v2/tasks/a1b2c3d4-7/ack -H 'content-type: applica
 websocat ws://127.0.0.1:8000/v2/stream
 ```
 
+## Normal Meshtastic texts
+
+The gateway also shows normal Meshtastic texts (port 1), for example from the official Meshtastic app or a radio with a keyboard:
+
+- Only texts on the team channel (the same channel as the reports) and direct messages to the gateway's radio. The public LongFast chat is never shown.
+- They are normal `text` records with `codec.version: 0`. `codec.hex` is the UTF-8 text. They go to the dashboard, the WebSocket, MQTT and TAK like every other record.
+- The same packet twice is shown once (same sender and Meshtastic packet id). Readable copies that start with `[RC] ` (from `--text-over-air` or `also_plain`) are skipped: we already have the report from port 256.
+
+Sending: a message with only a text (`POST /v2/text`, or `POST /v2/messages` with a `text` body) goes out as a normal Meshtastic text on the team channel, so the official app and the radio screens show it. Same queue, priority, airtime budget and `want_ack` as a report. Only the words go out, at most 200 bytes: no id, position or time. Reports still go out compact on port 256.
+
+| Flag | Default | What it does |
+|---|---|---|
+| `--text-as-meshtastic on\|off` | `on` | `off` sends a text as a RescueCodec text on port 256 again (keeps the position, but stock apps do not show it). Env `RESCUECODEC_TEXT_AS_MESHTASTIC`. |
+
+```bash
+# A text the official app shows
+curl -s -X POST localhost:8000/v2/text -H 'content-type: application/json' -d '{"text":"Treffpunkt jetzt am Gasthaus"}'
+```
+
 Each received record carries the radio facts: `radio.rssi`, `radio.snr` and `radio.hops` (hop start minus hop limit). Simulated and emulated radios have no signal, so those stay `null`.
 
 Sending is asynchronous. A record goes `queued`, then `sent`, then `delivered` or `failed`. Here `delivered` means "a neighbouring radio repeated it", not "a team received it". The dashboard says "Relayed by a neighbour". Only the Accept from a person proves that someone got it. Mayday goes first. The airtime budget is 10 percent per hour. When it is used up, you get `429` with `retry_after_s`. A Mayday is never held back.
@@ -58,7 +77,7 @@ About `failed` with `max_retransmit`: for a broadcast, Meshtastic counts a packe
 | `--mqtt HOST[:PORT]` | JSON on `rescuecodec/v2/messages`, `rescuecodec/v2/<type>` (found, track, sector, request, hazard, mayday, ack, text), `rescuecodec/v2/tasks`, `rescuecodec/v2/readable` (one plain English line) and `rescuecodec/v2/status` (online or offline). Payloads are the same JSON as the API. |
 | `--cot` | TAK events as UDP multicast to `239.2.3.1:6969` (change with `--cot-udp`, pick the network card with `--cot-iface`). |
 | `--cot-tcp HOST:PORT` | The same events to a TAK server over TCP. Implies `--cot`. |
-| `--text-over-air out\|in\|both` | Also post the readable line on the normal Meshtastic text port, so stock apps show it. Off by default because it doubles airtime. `out` is what this gateway sends, `in` is what it hears. |
+| `--text-over-air out\|in\|both` | Also post the readable line of each report on the normal Meshtastic text port, so stock apps show it. Off by default because it doubles airtime. `out` is what this gateway sends, `in` is what it hears. The line starts with `[RC] `, so RescueCodec apps and gateways skip the copy. Plain texts are never copied. |
 | `GET /v2/export.geojson` | GeoJSON of finds, hazards, maydays and requests (points) and tracks (lines). |
 
 MQTT needs `paho-mqtt` (`pip install 'rescuecodec[gateway]'`). Start a local broker with `scripts/mqtt-up.sh`.

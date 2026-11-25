@@ -274,6 +274,8 @@
     <string name="set_other_apps">Andere Apps</string>
     <string name="set_intent_api">Andere Apps dürfen Meldungen senden</string>
     <string name="set_intent_api_note">Nutzt den Android-Intent org.rescuecodec.action.SEND_REPORT.</string>
+    <string name="set_plain_text">Freitext als normale Meshtastic-Nachricht senden</string>
+    <string name="set_plain_text_note">Eine Nachricht nur mit Text geht als normale Meshtastic-Nachricht raus, damit die offizielle App und Funkgeräte mit Display sie zeigen. Ohne Position. Meldungen gehen weiter kompakt raus.</string>
     <string name="set_battery">Akku-Einstellungen</string>
     <string name="set_about">Über</string>
     <string name="set_version">Version</string>

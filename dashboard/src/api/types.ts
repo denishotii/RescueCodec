@@ -34,7 +34,8 @@ export interface MessageRecord {
   seq: number; key: string | null; direction: "in" | "out"; from: string; type: MessageType; priority: Priority;
   status: "received" | "queued" | "sent" | "delivered" | "failed" | "dry_run"; error: string | null;
   time: string; event_time: string | null;
-  codec: { version: 1 | 2; size: number; hex: string };
+  /** version 0: a normal Meshtastic text (port 1), not a RescueCodec packet; hex is the UTF-8 text (SPEC 2.1). */
+  codec: { version: 0 | 1 | 2; size: number; hex: string };
   radio: RadioFacts | null;
   message: Message; text: Text2; task_key: string | null;
 }

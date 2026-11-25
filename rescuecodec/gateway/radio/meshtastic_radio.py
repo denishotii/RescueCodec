@@ -11,8 +11,8 @@ import threading
 from collections.abc import Callable
 from typing import Any
 
-from rescuecodec.gateway.radio.base import (BROADCAST, PORT_PRIVATE_APP, RadioAdapter, RadioInfo, RadioPacket,
-                                            ResultCallback, node_id)
+from rescuecodec.gateway.radio.base import (BROADCAST, PORT_PRIVATE_APP, PORT_TEXT_MESSAGE, RadioAdapter, RadioInfo,
+                                            RadioPacket, ResultCallback, is_team_text, node_id)
 
 log = logging.getLogger("rescuecodec.gateway.radio")
 
@@ -330,18 +330,27 @@ class MeshtasticRadio(RadioAdapter):
             if radio_packet.sender == self._own_node:        # our own packet coming back
                 return
             if radio_packet.port == PORT_PRIVATE_APP:
-                try:
-                    wanted = self.resolved_channel()[0]
-                except ChannelError:
-                    wanted = None
+                wanted = self._team_channel()
                 if wanted is None or radio_packet.channel != wanted:   # other teams or apps on port 256, or no safe channel
                     self.other_channel += 1
                     log.debug("dropped a port 256 packet from %s on channel %s (ours: %s)", radio_packet.sender,
                               radio_packet.channel, wanted)
                     return
+            elif radio_packet.port == PORT_TEXT_MESSAGE:
+                # Plain texts: only the team channel and direct messages to us. The public LongFast chat stays out.
+                if not is_team_text(radio_packet, self._own_node, self._team_channel()):
+                    log.debug("ignored a text from %s on channel %s to %s", radio_packet.sender, radio_packet.channel,
+                              radio_packet.to)
+                    return
             self.on_packet(radio_packet)
         except Exception:
             log.exception("could not handle a received packet")
+
+    def _team_channel(self) -> int | None:
+        try:
+            return self.resolved_channel()[0]
+        except ChannelError:
+            return None
 
     def _on_lost(self, interface: Any) -> None:
         if self._mine(interface):

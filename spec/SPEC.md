@@ -45,6 +45,21 @@ Meshtastic adds about 23 bytes of its own around every payload (16-byte header p
 
 An unknown priority value from a newer sender is treated as normal.
 
+### 2.1 Normal Meshtastic texts (port 1)
+
+RescueCodec apps and gateways also show and send normal Meshtastic texts (`TEXT_MESSAGE_APP`, port 1), so a team member with the official Meshtastic app or a radio with a screen can take part. These texts are not RescueCodec packets: the payload is the UTF-8 text, nothing else.
+
+| Rule | Value |
+|---|---|
+| Receive | Only a broadcast on the team channel (the channel of section 14), or a direct message to the receiver's own node on any channel. Never a text on another channel: at an event, dozens of radios chat on the public LongFast channel. |
+| Store and show | As a normal `text` message (`{"text": {"text": "..."}}`) with sender, time and the radio facts (RSSI, SNR, hops, packet id). It has no id and is never a task. The gateway marks the record with `codec.version: 0`, the Android app with `source = "meshtastic"`, so a UI can show a small "via Meshtastic" hint. A received text may be up to 233 bytes and is kept as sent. |
+| Duplicates | The same (sender node, Meshtastic packet id) within 24 hours is a repeat. Two texts with the same words but different packet ids are two messages. |
+| Readable copies | A gateway that posts the readable line of a RescueCodec message on port 1 (`--text-over-air`, `also_plain`) MUST start it with `[RC] ` (bracket, R, C, bracket, space). Receivers MUST NOT show a port 1 text that starts with `[RC] `: they already have the message from port 256, which goes on the same channel. Stock apps show the copy as it is. A plain text is never copied again. |
+| Send | A message whose body is `text` goes out as a port 1 broadcast on the team channel while the setting is on (app: "Send plain text as normal Meshtastic text", gateway: `--text-as-meshtastic`, both on by default). Only the words go out: no id, `pos` or `time`. It uses the same send queue, rank, priority (section 2 table), airtime budget and `want_ack` as a RescueCodec text. All other types always go out on port 256. |
+| Size | At most 200 bytes of UTF-8 (Meshtastic allows 233). A longer text is cut to the longest prefix that ends on a whole character, trailing spaces go, and "…" is added (`fit_plain` in Python, `TextFit.fitPlain` in Kotlin). |
+
+Why a prefix and not content matching for copies: the copy and the original may arrive in any order and over different relays, and the readable line of the copy may be cut. A fixed prefix is checked on one packet, with no memory and no timing.
+
 ## 3. Wire format
 
 A packet is one protobuf (proto3) message `rescuecodec.v2.Envelope`, written with the standard protobuf encoding. The full definition with comments is in `rescuecodec/v2/rescuecodec.proto`.
@@ -272,7 +287,7 @@ Algorithm for a message `m` and language file `L`:
 
 Example: `Person gefunden: Kind, ansprechbar, Unterkühlung, Knochenbruch, braucht Trage, 2 weitere Helfer benötigt. Position 50.69212, 7.21345.`
 
-The line is also what stock Meshtastic apps (and apps that only show text) can receive from the gateway's readable-text connector.
+The line is also what stock Meshtastic apps (and apps that only show text) can receive from the gateway's readable-text connector, with `[RC] ` in front (section 2.1).
 
 ## 11. Extraction (speech or typing to codes)
 

@@ -102,11 +102,14 @@ class SendQueue:
     def __len__(self) -> int:
         return len(self._items)
 
-    def put(self, msg: Mapping, now: float | None = None) -> QueueItem | None:
+    def put(self, msg: Mapping, now: float | None = None, payload: bytes | None = None) -> QueueItem | None:
         """Encode and queue a message. Returns None when the same bytes are already waiting (dedupe).
-        Raises CodecError when the message is invalid."""
+        Raises CodecError when the message is invalid.
+        `payload` replaces the encoded message for a message that goes out in another form, for example a text sent
+        as a plain Meshtastic text (port 1): those bytes are sent and their airtime is counted. Type and priority
+        still come from `msg`."""
         now = self._clock() if now is None else now
-        payload = encode(msg)
+        payload = encode(msg) if payload is None else bytes(payload)
         if any(i.payload == payload for i in self._items):
             return None
         kind = message_type(msg)
