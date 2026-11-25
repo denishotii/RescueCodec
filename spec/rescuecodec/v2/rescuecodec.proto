@@ -1,0 +1,302 @@
+// RescueCodec v2 wire format. Spec version 2.0.0. Licence: Apache-2.0.
+//
+// One packet = one serialized Envelope, sent as the payload of a Meshtastic
+// Data message on port PRIVATE_APP (256), broadcast on a private channel.
+// The sender's node id comes from the Meshtastic packet, not from this payload.
+//
+// Rules every library MUST follow (details and reasons in spec/SPEC.md):
+// - Canonical encoding: fields in ascending field-number order, zero values
+//   omitted (except `optional` fields that are set), repeated numbers packed.
+//   This is what the official protobuf libraries do by default.
+// - A v2 packet never starts with a byte 0x00..0x07 (field number 0 does not
+//   exist in protobuf). 0x01 marks a v1 packet. 0x00 and 0x02..0x07 are
+//   reserved for future incompatible versions.
+// - Forward compatibility: unknown fields are ignored, unknown enum values
+//   are kept as numbers, unknown bits in bit fields are ignored, and an
+//   unknown body type is shown as "message of a newer type", not rejected.
+// - Never put personal names in any field. Team labels are like "Trupp 3".
+//
+// Field numbers 1..15 cost one tag byte, 16+ cost two. Numbers 5, 14 and 15
+// are kept free for future frequent fields and message types.
+
+syntax = "proto3";
+
+package rescuecodec.v2;
+
+option java_package = "org.rescuecodec.v2.proto";
+option java_multiple_files = true;
+option java_outer_classname = "RescueCodecProto";
+
+message Envelope {
+  // Per-sender message counter, 1..16383 (at most 2 bytes). 0 = no id.
+  // Required for found, request, hazard and mayday (they can be acknowledged).
+  // The key of a message is (Meshtastic sender node, id).
+  uint32 id = 1;
+
+  // 0 = use the default for the message type (see Priority).
+  Priority priority = 2;
+
+  // Where the message is about. Strongly recommended for found, hazard, mayday.
+  Position pos = 3;
+
+  // Minute of the UTC day when the event happened, 0..1439.
+  // The receiver picks the most recent matching minute that is not more than
+  // 10 minutes after its own clock (the date is implied).
+  optional uint32 time = 4;
+
+  // Exactly one body. Numbers 14 and 15 are free for future frequent types.
+  oneof body {
+    Found found = 6;
+    Track track = 7;
+    Sector sector = 8;
+    Request request = 9;
+    Hazard hazard = 10;
+    Mayday mayday = 11;
+    Ack ack = 12;
+    Text text = 13;
+  }
+}
+
+// Latitude and longitude in degrees times 100000 (about 1.1 m resolution).
+message Position {
+  sint32 lat = 1;  // -9000000..9000000
+  sint32 lon = 2;  // -18000000..18000000
+  Accuracy acc = 3;
+}
+
+// How good the position is. The default (0) is a normal GPS fix, because that
+// is the most common case and costs no bytes. If you do not know, send ESTIMATED.
+enum Accuracy {
+  ACCURACY_GPS = 0;        // device GPS fix, about 10 m
+  ACCURACY_GPS_POOR = 1;   // GPS with a weak fix, about 50 m
+  ACCURACY_ESTIMATED = 2;  // spoken or picked on a map, about 250 m
+  ACCURACY_AREA = 3;       // rough area, about 1 km
+}
+
+// Default per type: mayday CRITICAL; found, hazard, ack URGENT;
+// request, text NORMAL; sector, track ROUTINE.
+// Suggested Meshtastic MeshPacket.priority: CRITICAL -> ALERT (110),
+// URGENT -> HIGH (100), NORMAL -> RELIABLE (70), ROUTINE -> BACKGROUND (10).
+enum Priority {
+  PRIORITY_DEFAULT = 0;
+  PRIORITY_ROUTINE = 1;
+  PRIORITY_NORMAL = 2;
+  PRIORITY_URGENT = 3;
+  PRIORITY_CRITICAL = 4;
+}
+
+// ---------------------------------------------------------------- Found ----
+
+// A missing person (or several) was found.
+message Found {
+  // Packed small states. Bits 0-1 Consciousness, bits 2-3 Breathing,
+  // bits 4-5 Mobility, bits 6-8 AgeGroup. Bits 9+ are reserved: senders
+  // write 0, receivers ignore them.
+  uint32 state = 1;
+  uint32 injuries = 2;    // bit flags, see Injury
+  uint32 needs = 3;       // bit flags, see Need
+  uint32 count = 4;       // persons found, 0 = not stated
+  uint32 responders = 5;  // more helpers needed on site, 0 = not stated
+}
+
+enum Consciousness {       // Found.state bits 0-1
+  CONSCIOUSNESS_UNKNOWN = 0;
+  CONSCIOUSNESS_CONSCIOUS = 1;   // awake, talks
+  CONSCIOUSNESS_CONFUSED = 2;    // responds, but drowsy or disoriented
+  CONSCIOUSNESS_UNCONSCIOUS = 3; // does not respond
+}
+
+enum Breathing {           // Found.state bits 2-3
+  BREATHING_UNKNOWN = 0;
+  BREATHING_NORMAL = 1;
+  BREATHING_DIFFICULT = 2;
+  BREATHING_NONE = 3;      // not breathing
+}
+
+enum Mobility {            // Found.state bits 4-5
+  MOBILITY_UNKNOWN = 0;
+  MOBILITY_WALKS = 1;      // can walk out
+  MOBILITY_CANNOT_WALK = 2;
+  MOBILITY_TRAPPED = 3;    // stuck, needs technical rescue
+}
+
+enum AgeGroup {            // Found.state bits 6-8 (values 5..7 reserved)
+  AGE_UNKNOWN = 0;
+  AGE_CHILD = 1;           // 0..12
+  AGE_TEEN = 2;            // 13..17
+  AGE_ADULT = 3;
+  AGE_SENIOR = 4;          // 65+
+}
+
+// Bit values for Found.injuries. Bits 0..6 fit in one byte.
+enum Injury {
+  INJURY_NONE = 0;
+  INJURY_HYPOTHERMIA = 1;     // bit 0
+  INJURY_BLEEDING = 2;        // bit 1
+  INJURY_FRACTURE = 4;        // bit 2
+  INJURY_HEAD = 8;            // bit 3
+  INJURY_SPINE = 16;          // bit 4, back or neck
+  INJURY_EXHAUSTION = 32;     // bit 5
+  INJURY_OTHER = 64;          // bit 6
+  INJURY_CARDIAC = 128;       // bit 7, chest pain or heart
+  INJURY_HEAT = 256;          // bit 8, heat illness
+  INJURY_BURN = 512;          // bit 9
+  INJURY_ALLERGY = 1024;      // bit 10, allergic reaction or sting
+}
+
+// Bit values for Found.needs. Bits 0..6 fit in one byte.
+enum Need {
+  NEED_NONE = 0;
+  NEED_STRETCHER = 1;     // bit 0
+  NEED_MEDIC = 2;         // bit 1, paramedic or doctor
+  NEED_HELICOPTER = 4;    // bit 2
+  NEED_WARMTH = 8;        // bit 3, blankets, dry clothes
+  NEED_WATER = 16;        // bit 4
+  NEED_VEHICLE = 32;      // bit 5, off-road vehicle or ambulance to the track
+  NEED_OTHER = 64;        // bit 6
+  NEED_AED = 128;         // bit 7, defibrillator
+  NEED_OXYGEN = 256;      // bit 8
+  NEED_FIRST_AID = 512;   // bit 9, first aid kit
+  NEED_ROPE = 1024;       // bit 10, rope or technical rescue team
+  NEED_LIGHT = 2048;      // bit 11
+  NEED_FOOD = 4096;       // bit 12
+  NEED_RADIO = 8192;      // bit 13, radio or batteries
+}
+
+// ---------------------------------------------------------------- Track ----
+
+// A batch of GPS points from one searcher, oldest first, 1..16 points.
+// lat/lon: entry 0 is absolute (degrees x 1e5), each later entry is the
+// difference to the previous point. dt: empty (no times) or one entry per
+// point. dt[0] = seconds after the start of Envelope.time (then Envelope.time
+// is required), dt[i] = seconds after the previous point.
+message Track {
+  repeated sint32 lat = 1;
+  repeated sint32 lon = 2;
+  repeated uint32 dt = 3;
+}
+
+// --------------------------------------------------------------- Sector ----
+
+message Sector {
+  uint32 sector = 1;       // sector number from the search plan, 1..65535
+  SectorStatus status = 2; // required
+  uint32 coverage = 3;     // percent searched, 0..100, 0 = not stated
+}
+
+enum SectorStatus {
+  SECTOR_UNKNOWN = 0;
+  SECTOR_CLEARED = 1;      // fully searched, nothing found
+  SECTOR_PARTIAL = 2;      // partly searched
+  SECTOR_BLOCKED = 3;      // cannot be searched (terrain, water, danger)
+}
+
+// -------------------------------------------------------------- Request ----
+
+message Request {
+  Resource resource = 1;   // required
+  uint32 count = 2;        // how many, 0 = not stated (one)
+  Urgency urgency = 3;
+}
+
+enum Resource {
+  RESOURCE_UNKNOWN = 0;
+  RESOURCE_STRETCHER = 1;
+  RESOURCE_MEDIC = 2;
+  RESOURCE_HELICOPTER = 3;
+  RESOURCE_VEHICLE = 4;
+  RESOURCE_SEARCHERS = 5;  // more people for the search
+  RESOURCE_DOG_TEAM = 6;
+  RESOURCE_DRONE = 7;
+  RESOURCE_LIGHT = 8;
+  RESOURCE_WATER = 9;
+  RESOURCE_FOOD = 10;
+  RESOURCE_WARMTH = 11;
+  RESOURCE_BATTERIES = 12;
+  RESOURCE_ROPE_TEAM = 13;
+  RESOURCE_AMBULANCE = 14;
+  RESOURCE_FIRE_BRIGADE = 15;
+  RESOURCE_OTHER = 16;
+}
+
+enum Urgency {
+  URGENCY_UNKNOWN = 0;
+  URGENCY_NOW = 1;         // immediately
+  URGENCY_SOON = 2;        // within about 30 minutes
+  URGENCY_LATER = 3;       // planned, when possible
+}
+
+// --------------------------------------------------------------- Hazard ----
+
+message Hazard {
+  HazardType kind = 1;     // required
+  Severity severity = 2;
+  uint32 radius = 3;       // metres around Envelope.pos, 0 = not stated, max 100000
+}
+
+enum HazardType {
+  HAZARD_UNKNOWN = 0;
+  HAZARD_BLOCKED_PATH = 1;   // fallen trees, path closed
+  HAZARD_ROCKFALL = 2;       // rockfall or landslide
+  HAZARD_WATER = 3;          // flooding, fast or high water
+  HAZARD_FIRE = 4;           // fire or smoke
+  HAZARD_CLIFF = 5;          // steep drop or unstable ground
+  HAZARD_ICE = 6;            // ice, snow or avalanche
+  HAZARD_ANIMAL = 7;         // dangerous animal
+  HAZARD_POWER_LINE = 8;     // power line down
+  HAZARD_HUNTING = 9;        // hunting in progress
+  HAZARD_WEATHER = 10;       // storm, lightning
+  HAZARD_OTHER = 11;
+}
+
+enum Severity {
+  SEVERITY_UNKNOWN = 0;
+  SEVERITY_LOW = 1;
+  SEVERITY_MEDIUM = 2;
+  SEVERITY_HIGH = 3;         // keep out
+}
+
+// --------------------------------------------------------------- Mayday ----
+
+// A rescuer or search team member needs help. Always CRITICAL by default.
+// An empty Mayday (SOS button) is valid.
+message Mayday {
+  MaydayReason reason = 1;
+  uint32 persons = 2;        // team members affected, 0 = not stated
+}
+
+enum MaydayReason {
+  MAYDAY_UNKNOWN = 0;
+  MAYDAY_INJURED = 1;        // team member injured
+  MAYDAY_LOST = 2;           // team is lost or disoriented
+  MAYDAY_MISSING_MEMBER = 3; // contact to a team member lost
+  MAYDAY_MEDICAL = 4;        // sudden illness in the team
+  MAYDAY_TRAPPED = 5;        // team stuck
+  MAYDAY_THREAT = 6;         // threatened by a person or animal
+  MAYDAY_OTHER = 7;
+}
+
+// ------------------------------------------------------------------ Ack ----
+
+// Answer to a message with an id. Broadcast, so everyone sees who took it.
+message Ack {
+  uint32 ref = 1;            // id of the answered message, required
+  fixed32 node = 2;          // Meshtastic node number of its sender, required
+  AckStatus status = 3;      // required
+  uint32 eta = 4;            // minutes until arrival, 0 = not stated, max 1440
+  string team = 5;           // short team label, max 12 bytes UTF-8, no personal names
+}
+
+enum AckStatus {
+  ACK_UNKNOWN = 0;
+  ACK_ACCEPTED = 1;
+  ACK_DECLINED = 2;
+  ACK_DONE = 3;
+}
+
+// ----------------------------------------------------------------- Text ----
+
+// Fallback for anything the codes cannot say. 1..180 bytes of UTF-8.
+message Text {
+  string text = 1;
+}

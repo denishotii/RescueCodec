@@ -1,0 +1,2520 @@
+{
+ "spec_version": "2.0.0",
+ "about": "RescueCodec v2 conformance vectors. See spec/SPEC.md, section 'Conformance'. valid: encode(input) must give hex exactly; decode(hex) must give decoded. text: Level 2, render(decoded) must give these strings. decode_only: decode(hex) must give decoded. invalid_encode / invalid_decode: must be rejected; error codes should match. v1: decode_any(hex) must give decoded.",
+ "valid": [
+  {
+   "name": "found-minimal",
+   "note": "Smallest valid found: id and an empty body.",
+   "input": {
+    "id": 1,
+    "found": {}
+   },
+   "hex": "08013200",
+   "size": 4,
+   "decoded": {
+    "id": 1,
+    "found": {}
+   },
+   "text": {
+    "en": "Person found.",
+    "de": "Person gefunden."
+   }
+  },
+  {
+   "name": "found-pitch",
+   "note": "Pitch sentence: unconscious, oxygen mask, 2 helpers (no GPS).",
+   "input": {
+    "id": 1,
+    "found": {
+     "consciousness": "unconscious",
+     "needs": [
+      "oxygen"
+     ],
+     "responders": 2
+    }
+   },
+   "hex": "0801320708031880022802",
+   "size": 11,
+   "decoded": {
+    "id": 1,
+    "found": {
+     "consciousness": "unconscious",
+     "needs": [
+      "oxygen"
+     ],
+     "responders": 2
+    }
+   },
+   "text": {
+    "en": "Person found: unconscious, needs oxygen, 2 more helpers needed.",
+    "de": "Person gefunden: bewusstlos, braucht Sauerstoff, 2 weitere Helfer benötigt."
+   }
+  },
+  {
+   "name": "found-typical-gps",
+   "note": "Typical found with GPS. Must be 25 bytes or less.",
+   "input": {
+    "id": 7,
+    "pos": {
+     "lat": 50.69212,
+     "lon": 7.21345
+    },
+    "found": {
+     "age": "child",
+     "consciousness": "conscious",
+     "injuries": [
+      "hypothermia",
+      "fracture"
+     ],
+     "needs": [
+      "stretcher"
+     ],
+     "responders": 2
+    }
+   },
+   "hex": "08071a0908b8e6ea041082875832080841100518012802",
+   "size": 23,
+   "decoded": {
+    "id": 7,
+    "pos": {
+     "lat": 50.69212,
+     "lon": 7.21345
+    },
+    "found": {
+     "consciousness": "conscious",
+     "age": "child",
+     "injuries": [
+      "hypothermia",
+      "fracture"
+     ],
+     "needs": [
+      "stretcher"
+     ],
+     "responders": 2
+    }
+   },
+   "text": {
+    "en": "Person found: child, conscious, hypothermia, fracture, needs stretcher, 2 more helpers needed. Position 50.69212, 7.21345.",
+    "de": "Person gefunden: Kind, ansprechbar, Unterkühlung, Knochenbruch, braucht Trage, 2 weitere Helfer benötigt. Position 50.69212, 7.21345."
+   }
+  },
+  {
+   "name": "found-full",
+   "note": "Every found field set, with time, priority and accuracy.",
+   "input": {
+    "id": 300,
+    "priority": "critical",
+    "pos": {
+     "lat": 50.70001,
+     "lon": 7.19876,
+     "acc": "estimated"
+    },
+    "time": "17:45",
+    "found": {
+     "count": 2,
+     "age": "adult",
+     "consciousness": "unconscious",
+     "breathing": "difficult",
+     "mobility": "cannot_walk",
+     "injuries": [
+      "hypothermia",
+      "bleeding",
+      "head",
+      "spine"
+     ],
+     "needs": [
+      "stretcher",
+      "medic",
+      "helicopter",
+      "warmth"
+     ],
+     "responders": 6
+    }
+   },
+   "hex": "08ac0210041a0b08e2f2ea041088f057180220a908320b08eb01101b180f20022806",
+   "size": 34,
+   "decoded": {
+    "id": 300,
+    "priority": "critical",
+    "pos": {
+     "lat": 50.70001,
+     "lon": 7.19876,
+     "acc": "estimated"
+    },
+    "time": "17:45",
+    "found": {
+     "count": 2,
+     "consciousness": "unconscious",
+     "breathing": "difficult",
+     "mobility": "cannot_walk",
+     "age": "adult",
+     "injuries": [
+      "hypothermia",
+      "bleeding",
+      "head",
+      "spine"
+     ],
+     "needs": [
+      "stretcher",
+      "medic",
+      "helicopter",
+      "warmth"
+     ],
+     "responders": 6
+    }
+   },
+   "text": {
+    "en": "[CRITICAL] 2 persons found: adult, unconscious, breathing with difficulty, cannot walk, hypothermia, bleeding, head injury, back or neck injury, needs stretcher, medic, helicopter and warmth, 6 more helpers needed. Position 50.70001, 7.19876 (estimated). Time 17:45 UTC.",
+    "de": "[KRITISCH] 2 Personen gefunden: Erwachsene Person, bewusstlos, Atemnot, nicht gehfähig, Unterkühlung, Blutung, Kopfverletzung, Rücken- oder Nackenverletzung, braucht Trage, Sanitäter, Hubschrauber und Wärme, 6 weitere Helfer benötigt. Position 50.70001, 7.19876 (geschätzt). Zeit 17:45 UTC."
+   }
+  },
+  {
+   "name": "found-senior-walks",
+   "note": "Senior, confused, can walk, needs warmth and water.",
+   "input": {
+    "id": 12,
+    "pos": {
+     "lat": 50.69212,
+     "lon": 7.21345
+    },
+    "found": {
+     "age": "senior",
+     "consciousness": "confused",
+     "breathing": "normal",
+     "mobility": "walks",
+     "injuries": [
+      "exhaustion"
+     ],
+     "needs": [
+      "warmth",
+      "water"
+     ]
+    }
+   },
+   "hex": "080c1a0908b8e6ea0410828758320708960210201818",
+   "size": 22,
+   "decoded": {
+    "id": 12,
+    "pos": {
+     "lat": 50.69212,
+     "lon": 7.21345
+    },
+    "found": {
+     "consciousness": "confused",
+     "breathing": "normal",
+     "mobility": "walks",
+     "age": "senior",
+     "injuries": [
+      "exhaustion"
+     ],
+     "needs": [
+      "warmth",
+      "water"
+     ]
+    }
+   },
+   "text": {
+    "en": "Person found: senior, confused, breathing normally, can walk, exhausted, needs warmth and water. Position 50.69212, 7.21345.",
+    "de": "Person gefunden: ältere Person, verwirrt, atmet normal, gehfähig, erschöpft, braucht Wärme und Wasser. Position 50.69212, 7.21345."
+   }
+  },
+  {
+   "name": "ack-node-broadcast-number",
+   "note": "Node number 0xffffffff is a valid node field value.",
+   "input": {
+    "ack": {
+     "ref": 7,
+     "node": "!ffffffff",
+     "status": "accepted"
+    }
+   },
+   "hex": "6209080715ffffffff1801",
+   "size": 11,
+   "decoded": {
+    "ack": {
+     "ref": 7,
+     "node": "!ffffffff",
+     "status": "accepted"
+    }
+   },
+   "text": {
+    "en": "Accepted #7: from !ffffffff.",
+    "de": "Angenommen #7: von !ffffffff."
+   }
+  },
+  {
+   "name": "found-high-bits",
+   "note": "Flags above bit 6 take a 2-byte varint.",
+   "input": {
+    "id": 13,
+    "found": {
+     "injuries": [
+      "cardiac",
+      "allergy"
+     ],
+     "needs": [
+      "aed",
+      "oxygen",
+      "radio"
+     ]
+    }
+   },
+   "hex": "080d3206108009188043",
+   "size": 10,
+   "decoded": {
+    "id": 13,
+    "found": {
+     "injuries": [
+      "cardiac",
+      "allergy"
+     ],
+     "needs": [
+      "aed",
+      "oxygen",
+      "radio"
+     ]
+    }
+   },
+   "text": {
+    "en": "Person found: chest pain, allergic reaction, needs AED, oxygen and radio.",
+    "de": "Person gefunden: Brustschmerzen, allergische Reaktion, braucht AED, Sauerstoff und Funkgerät."
+   }
+  },
+  {
+   "name": "found-max-id",
+   "note": "Largest id (16383) still fits in 2 bytes.",
+   "input": {
+    "id": 16383,
+    "found": {
+     "count": 1
+    }
+   },
+   "hex": "08ff7f32022001",
+   "size": 7,
+   "decoded": {
+    "id": 16383,
+    "found": {
+     "count": 1
+    }
+   },
+   "text": {
+    "en": "Person found.",
+    "de": "Person gefunden."
+   }
+  },
+  {
+   "name": "found-group",
+   "note": "Three persons found, teenagers, trapped.",
+   "input": {
+    "id": 44,
+    "pos": {
+     "lat": 50.69212,
+     "lon": 7.21345
+    },
+    "found": {
+     "count": 3,
+     "age": "teen",
+     "mobility": "trapped",
+     "needs": [
+      "rope",
+      "light"
+     ]
+    }
+   },
+   "hex": "082c1a0908b8e6ea0410828758320808b0011880182003",
+   "size": 23,
+   "decoded": {
+    "id": 44,
+    "pos": {
+     "lat": 50.69212,
+     "lon": 7.21345
+    },
+    "found": {
+     "count": 3,
+     "mobility": "trapped",
+     "age": "teen",
+     "needs": [
+      "rope",
+      "light"
+     ]
+    }
+   },
+   "text": {
+    "en": "3 persons found: teenager, trapped, needs rope team and light. Position 50.69212, 7.21345.",
+    "de": "3 Personen gefunden: Jugendliche Person, eingeklemmt, braucht Höhenrettung und Licht. Position 50.69212, 7.21345."
+   }
+  },
+  {
+   "name": "found-southwest",
+   "note": "Negative latitude and longitude (zigzag encoding).",
+   "input": {
+    "id": 2,
+    "pos": {
+     "lat": -33.86882,
+     "lon": -151.2093
+    },
+    "found": {
+     "consciousness": "conscious"
+    }
+   },
+   "hex": "08021a0a0883b89d0310c3e8b50e32020801",
+   "size": 18,
+   "decoded": {
+    "id": 2,
+    "pos": {
+     "lat": -33.86882,
+     "lon": -151.2093
+    },
+    "found": {
+     "consciousness": "conscious"
+    }
+   },
+   "text": {
+    "en": "Person found: conscious. Position -33.86882, -151.20930.",
+    "de": "Person gefunden: ansprechbar. Position -33.86882, -151.20930."
+   }
+  },
+  {
+   "name": "found-null-island",
+   "note": "Position 0,0 is valid: the Position message is present but empty.",
+   "input": {
+    "id": 3,
+    "pos": {
+     "lat": 0,
+     "lon": 0
+    },
+    "found": {}
+   },
+   "hex": "08031a003200",
+   "size": 6,
+   "decoded": {
+    "id": 3,
+    "pos": {
+     "lat": 0.0,
+     "lon": 0.0
+    },
+    "found": {}
+   },
+   "text": {
+    "en": "Person found. Position 0.00000, 0.00000.",
+    "de": "Person gefunden. Position 0.00000, 0.00000."
+   }
+  },
+  {
+   "name": "found-extreme-coords",
+   "note": "Coordinate limits 90 and -180.",
+   "input": {
+    "id": 4,
+    "pos": {
+     "lat": 90.0,
+     "lon": -180.0
+    },
+    "found": {}
+   },
+   "hex": "08041a0a0880d1ca0810ffa195113200",
+   "size": 16,
+   "decoded": {
+    "id": 4,
+    "pos": {
+     "lat": 90.0,
+     "lon": -180.0
+    },
+    "found": {}
+   },
+   "text": {
+    "en": "Person found. Position 90.00000, -180.00000.",
+    "de": "Person gefunden. Position 90.00000, -180.00000."
+   }
+  },
+  {
+   "name": "found-midnight",
+   "note": "time 00:00 is minute 0 and must still be written (optional field).",
+   "input": {
+    "id": 5,
+    "time": "00:00",
+    "found": {}
+   },
+   "hex": "080520003200",
+   "size": 6,
+   "decoded": {
+    "id": 5,
+    "time": "00:00",
+    "found": {}
+   },
+   "text": {
+    "en": "Person found. Time 00:00 UTC.",
+    "de": "Person gefunden. Zeit 00:00 UTC."
+   }
+  },
+  {
+   "name": "found-2359",
+   "note": "Last minute of the day.",
+   "input": {
+    "id": 6,
+    "time": "23:59",
+    "found": {
+     "age": "adult"
+    }
+   },
+   "hex": "0806209f0b320308c001",
+   "size": 10,
+   "decoded": {
+    "id": 6,
+    "time": "23:59",
+    "found": {
+     "age": "adult"
+    }
+   },
+   "text": {
+    "en": "Person found: adult. Time 23:59 UTC.",
+    "de": "Person gefunden: Erwachsene Person. Zeit 23:59 UTC."
+   }
+  },
+  {
+   "name": "found-routine-poor-gps",
+   "note": "Explicit non-default priority and weak GPS.",
+   "input": {
+    "id": 8,
+    "priority": "routine",
+    "pos": {
+     "lat": 50.69212,
+     "lon": 7.21345,
+     "acc": "gps_poor"
+    },
+    "found": {
+     "consciousness": "conscious",
+     "mobility": "walks"
+    }
+   },
+   "hex": "080810011a0b08b8e6ea0410828758180132020811",
+   "size": 21,
+   "decoded": {
+    "id": 8,
+    "priority": "routine",
+    "pos": {
+     "lat": 50.69212,
+     "lon": 7.21345,
+     "acc": "gps_poor"
+    },
+    "found": {
+     "consciousness": "conscious",
+     "mobility": "walks"
+    }
+   },
+   "text": {
+    "en": "[routine] Person found: conscious, can walk. Position 50.69212, 7.21345 (weak GPS).",
+    "de": "[Routine] Person gefunden: ansprechbar, gehfähig. Position 50.69212, 7.21345 (schwaches GPS)."
+   }
+  },
+  {
+   "name": "found-area",
+   "note": "Rough area accuracy.",
+   "input": {
+    "id": 9,
+    "pos": {
+     "lat": 50.7,
+     "lon": 7.2,
+     "acc": "area"
+    },
+    "found": {
+     "age": "child"
+    }
+   },
+   "hex": "08091a0b08e0f2ea041080f257180332020840",
+   "size": 19,
+   "decoded": {
+    "id": 9,
+    "pos": {
+     "lat": 50.7,
+     "lon": 7.2,
+     "acc": "area"
+    },
+    "found": {
+     "age": "child"
+    }
+   },
+   "text": {
+    "en": "Person found: child. Position 50.70000, 7.20000 (rough area).",
+    "de": "Person gefunden: Kind. Position 50.70000, 7.20000 (grober Bereich)."
+   }
+  },
+  {
+   "name": "track-1",
+   "note": "Track with one point and no times.",
+   "input": {
+    "track": {
+     "points": [
+      {
+       "lat": 50.69212,
+       "lon": 7.21345
+      }
+     ]
+    }
+   },
+   "hex": "3a0b0a04b8e6ea041203828758",
+   "size": 13,
+   "decoded": {
+    "track": {
+     "points": [
+      {
+       "lat": 50.69212,
+       "lon": 7.21345
+      }
+     ]
+    }
+   },
+   "text": {
+    "en": "Track: 1 point, last at 50.69212, 7.21345.",
+    "de": "Spur: 1 Punkt, zuletzt bei 50.69212, 7.21345."
+   }
+  },
+  {
+   "name": "track-10",
+   "note": "Ten points, 30 s apart, with times. The main airtime win.",
+   "input": {
+    "id": 20,
+    "time": "14:30",
+    "track": {
+     "points": [
+      {
+       "lat": 50.69212,
+       "lon": 7.21345,
+       "s": 5
+      },
+      {
+       "lat": 50.6925,
+       "lon": 7.2139,
+       "s": 35
+      },
+      {
+       "lat": 50.69291,
+       "lon": 7.21422,
+       "s": 65
+      },
+      {
+       "lat": 50.6933,
+       "lon": 7.2147,
+       "s": 95
+      },
+      {
+       "lat": 50.69362,
+       "lon": 7.2153,
+       "s": 125
+      },
+      {
+       "lat": 50.69401,
+       "lon": 7.21571,
+       "s": 155
+      },
+      {
+       "lat": 50.69447,
+       "lon": 7.216,
+       "s": 185
+      },
+      {
+       "lat": 50.6949,
+       "lon": 7.21641,
+       "s": 215
+      },
+      {
+       "lat": 50.69521,
+       "lon": 7.21702,
+       "s": 245
+      },
+      {
+       "lat": 50.6956,
+       "lon": 7.21744,
+       "s": 275
+      }
+     ]
+    }
+   },
+   "hex": "081420e6063a290a0db8e6ea044c524e404e5c563e4e120c8287585a406078523a527a541a0a051e1e1e1e1e1e1e1e1e",
+   "size": 48,
+   "decoded": {
+    "id": 20,
+    "time": "14:30",
+    "track": {
+     "points": [
+      {
+       "lat": 50.69212,
+       "lon": 7.21345,
+       "s": 5
+      },
+      {
+       "lat": 50.6925,
+       "lon": 7.2139,
+       "s": 35
+      },
+      {
+       "lat": 50.69291,
+       "lon": 7.21422,
+       "s": 65
+      },
+      {
+       "lat": 50.6933,
+       "lon": 7.2147,
+       "s": 95
+      },
+      {
+       "lat": 50.69362,
+       "lon": 7.2153,
+       "s": 125
+      },
+      {
+       "lat": 50.69401,
+       "lon": 7.21571,
+       "s": 155
+      },
+      {
+       "lat": 50.69447,
+       "lon": 7.216,
+       "s": 185
+      },
+      {
+       "lat": 50.6949,
+       "lon": 7.21641,
+       "s": 215
+      },
+      {
+       "lat": 50.69521,
+       "lon": 7.21702,
+       "s": 245
+      },
+      {
+       "lat": 50.6956,
+       "lon": 7.21744,
+       "s": 275
+      }
+     ]
+    }
+   },
+   "text": {
+    "en": "Track: 10 points, 5 min, last at 50.69560, 7.21744. Time 14:30 UTC.",
+    "de": "Spur: 10 Punkte, 5 Min., zuletzt bei 50.69560, 7.21744. Zeit 14:30 UTC."
+   }
+  },
+  {
+   "name": "track-16-max",
+   "note": "Largest track: 16 points.",
+   "input": {
+    "time": "14:30",
+    "track": {
+     "points": [
+      {
+       "lat": 50.69212,
+       "lon": 7.21345,
+       "s": 5
+      },
+      {
+       "lat": 50.6925,
+       "lon": 7.2139,
+       "s": 35
+      },
+      {
+       "lat": 50.69291,
+       "lon": 7.21422,
+       "s": 65
+      },
+      {
+       "lat": 50.6933,
+       "lon": 7.2147,
+       "s": 95
+      },
+      {
+       "lat": 50.69362,
+       "lon": 7.2153,
+       "s": 125
+      },
+      {
+       "lat": 50.69401,
+       "lon": 7.21571,
+       "s": 155
+      },
+      {
+       "lat": 50.69447,
+       "lon": 7.216,
+       "s": 185
+      },
+      {
+       "lat": 50.6949,
+       "lon": 7.21641,
+       "s": 215
+      },
+      {
+       "lat": 50.69521,
+       "lon": 7.21702,
+       "s": 245
+      },
+      {
+       "lat": 50.6956,
+       "lon": 7.21744,
+       "s": 275
+      },
+      {
+       "lat": 50.696,
+       "lon": 7.2179,
+       "s": 305
+      },
+      {
+       "lat": 50.69633,
+       "lon": 7.2184,
+       "s": 335
+      },
+      {
+       "lat": 50.6967,
+       "lon": 7.21881,
+       "s": 365
+      },
+      {
+       "lat": 50.69711,
+       "lon": 7.2192,
+       "s": 395
+      },
+      {
+       "lat": 50.6975,
+       "lon": 7.21966,
+       "s": 425
+      },
+      {
+       "lat": 50.69789,
+       "lon": 7.2201,
+       "s": 455
+      }
+     ]
+    }
+   },
+   "hex": "20e6063a3b0a13b8e6ea044c524e404e5c563e4e50424a524e4e12128287585a406078523a527a545c64524e5c581a10051e1e1e1e1e1e1e1e1e1e1e1e1e1e1e",
+   "size": 64,
+   "decoded": {
+    "time": "14:30",
+    "track": {
+     "points": [
+      {
+       "lat": 50.69212,
+       "lon": 7.21345,
+       "s": 5
+      },
+      {
+       "lat": 50.6925,
+       "lon": 7.2139,
+       "s": 35
+      },
+      {
+       "lat": 50.69291,
+       "lon": 7.21422,
+       "s": 65
+      },
+      {
+       "lat": 50.6933,
+       "lon": 7.2147,
+       "s": 95
+      },
+      {
+       "lat": 50.69362,
+       "lon": 7.2153,
+       "s": 125
+      },
+      {
+       "lat": 50.69401,
+       "lon": 7.21571,
+       "s": 155
+      },
+      {
+       "lat": 50.69447,
+       "lon": 7.216,
+       "s": 185
+      },
+      {
+       "lat": 50.6949,
+       "lon": 7.21641,
+       "s": 215
+      },
+      {
+       "lat": 50.69521,
+       "lon": 7.21702,
+       "s": 245
+      },
+      {
+       "lat": 50.6956,
+       "lon": 7.21744,
+       "s": 275
+      },
+      {
+       "lat": 50.696,
+       "lon": 7.2179,
+       "s": 305
+      },
+      {
+       "lat": 50.69633,
+       "lon": 7.2184,
+       "s": 335
+      },
+      {
+       "lat": 50.6967,
+       "lon": 7.21881,
+       "s": 365
+      },
+      {
+       "lat": 50.69711,
+       "lon": 7.2192,
+       "s": 395
+      },
+      {
+       "lat": 50.6975,
+       "lon": 7.21966,
+       "s": 425
+      },
+      {
+       "lat": 50.69789,
+       "lon": 7.2201,
+       "s": 455
+      }
+     ]
+    }
+   },
+   "text": {
+    "en": "Track: 16 points, 8 min, last at 50.69789, 7.22010. Time 14:30 UTC.",
+    "de": "Spur: 16 Punkte, 8 Min., zuletzt bei 50.69789, 7.22010. Zeit 14:30 UTC."
+   }
+  },
+  {
+   "name": "track-zigzag",
+   "note": "Track going back and forth: negative deltas.",
+   "input": {
+    "track": {
+     "points": [
+      {
+       "lat": 50.5,
+       "lon": 7.5
+      },
+      {
+       "lat": 50.4999,
+       "lon": 7.4998
+      },
+      {
+       "lat": 50.5002,
+       "lon": 7.5001
+      },
+      {
+       "lat": 50.499,
+       "lon": 7.501
+      }
+     ]
+    }
+   },
+   "hex": "3a130a08a0bae804133cef011207e0c65b273cb401",
+   "size": 21,
+   "decoded": {
+    "track": {
+     "points": [
+      {
+       "lat": 50.5,
+       "lon": 7.5
+      },
+      {
+       "lat": 50.4999,
+       "lon": 7.4998
+      },
+      {
+       "lat": 50.5002,
+       "lon": 7.5001
+      },
+      {
+       "lat": 50.499,
+       "lon": 7.501
+      }
+     ]
+    }
+   },
+   "text": {
+    "en": "Track: 4 points, last at 50.49900, 7.50100.",
+    "de": "Spur: 4 Punkte, zuletzt bei 50.49900, 7.50100."
+   }
+  },
+  {
+   "name": "track-same-second",
+   "note": "Two points with the same time (dt 0).",
+   "input": {
+    "time": "08:00",
+    "track": {
+     "points": [
+      {
+       "lat": 50.5,
+       "lon": 7.5,
+       "s": 0
+      },
+      {
+       "lat": 50.5001,
+       "lon": 7.5,
+       "s": 0
+      }
+     ]
+    }
+   },
+   "hex": "20e0033a110a05a0bae804141204e0c65b001a020000",
+   "size": 22,
+   "decoded": {
+    "time": "08:00",
+    "track": {
+     "points": [
+      {
+       "lat": 50.5,
+       "lon": 7.5,
+       "s": 0
+      },
+      {
+       "lat": 50.5001,
+       "lon": 7.5,
+       "s": 0
+      }
+     ]
+    }
+   },
+   "text": {
+    "en": "Track: 2 points, last at 50.50010, 7.50000. Time 08:00 UTC.",
+    "de": "Spur: 2 Punkte, zuletzt bei 50.50010, 7.50000. Zeit 08:00 UTC."
+   }
+  },
+  {
+   "name": "sector-cleared",
+   "note": "Sector 12 searched completely.",
+   "input": {
+    "id": 30,
+    "sector": {
+     "sector": 12,
+     "status": "cleared"
+    }
+   },
+   "hex": "081e4204080c1001",
+   "size": 8,
+   "decoded": {
+    "id": 30,
+    "sector": {
+     "sector": 12,
+     "status": "cleared"
+    }
+   },
+   "text": {
+    "en": "Sector 12: cleared.",
+    "de": "Sektor 12: abgesucht."
+   }
+  },
+  {
+   "name": "sector-partial",
+   "note": "Sector 4 partly searched, 60 percent.",
+   "input": {
+    "sector": {
+     "sector": 4,
+     "status": "partial",
+     "coverage": 60
+    }
+   },
+   "hex": "420608041002183c",
+   "size": 8,
+   "decoded": {
+    "sector": {
+     "sector": 4,
+     "status": "partial",
+     "coverage": 60
+    }
+   },
+   "text": {
+    "en": "Sector 4: partly searched, 60% searched.",
+    "de": "Sektor 4: teilweise abgesucht, 60% abgesucht."
+   }
+  },
+  {
+   "name": "sector-blocked-max",
+   "note": "Largest sector number, blocked.",
+   "input": {
+    "sector": {
+     "sector": 65535,
+     "status": "blocked"
+    }
+   },
+   "hex": "420608ffff031003",
+   "size": 8,
+   "decoded": {
+    "sector": {
+     "sector": 65535,
+     "status": "blocked"
+    }
+   },
+   "text": {
+    "en": "Sector 65535: blocked.",
+    "de": "Sektor 65535: nicht begehbar."
+   }
+  },
+  {
+   "name": "request-stretcher",
+   "note": "Request one stretcher.",
+   "input": {
+    "id": 40,
+    "pos": {
+     "lat": 50.69212,
+     "lon": 7.21345
+    },
+    "request": {
+     "resource": "stretcher"
+    }
+   },
+   "hex": "08281a0908b8e6ea04108287584a020801",
+   "size": 17,
+   "decoded": {
+    "id": 40,
+    "pos": {
+     "lat": 50.69212,
+     "lon": 7.21345
+    },
+    "request": {
+     "resource": "stretcher"
+    }
+   },
+   "text": {
+    "en": "Request: stretcher. Position 50.69212, 7.21345.",
+    "de": "Anforderung: Trage. Position 50.69212, 7.21345."
+   }
+  },
+  {
+   "name": "request-searchers",
+   "note": "Request 10 more searchers now, marked urgent.",
+   "input": {
+    "id": 41,
+    "priority": "urgent",
+    "pos": {
+     "lat": 50.69212,
+     "lon": 7.21345
+    },
+    "request": {
+     "resource": "searchers",
+     "count": 10,
+     "urgency": "now"
+    }
+   },
+   "hex": "082910031a0908b8e6ea04108287584a060805100a1801",
+   "size": 23,
+   "decoded": {
+    "id": 41,
+    "priority": "urgent",
+    "pos": {
+     "lat": 50.69212,
+     "lon": 7.21345
+    },
+    "request": {
+     "resource": "searchers",
+     "count": 10,
+     "urgency": "now"
+    }
+   },
+   "text": {
+    "en": "[URGENT] Request: 10 x searchers, needed now. Position 50.69212, 7.21345.",
+    "de": "[DRINGEND] Anforderung: 10 x Suchkräfte, sofort. Position 50.69212, 7.21345."
+   }
+  },
+  {
+   "name": "request-other",
+   "note": "Resource 16 (other).",
+   "input": {
+    "id": 42,
+    "request": {
+     "resource": "other",
+     "urgency": "later"
+    }
+   },
+   "hex": "082a4a0408101803",
+   "size": 8,
+   "decoded": {
+    "id": 42,
+    "request": {
+     "resource": "other",
+     "urgency": "later"
+    }
+   },
+   "text": {
+    "en": "Request: other, when possible.",
+    "de": "Anforderung: Sonstiges, wenn möglich."
+   }
+  },
+  {
+   "name": "request-dog-team",
+   "note": "Dog team within 30 minutes.",
+   "input": {
+    "id": 43,
+    "pos": {
+     "lat": 50.69212,
+     "lon": 7.21345
+    },
+    "time": "15:10",
+    "request": {
+     "resource": "dog_team",
+     "urgency": "soon"
+    }
+   },
+   "hex": "082b1a0908b8e6ea0410828758208e074a0408061802",
+   "size": 22,
+   "decoded": {
+    "id": 43,
+    "pos": {
+     "lat": 50.69212,
+     "lon": 7.21345
+    },
+    "time": "15:10",
+    "request": {
+     "resource": "dog_team",
+     "urgency": "soon"
+    }
+   },
+   "text": {
+    "en": "Request: dog team, within 30 min. Position 50.69212, 7.21345. Time 15:10 UTC.",
+    "de": "Anforderung: Hundestaffel, innerhalb 30 Min. Position 50.69212, 7.21345. Zeit 15:10 UTC."
+   }
+  },
+  {
+   "name": "hazard-rockfall",
+   "note": "Rockfall, high risk, 200 m radius.",
+   "input": {
+    "id": 50,
+    "pos": {
+     "lat": 50.69212,
+     "lon": 7.21345
+    },
+    "hazard": {
+     "kind": "rockfall",
+     "severity": "high",
+     "radius": 200
+    }
+   },
+   "hex": "08321a0908b8e6ea041082875852070802100318c801",
+   "size": 22,
+   "decoded": {
+    "id": 50,
+    "pos": {
+     "lat": 50.69212,
+     "lon": 7.21345
+    },
+    "hazard": {
+     "kind": "rockfall",
+     "severity": "high",
+     "radius": 200
+    }
+   },
+   "text": {
+    "en": "Hazard: rockfall, high risk, keep out, radius 200 m. Position 50.69212, 7.21345.",
+    "de": "Gefahr: Steinschlag, hohes Risiko, nicht betreten, Radius 200 m. Position 50.69212, 7.21345."
+   }
+  },
+  {
+   "name": "hazard-hunting",
+   "note": "Hunting nearby, low risk, large radius.",
+   "input": {
+    "id": 51,
+    "pos": {
+     "lat": 50.71,
+     "lon": 7.25,
+     "acc": "estimated"
+    },
+    "hazard": {
+     "kind": "hunting",
+     "severity": "low",
+     "radius": 1500
+    }
+   },
+   "hex": "08331a0b08b082eb041090c058180252070809100118dc0b",
+   "size": 24,
+   "decoded": {
+    "id": 51,
+    "pos": {
+     "lat": 50.71,
+     "lon": 7.25,
+     "acc": "estimated"
+    },
+    "hazard": {
+     "kind": "hunting",
+     "severity": "low",
+     "radius": 1500
+    }
+   },
+   "text": {
+    "en": "Hazard: hunting, low risk, radius 1500 m. Position 50.71000, 7.25000 (estimated).",
+    "de": "Gefahr: Jagd, geringes Risiko, Radius 1500 m. Position 50.71000, 7.25000 (geschätzt)."
+   }
+  },
+  {
+   "name": "hazard-minimal",
+   "note": "Hazard with only a kind.",
+   "input": {
+    "id": 52,
+    "hazard": {
+     "kind": "blocked_path"
+    }
+   },
+   "hex": "083452020801",
+   "size": 6,
+   "decoded": {
+    "id": 52,
+    "hazard": {
+     "kind": "blocked_path"
+    }
+   },
+   "text": {
+    "en": "Hazard: path blocked.",
+    "de": "Gefahr: Weg versperrt."
+   }
+  },
+  {
+   "name": "mayday-sos",
+   "note": "SOS button: empty Mayday with position. Valid.",
+   "input": {
+    "id": 3,
+    "pos": {
+     "lat": 50.69212,
+     "lon": 7.21345
+    },
+    "mayday": {}
+   },
+   "hex": "08031a0908b8e6ea04108287585a00",
+   "size": 15,
+   "decoded": {
+    "id": 3,
+    "pos": {
+     "lat": 50.69212,
+     "lon": 7.21345
+    },
+    "mayday": {}
+   },
+   "text": {
+    "en": "MAYDAY. Position 50.69212, 7.21345.",
+    "de": "MAYDAY. Position 50.69212, 7.21345."
+   }
+  },
+  {
+   "name": "mayday-injured",
+   "note": "Team member injured, one person, with time.",
+   "input": {
+    "id": 60,
+    "pos": {
+     "lat": 50.69212,
+     "lon": 7.21345
+    },
+    "time": "16:05",
+    "mayday": {
+     "reason": "injured",
+     "persons": 1
+    }
+   },
+   "hex": "083c1a0908b8e6ea041082875820c5075a0408011001",
+   "size": 22,
+   "decoded": {
+    "id": 60,
+    "pos": {
+     "lat": 50.69212,
+     "lon": 7.21345
+    },
+    "time": "16:05",
+    "mayday": {
+     "reason": "injured",
+     "persons": 1
+    }
+   },
+   "text": {
+    "en": "MAYDAY: team member injured, 1 team member. Position 50.69212, 7.21345. Time 16:05 UTC.",
+    "de": "MAYDAY: Einsatzkraft verletzt, 1 Einsatzkraft. Position 50.69212, 7.21345. Zeit 16:05 UTC."
+   }
+  },
+  {
+   "name": "mayday-explicit-critical",
+   "note": "Explicit priority equal to the default is still written.",
+   "input": {
+    "id": 61,
+    "priority": "critical",
+    "mayday": {
+     "reason": "lost",
+     "persons": 3
+    }
+   },
+   "hex": "083d10045a0408021003",
+   "size": 10,
+   "decoded": {
+    "id": 61,
+    "priority": "critical",
+    "mayday": {
+     "reason": "lost",
+     "persons": 3
+    }
+   },
+   "text": {
+    "en": "MAYDAY: team lost, 3 team members.",
+    "de": "MAYDAY: Trupp hat sich verirrt, 3 Einsatzkräfte."
+   }
+  },
+  {
+   "name": "ack-accepted",
+   "note": "Command post accepts request 7 of node !a1b2c3d4, ETA 15 min.",
+   "input": {
+    "ack": {
+     "ref": 7,
+     "node": "!a1b2c3d4",
+     "status": "accepted",
+     "eta": 15,
+     "team": "Trupp 3"
+    }
+   },
+   "hex": "6214080715d4c3b2a11801200f2a0754727570702033",
+   "size": 22,
+   "decoded": {
+    "ack": {
+     "ref": 7,
+     "node": "!a1b2c3d4",
+     "status": "accepted",
+     "eta": 15,
+     "team": "Trupp 3"
+    }
+   },
+   "text": {
+    "en": "Accepted #7: from !a1b2c3d4, by Trupp 3, ETA 15 min.",
+    "de": "Angenommen #7: von !a1b2c3d4, durch Trupp 3, Ankunft in 15 Min."
+   }
+  },
+  {
+   "name": "ack-done",
+   "note": "Minimal done.",
+   "input": {
+    "ack": {
+     "ref": 7,
+     "node": "!a1b2c3d4",
+     "status": "done"
+    }
+   },
+   "hex": "6209080715d4c3b2a11803",
+   "size": 11,
+   "decoded": {
+    "ack": {
+     "ref": 7,
+     "node": "!a1b2c3d4",
+     "status": "done"
+    }
+   },
+   "text": {
+    "en": "Done #7: from !a1b2c3d4.",
+    "de": "Erledigt #7: von !a1b2c3d4."
+   }
+  },
+  {
+   "name": "ack-declined-max-node",
+   "note": "Node number 0xffffffff, largest ref.",
+   "input": {
+    "ack": {
+     "ref": 16383,
+     "node": "!ffffffff",
+     "status": "declined"
+    }
+   },
+   "hex": "620a08ff7f15ffffffff1802",
+   "size": 12,
+   "decoded": {
+    "ack": {
+     "ref": 16383,
+     "node": "!ffffffff",
+     "status": "declined"
+    }
+   },
+   "text": {
+    "en": "Declined #16383: from !ffffffff.",
+    "de": "Abgelehnt #16383: von !ffffffff."
+   }
+  },
+  {
+   "name": "ack-with-id",
+   "note": "An ack may carry its own id.",
+   "input": {
+    "id": 99,
+    "ack": {
+     "ref": 41,
+     "node": "!0000abcd",
+     "status": "accepted",
+     "team": "DLRG 2"
+    }
+   },
+   "hex": "08636211082915cdab000018012a06444c52472032",
+   "size": 21,
+   "decoded": {
+    "id": 99,
+    "ack": {
+     "ref": 41,
+     "node": "!0000abcd",
+     "status": "accepted",
+     "team": "DLRG 2"
+    }
+   },
+   "text": {
+    "en": "Accepted #41: from !0000abcd, by DLRG 2.",
+    "de": "Angenommen #41: von !0000abcd, durch DLRG 2."
+   }
+  },
+  {
+   "name": "text-en",
+   "note": "Text fallback, English.",
+   "input": {
+    "id": 70,
+    "text": {
+     "text": "Need more light at the car park"
+    }
+   },
+   "hex": "08466a210a1f4e656564206d6f7265206c696768742061742074686520636172207061726b",
+   "size": 37,
+   "decoded": {
+    "id": 70,
+    "text": {
+     "text": "Need more light at the car park"
+    }
+   },
+   "text": {
+    "en": "Message: Need more light at the car park.",
+    "de": "Nachricht: Need more light at the car park."
+   }
+  },
+  {
+   "name": "text-de-umlauts",
+   "note": "Text fallback with umlauts (UTF-8, 2 bytes each).",
+   "input": {
+    "text": {
+     "text": "Brücke über den Bach ist gesperrt, Umweg über Löwenburg."
+    }
+   },
+   "hex": "6a3e0a3c4272c3bc636b6520c3bc6265722064656e2042616368206973742067657370657272742c20556d77656720c3bc626572204cc3b677656e627572672e",
+   "size": 64,
+   "decoded": {
+    "text": {
+     "text": "Brücke über den Bach ist gesperrt, Umweg über Löwenburg."
+    }
+   },
+   "text": {
+    "en": "Message: Brücke über den Bach ist gesperrt, Umweg über Löwenburg.",
+    "de": "Nachricht: Brücke über den Bach ist gesperrt, Umweg über Löwenburg."
+   }
+  },
+  {
+   "name": "text-unicode",
+   "note": "Ukrainian and Arabic text.",
+   "input": {
+    "text": {
+     "text": "Допомога потрібна. نحتاج مساعدة"
+    }
+   },
+   "hex": "6a3c0a3ad094d0bed0bfd0bed0bcd0bed0b3d0b020d0bfd0bed182d180d196d0b1d0bdd0b02e20d986d8add8aad8a7d8ac20d985d8b3d8a7d8b9d8afd8a9",
+   "size": 62,
+   "decoded": {
+    "text": {
+     "text": "Допомога потрібна. نحتاج مساعدة"
+    }
+   },
+   "text": {
+    "en": "Message: Допомога потрібна. نحتاج مساعدة.",
+    "de": "Nachricht: Допомога потрібна. نحتاج مساعدة."
+   }
+  },
+  {
+   "name": "text-max",
+   "note": "Text of exactly 180 bytes.",
+   "input": {
+    "text": {
+     "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    }
+   },
+   "hex": "6ab7010ab401414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141",
+   "size": 186,
+   "decoded": {
+    "text": {
+     "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    }
+   },
+   "text": {
+    "en": "Message: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA.",
+    "de": "Nachricht: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA."
+   }
+  },
+  {
+   "name": "forward-unknown-enum",
+   "note": "Unknown age value 6 (newer spec). Encoders may relay it as unknown_6.",
+   "input": {
+    "id": 80,
+    "found": {
+     "age": "unknown_6",
+     "injuries": [
+      "bit_20"
+     ]
+    }
+   },
+   "hex": "0850320708800310808040",
+   "size": 11,
+   "decoded": {
+    "id": 80,
+    "found": {
+     "age": "unknown_6",
+     "injuries": [
+      "bit_20"
+     ]
+    }
+   },
+   "text": {
+    "en": "Person found: unknown code 6, unknown code 20.",
+    "de": "Person gefunden: unbekannter Code 6, unbekannter Code 20."
+   }
+  }
+ ],
+ "decode_only": [
+  {
+   "name": "unknown-common-field",
+   "note": "Field 5 is unknown to v2.0: ignore it.",
+   "hex": "080728013200",
+   "size": 6,
+   "decoded": {
+    "id": 7,
+    "found": {}
+   }
+  },
+  {
+   "name": "unknown-body-type",
+   "note": "Body field 14 is a newer message type: decode as unknown, do not reject.",
+   "hex": "08077200",
+   "size": 4,
+   "decoded": {
+    "id": 7,
+    "unknown": {}
+   }
+  },
+  {
+   "name": "fields-out-of-order",
+   "note": "Decoders accept any field order.",
+   "hex": "320208410807",
+   "size": 6,
+   "decoded": {
+    "id": 7,
+    "found": {
+     "consciousness": "conscious",
+     "age": "child"
+    }
+   }
+  },
+  {
+   "name": "flag-bit-31",
+   "note": "The highest bit of a 32 bit flag field is bit_31.",
+   "hex": "08073206108080808008",
+   "size": 10,
+   "decoded": {
+    "id": 7,
+    "found": {
+     "injuries": [
+      "bit_31"
+     ]
+    }
+   }
+  },
+  {
+   "name": "flag-bit-32-cut",
+   "note": "A flag value wider than 32 bits is cut to 32 bits: bit 32 disappears.",
+   "hex": "08073206108080808010",
+   "size": 10,
+   "decoded": {
+    "id": 7,
+    "found": {}
+   }
+  },
+  {
+   "name": "unknown-flag-bit",
+   "note": "Unknown injury bit 20 becomes bit_20.",
+   "hex": "0807320410808040",
+   "size": 8,
+   "decoded": {
+    "id": 7,
+    "found": {
+     "injuries": [
+      "bit_20"
+     ]
+    }
+   }
+  },
+  {
+   "name": "reserved-state-bits",
+   "note": "State bits 9+ are reserved: ignore them.",
+   "hex": "08073203088104",
+   "size": 7,
+   "decoded": {
+    "id": 7,
+    "found": {
+     "consciousness": "conscious"
+    }
+   }
+  },
+  {
+   "name": "unknown-sector-status",
+   "note": "Status 9 from a newer version is kept as unknown_9.",
+   "hex": "420408031009",
+   "size": 6,
+   "decoded": {
+    "sector": {
+     "sector": 3,
+     "status": "unknown_9"
+    }
+   }
+  },
+  {
+   "name": "non-packed-track",
+   "note": "Repeated numbers sent unpacked must also be accepted.",
+   "hex": "3a0408021004",
+   "size": 6,
+   "decoded": {
+    "track": {
+     "points": [
+      {
+       "lat": 1e-05,
+       "lon": 2e-05
+      }
+     ]
+    }
+   }
+  }
+ ],
+ "invalid_encode": [
+  {
+   "name": "no-body",
+   "note": "A message needs a body.",
+   "input": {
+    "id": 1
+   },
+   "error": "no_body",
+   "field": null
+  },
+  {
+   "name": "two-bodies",
+   "note": "Only one body.",
+   "input": {
+    "id": 1,
+    "found": {},
+    "mayday": {}
+   },
+   "error": "multiple_bodies",
+   "field": null
+  },
+  {
+   "name": "unknown-key",
+   "note": "Unknown top-level key.",
+   "input": {
+    "id": 1,
+    "found": {},
+    "colour": "red"
+   },
+   "error": "unknown_key",
+   "field": "colour"
+  },
+  {
+   "name": "unknown-body-key",
+   "note": "Unknown key inside a body.",
+   "input": {
+    "id": 1,
+    "found": {
+     "name": "Anna"
+    }
+   },
+   "error": "unknown_key",
+   "field": "found.name"
+  },
+  {
+   "name": "id-too-big",
+   "note": "id above 16383.",
+   "input": {
+    "id": 16384,
+    "found": {}
+   },
+   "error": "invalid_value",
+   "field": "id"
+  },
+  {
+   "name": "id-negative",
+   "note": "Negative id.",
+   "input": {
+    "id": -1,
+    "found": {}
+   },
+   "error": "invalid_value",
+   "field": "id"
+  },
+  {
+   "name": "id-string",
+   "note": "id must be a number.",
+   "input": {
+    "id": "7",
+    "found": {}
+   },
+   "error": "invalid_value",
+   "field": "id"
+  },
+  {
+   "name": "found-without-id",
+   "note": "found needs an id.",
+   "input": {
+    "found": {
+     "age": "child"
+    }
+   },
+   "error": "missing_field",
+   "field": "id"
+  },
+  {
+   "name": "mayday-without-id",
+   "note": "mayday needs an id.",
+   "input": {
+    "mayday": {}
+   },
+   "error": "missing_field",
+   "field": "id"
+  },
+  {
+   "name": "lat-too-big",
+   "note": "Latitude above 90.",
+   "input": {
+    "id": 1,
+    "pos": {
+     "lat": 90.00001,
+     "lon": 7.0
+    },
+    "found": {}
+   },
+   "error": "invalid_value",
+   "field": "pos.lat"
+  },
+  {
+   "name": "lon-too-small",
+   "note": "Longitude below -180.",
+   "input": {
+    "id": 1,
+    "pos": {
+     "lat": 50.0,
+     "lon": -180.5
+    },
+    "found": {}
+   },
+   "error": "invalid_value",
+   "field": "pos.lon"
+  },
+  {
+   "name": "pos-missing-lon",
+   "note": "Position needs lat and lon.",
+   "input": {
+    "id": 1,
+    "pos": {
+     "lat": 50.0
+    },
+    "found": {}
+   },
+   "error": "missing_field",
+   "field": "pos"
+  },
+  {
+   "name": "time-24",
+   "note": "time 24:00 does not exist.",
+   "input": {
+    "id": 1,
+    "time": "24:00",
+    "found": {}
+   },
+   "error": "invalid_value",
+   "field": "time"
+  },
+  {
+   "name": "time-one-digit",
+   "note": "time must be \"HH:MM\".",
+   "input": {
+    "id": 1,
+    "time": "9:30",
+    "found": {}
+   },
+   "error": "invalid_value",
+   "field": "time"
+  },
+  {
+   "name": "count-too-big",
+   "note": "count above 255.",
+   "input": {
+    "id": 1,
+    "found": {
+     "count": 256
+    }
+   },
+   "error": "invalid_value",
+   "field": "found.count"
+  },
+  {
+   "name": "unknown-injury",
+   "note": "Unknown flag name.",
+   "input": {
+    "id": 1,
+    "found": {
+     "injuries": [
+      "sunburn"
+     ]
+    }
+   },
+   "error": "invalid_value",
+   "field": "found.injuries"
+  },
+  {
+   "name": "unknown-consciousness",
+   "note": "Unknown enum name.",
+   "input": {
+    "id": 1,
+    "found": {
+     "consciousness": "sleepy"
+    }
+   },
+   "error": "invalid_value",
+   "field": "found.consciousness"
+  },
+  {
+   "name": "age-unknown-too-big",
+   "note": "unknown_8 does not fit the 3-bit age field.",
+   "input": {
+    "id": 1,
+    "found": {
+     "age": "unknown_8"
+    }
+   },
+   "error": "invalid_value",
+   "field": "found.age"
+  },
+  {
+   "name": "track-empty",
+   "note": "A track needs points.",
+   "input": {
+    "track": {
+     "points": []
+    }
+   },
+   "error": "missing_field",
+   "field": "track.points"
+  },
+  {
+   "name": "track-17",
+   "note": "At most 16 points.",
+   "input": {
+    "time": "10:00",
+    "track": {
+     "points": [
+      {
+       "lat": 50.69212,
+       "lon": 7.21345,
+       "s": 5
+      },
+      {
+       "lat": 50.6925,
+       "lon": 7.2139,
+       "s": 35
+      },
+      {
+       "lat": 50.69291,
+       "lon": 7.21422,
+       "s": 65
+      },
+      {
+       "lat": 50.6933,
+       "lon": 7.2147,
+       "s": 95
+      },
+      {
+       "lat": 50.69362,
+       "lon": 7.2153,
+       "s": 125
+      },
+      {
+       "lat": 50.69401,
+       "lon": 7.21571,
+       "s": 155
+      },
+      {
+       "lat": 50.69447,
+       "lon": 7.216,
+       "s": 185
+      },
+      {
+       "lat": 50.6949,
+       "lon": 7.21641,
+       "s": 215
+      },
+      {
+       "lat": 50.69521,
+       "lon": 7.21702,
+       "s": 245
+      },
+      {
+       "lat": 50.6956,
+       "lon": 7.21744,
+       "s": 275
+      },
+      {
+       "lat": 50.696,
+       "lon": 7.2179,
+       "s": 305
+      },
+      {
+       "lat": 50.69633,
+       "lon": 7.2184,
+       "s": 335
+      },
+      {
+       "lat": 50.6967,
+       "lon": 7.21881,
+       "s": 365
+      },
+      {
+       "lat": 50.69711,
+       "lon": 7.2192,
+       "s": 395
+      },
+      {
+       "lat": 50.6975,
+       "lon": 7.21966,
+       "s": 425
+      },
+      {
+       "lat": 50.69789,
+       "lon": 7.2201,
+       "s": 455
+      },
+      {
+       "lat": 50.7,
+       "lon": 7.2,
+       "s": 500
+      }
+     ]
+    }
+   },
+   "error": "invalid_value",
+   "field": "track.points"
+  },
+  {
+   "name": "track-mixed-times",
+   "note": "s on every point or on none.",
+   "input": {
+    "time": "10:00",
+    "track": {
+     "points": [
+      {
+       "lat": 50.5,
+       "lon": 7.5,
+       "s": 0
+      },
+      {
+       "lat": 50.5,
+       "lon": 7.5
+      }
+     ]
+    }
+   },
+   "error": "invalid_value",
+   "field": "track.points"
+  },
+  {
+   "name": "track-time-backwards",
+   "note": "s must not go down.",
+   "input": {
+    "time": "10:00",
+    "track": {
+     "points": [
+      {
+       "lat": 50.5,
+       "lon": 7.5,
+       "s": 60
+      },
+      {
+       "lat": 50.5,
+       "lon": 7.5,
+       "s": 30
+      }
+     ]
+    }
+   },
+   "error": "invalid_value",
+   "field": "track.points[1].s"
+  },
+  {
+   "name": "track-times-without-time",
+   "note": "Track times need Envelope.time.",
+   "input": {
+    "track": {
+     "points": [
+      {
+       "lat": 50.5,
+       "lon": 7.5,
+       "s": 0
+      }
+     ]
+    }
+   },
+   "error": "missing_field",
+   "field": "time"
+  },
+  {
+   "name": "sector-without-status",
+   "note": "Sector needs a status.",
+   "input": {
+    "sector": {
+     "sector": 3
+    }
+   },
+   "error": "missing_field",
+   "field": "sector.status"
+  },
+  {
+   "name": "sector-zero",
+   "note": "Sector number 0 is not allowed.",
+   "input": {
+    "sector": {
+     "sector": 0,
+     "status": "cleared"
+    }
+   },
+   "error": "missing_field",
+   "field": "sector.sector"
+  },
+  {
+   "name": "coverage-101",
+   "note": "Coverage is a percentage.",
+   "input": {
+    "sector": {
+     "sector": 3,
+     "status": "partial",
+     "coverage": 101
+    }
+   },
+   "error": "invalid_value",
+   "field": "sector.coverage"
+  },
+  {
+   "name": "request-without-resource",
+   "note": "Request needs a resource.",
+   "input": {
+    "id": 1,
+    "request": {
+     "count": 2
+    }
+   },
+   "error": "missing_field",
+   "field": "request.resource"
+  },
+  {
+   "name": "hazard-without-kind",
+   "note": "Hazard needs a kind.",
+   "input": {
+    "id": 1,
+    "hazard": {
+     "severity": "high"
+    }
+   },
+   "error": "missing_field",
+   "field": "hazard.kind"
+  },
+  {
+   "name": "hazard-radius-too-big",
+   "note": "Radius above 100 km.",
+   "input": {
+    "id": 1,
+    "hazard": {
+     "kind": "fire",
+     "radius": 100001
+    }
+   },
+   "error": "invalid_value",
+   "field": "hazard.radius"
+  },
+  {
+   "name": "ack-without-node",
+   "note": "Ack needs the node of the answered message.",
+   "input": {
+    "ack": {
+     "ref": 7,
+     "status": "accepted"
+    }
+   },
+   "error": "missing_field",
+   "field": "ack.node"
+  },
+  {
+   "name": "ack-bad-node",
+   "note": "Node must look like \"!a1b2c3d4\".",
+   "input": {
+    "ack": {
+     "ref": 7,
+     "node": "a1b2c3d4",
+     "status": "done"
+    }
+   },
+   "error": "invalid_value",
+   "field": "ack.node"
+  },
+  {
+   "name": "ack-without-status",
+   "note": "Ack needs a status.",
+   "input": {
+    "ack": {
+     "ref": 7,
+     "node": "!a1b2c3d4"
+    }
+   },
+   "error": "missing_field",
+   "field": "ack.status"
+  },
+  {
+   "name": "ack-ref-zero",
+   "note": "ref 0 is not a message id.",
+   "input": {
+    "ack": {
+     "ref": 0,
+     "node": "!a1b2c3d4",
+     "status": "done"
+    }
+   },
+   "error": "missing_field",
+   "field": "ack.ref"
+  },
+  {
+   "name": "ack-team-too-long",
+   "note": "Team label at most 12 bytes.",
+   "input": {
+    "ack": {
+     "ref": 7,
+     "node": "!a1b2c3d4",
+     "status": "accepted",
+     "team": "Bergwacht 123"
+    }
+   },
+   "error": "invalid_value",
+   "field": "ack.team"
+  },
+  {
+   "name": "ack-eta-too-big",
+   "note": "ETA at most 1440 minutes.",
+   "input": {
+    "ack": {
+     "ref": 7,
+     "node": "!a1b2c3d4",
+     "status": "accepted",
+     "eta": 1441
+    }
+   },
+   "error": "invalid_value",
+   "field": "ack.eta"
+  },
+  {
+   "name": "text-empty",
+   "note": "Text must not be empty.",
+   "input": {
+    "text": {
+     "text": ""
+    }
+   },
+   "error": "missing_field",
+   "field": "text.text"
+  },
+  {
+   "name": "text-181",
+   "note": "Text at most 180 bytes.",
+   "input": {
+    "text": {
+     "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    }
+   },
+   "error": "invalid_value",
+   "field": "text.text"
+  },
+  {
+   "name": "text-180-umlauts-over",
+   "note": "90 umlauts plus one letter is 181 bytes.",
+   "input": {
+    "text": {
+     "text": "ääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääa"
+    }
+   },
+   "error": "invalid_value",
+   "field": "text.text"
+  },
+  {
+   "name": "too-large",
+   "note": "180-byte text plus a full envelope is over 200 bytes.",
+   "input": {
+    "id": 16383,
+    "priority": "urgent",
+    "pos": {
+     "lat": -89.99999,
+     "lon": -179.99999,
+     "acc": "area"
+    },
+    "time": "23:59",
+    "text": {
+     "text": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+    }
+   },
+   "error": "too_large",
+   "field": null
+  },
+  {
+   "name": "ack-node-zero-string",
+   "note": "Node !00000000 is no node.",
+   "input": {
+    "ack": {
+     "ref": 7,
+     "node": "!00000000",
+     "status": "accepted"
+    }
+   },
+   "error": "missing_field",
+   "field": "ack.node"
+  },
+  {
+   "name": "v1-not-encodable",
+   "note": "Only v2 can be encoded.",
+   "input": {
+    "v": 1,
+    "id": 1,
+    "found": {}
+   },
+   "error": "invalid_value",
+   "field": "v"
+  }
+ ],
+ "invalid_decode": [
+  {
+   "name": "empty",
+   "note": "Empty payload.",
+   "hex": "",
+   "error": "empty",
+   "field": null
+  },
+  {
+   "name": "v1-marker-only",
+   "note": "0x01 is v1: a v2-only decoder says unsupported_version.",
+   "hex": "01",
+   "error": "unsupported_version",
+   "field": null
+  },
+  {
+   "name": "reserved-00",
+   "note": "0x00 is reserved for a future version.",
+   "hex": "000807",
+   "error": "unsupported_version",
+   "field": null
+  },
+  {
+   "name": "reserved-02",
+   "note": "0x02 is reserved for a future version.",
+   "hex": "020807",
+   "error": "unsupported_version",
+   "field": null
+  },
+  {
+   "name": "reserved-07",
+   "note": "0x07 is reserved for a future version.",
+   "hex": "07",
+   "error": "unsupported_version",
+   "field": null
+  },
+  {
+   "name": "truncated-varint",
+   "note": "Varint cut off.",
+   "hex": "0887",
+   "error": "malformed",
+   "field": null
+  },
+  {
+   "name": "length-past-end",
+   "note": "Body length longer than the packet.",
+   "hex": "08073205",
+   "error": "malformed",
+   "field": null
+  },
+  {
+   "name": "bad-utf8",
+   "note": "Text with invalid UTF-8.",
+   "hex": "6a030a01ff",
+   "error": "malformed",
+   "field": null
+  },
+  {
+   "name": "bad-utf8-overlong",
+   "note": "Text with an overlong UTF-8 sequence (c0 80).",
+   "hex": "6a040a02c080",
+   "error": "malformed",
+   "field": null
+  },
+  {
+   "name": "varint-truncated-in-body",
+   "note": "Body ends inside a varint.",
+   "hex": "080732021080",
+   "error": "malformed",
+   "field": null
+  },
+  {
+   "name": "id-only",
+   "note": "No body at all.",
+   "hex": "0807",
+   "error": "no_body",
+   "field": null
+  },
+  {
+   "name": "found-id-zero",
+   "note": "found without id.",
+   "hex": "3200",
+   "error": "missing_field",
+   "field": "id"
+  },
+  {
+   "name": "wire-id-too-big",
+   "note": "id 16384.",
+   "hex": "088080013200",
+   "error": "invalid_value",
+   "field": "id"
+  },
+  {
+   "name": "lat-out-of-range",
+   "note": "Latitude 90.00001.",
+   "hex": "08011a050882d1ca083200",
+   "error": "invalid_value",
+   "field": "pos.lat"
+  },
+  {
+   "name": "time-1440",
+   "note": "Minute 1440 does not exist.",
+   "hex": "080120a00b3200",
+   "error": "invalid_value",
+   "field": "time"
+  },
+  {
+   "name": "track-length-mismatch",
+   "note": "Two latitudes, one longitude.",
+   "hex": "3a070a02020212010a",
+   "error": "invalid_value",
+   "field": "track.points"
+  },
+  {
+   "name": "track-dt-without-time",
+   "note": "Times without Envelope.time.",
+   "hex": "3a06080210041800",
+   "error": "missing_field",
+   "field": "time"
+  },
+  {
+   "name": "ack-status-zero",
+   "note": "Ack without status.",
+   "hex": "6207080715d4c3b2a1",
+   "error": "missing_field",
+   "field": "ack.status"
+  },
+  {
+   "name": "ack-node-zero",
+   "note": "Ack without node.",
+   "hex": "620408071801",
+   "error": "missing_field",
+   "field": "ack.node"
+  },
+  {
+   "name": "wire-text-181",
+   "note": "Text of 181 bytes.",
+   "hex": "6ab8010ab50141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141",
+   "error": "invalid_value",
+   "field": "text.text"
+  },
+  {
+   "name": "wire-too-large",
+   "note": "234 bytes is above the Meshtastic payload limit.",
+   "hex": "6ae7010ae401414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141",
+   "error": "too_large",
+   "field": null
+  }
+ ],
+ "v1": [
+  {
+   "name": "v1-pitch",
+   "note": "v1 report: unconscious, oxygen mask, 2 helpers (12 bytes).",
+   "hex": "010106000000018001000802",
+   "size": 12,
+   "decoded": {
+    "v": 1,
+    "id": 1,
+    "found": {
+     "consciousness": "unconscious",
+     "needs": [
+      "oxygen"
+     ],
+     "responders": 2
+    }
+   }
+  },
+  {
+   "name": "v1-full",
+   "note": "v1 report with GPS, time, counts.",
+   "hex": "0101060000005b9f05020f004db976000a9ede692481000203",
+   "size": 25,
+   "decoded": {
+    "v": 1,
+    "id": 91,
+    "priority": "critical",
+    "pos": {
+     "lat": 50.9375,
+     "lon": 6.9603
+    },
+    "time": "16:00",
+    "v1_timestamp": 1764000000,
+    "found": {
+     "count": 2,
+     "consciousness": "unconscious",
+     "breathing": "normal",
+     "needs": [
+      "medic",
+      "aed",
+      "oxygen"
+     ],
+     "responders": 3
+    }
+   }
+  },
+  {
+   "name": "v1-text",
+   "note": "v1 text packet.",
+   "hex": "0100000000000548616c6c6f204c6569747374656c6c65",
+   "size": 23,
+   "decoded": {
+    "v": 1,
+    "id": 5,
+    "text": {
+     "text": "Hallo Leitstelle"
+    }
+   }
+  },
+  {
+   "name": "v1-accept",
+   "note": "v1 confirmation: accepted.",
+   "hex": "0107000000005b01",
+   "size": 8,
+   "decoded": {
+    "v": 1,
+    "ack": {
+     "ref": 91,
+     "status": "accepted"
+    }
+   }
+  },
+  {
+   "name": "v1-done",
+   "note": "v1 confirmation: completed.",
+   "hex": "0107000000005b02",
+   "size": 8,
+   "decoded": {
+    "v": 1,
+    "ack": {
+     "ref": 91,
+     "status": "done"
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,10 @@
+# Simulated radio, no hardware. Nodes find each other over UDP multicast on the compose network.
+Lora:
+  Module: sim
+Config:
+  EnableUDP: true
+Webserver:
+  Port: 9443
+General:
+  MaxNodes: 200
+  MACAddress: "02:52:43:00:00:03"

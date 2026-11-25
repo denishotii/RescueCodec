@@ -1,0 +1,258 @@
+# RescueCodec v2 vocabulary: search and rescue (SAR). Spec version 2.0.0. Licence: Apache-2.0.
+#
+# Every code a message can carry, with its stable wire id, its meaning and
+# German/English words for rule-based extraction from speech or typing.
+#
+# Rules for this file:
+# - `id` is the number on the wire (enum value, or bit number for flags). Never change or reuse it.
+# - `code` is the name in canonical JSON. Never rename it.
+# - Synonyms are lowercase, without punctuation. Matching is done on the
+#   lowercased text with umlauts kept (also try ae/oe/ue/ss spellings, listed where common).
+# - Synonyms can be added at any time. That does not change the wire format.
+# - Other domains (medical, fire, water rescue) will be separate files with the same layout.
+#
+# Layout:
+#   messages:   words that select the message type (body)
+#   fields:     one entry per field, with kind enum | flags and its values
+#   modifiers:  negation, uncertainty, urgency and number words used by the extractor
+
+spec_version: 2.0.0
+domain: sar
+languages: [en, de]
+
+messages:
+  found:
+    meaning: A missing person was found.
+    en: [found, located, "we have her", "we have him", "got the missing", "found the missing", "fond", "foud", spotted]
+    de: [gefunden, aufgefunden, "haben die person", "haben das kind", "vermisste person", "gefunen", "gefundn", entdeckt, gesichtet, lokalisiert]
+  track:
+    meaning: A batch of GPS points from one searcher. Sent by the app, not spoken.
+    en: []
+    de: []
+  sector:
+    meaning: Status of a search sector from the search plan.
+    en: [sector, area, zone, segment]
+    de: [sektor, abschnitt, suchgebiet, bereich, planquadrat]
+  request:
+    meaning: The sender asks for a resource.
+    en: [need, needs, send, request, bring, "we need", "please send"]
+    de: [brauchen, benötigen, benoetigen, schicken, anfordern, "bitte schicken", "wir brauchen", "brauche"]
+  hazard:
+    meaning: A danger in the search area.
+    en: [danger, hazard, careful, warning, caution, "watch out"]
+    de: [gefahr, achtung, vorsicht, warnung, gefährlich, gefaehrlich]
+  mayday:
+    meaning: A rescuer or team member needs help. Highest priority.
+    en: [mayday, sos, "help us", "officer down", "we are in trouble"]
+    de: [mayday, sos, "notfall im trupp", "brauchen selbst hilfe", "kollege verletzt", "eigenunfall"]
+  ack:
+    meaning: Answer to a message (accepted, declined, done). Sent by buttons, not spoken.
+    en: []
+    de: []
+  text:
+    meaning: Free text fallback when the codes cannot say it.
+    en: []
+    de: []
+
+fields:
+  priority:
+    kind: enum
+    wire: Envelope.priority
+    values:
+      - {id: 1, code: routine, meaning: "Routine, can wait.", en: [routine, "no rush", "low priority"], de: [routine, "keine eile", "nicht eilig"]}
+      - {id: 2, code: normal, meaning: "Normal priority.", en: [normal], de: [normal]}
+      - {id: 3, code: urgent, meaning: "Urgent.", en: [urgent, urgently, asap, quickly, fast, hurry], de: [dringend, eilig, schnell, zügig, zuegig, akut]}
+      - {id: 4, code: critical, meaning: "Life-threatening, act now.", en: [critical, "life threatening", immediately, emergency], de: [kritisch, lebensbedrohlich, sofort, lebensgefahr, notfall]}
+
+  acc:
+    kind: enum
+    wire: Position.acc
+    values:
+      - {id: 0, code: gps, meaning: "Device GPS fix (about 10 m).", en: [gps], de: [gps]}
+      - {id: 1, code: gps_poor, meaning: "GPS with a weak fix (about 50 m).", en: ["weak gps", "bad gps"], de: ["schwaches gps", "schlechtes gps"]}
+      - {id: 2, code: estimated, meaning: "Spoken or picked on a map (about 250 m).", en: [about, near, roughly, approximately], de: [ungefähr, ungefaehr, etwa, nahe, "in der nähe"]}
+      - {id: 3, code: area, meaning: "Rough area (about 1 km).", en: ["somewhere", "around the"], de: [irgendwo, "im bereich"]}
+
+  consciousness:
+    kind: enum
+    wire: Found.state bits 0-1
+    values:
+      - {id: 1, code: conscious, meaning: "Awake and talks.", en: [conscious, awake, responsive, talking, alert, "talks to us"], de: [ansprechbar, wach, "bei bewusstsein", "redet", "spricht", "orientiert", "ansprechbr"]}
+      - {id: 2, code: confused, meaning: "Responds, but drowsy or disoriented.", en: [confused, drowsy, disoriented, dazed, "not making sense"], de: [verwirrt, desorientiert, benommen, schläfrig, schlaefrig, "nicht orientiert"]}
+      - {id: 3, code: unconscious, meaning: "Does not respond.", en: [unconscious, unconcious, unresponsive, "not responding", "passed out", "knocked out"], de: [bewusstlos, "nicht ansprechbar", "reagiert nicht", ohnmächtig, ohnmaechtig, bewustlos]}
+
+  breathing:
+    kind: enum
+    wire: Found.state bits 2-3
+    values:
+      - {id: 1, code: normal, meaning: "Breathing normally.", en: [breathing, breathes, "breathing normally", "breathing fine"], de: [atmet, "atmet normal", "atmung normal", "atmung ok"]}
+      - {id: 2, code: difficult, meaning: "Breathing with difficulty.", en: ["short of breath", "struggling to breathe", "breathing hard", "difficulty breathing"], de: [atemnot, "schwer atmen", "atmet schwer", "kurzatmig", "bekommt schlecht luft"]}
+      - {id: 3, code: none, meaning: "Not breathing.", en: ["not breathing", "no breathing", "stopped breathing", "isnt breathing"], de: ["atmet nicht", "keine atmung", "atmung fehlt", "atemstillstand"]}
+
+  mobility:
+    kind: enum
+    wire: Found.state bits 4-5
+    values:
+      - {id: 1, code: walks, meaning: "Can walk out with help.", en: ["can walk", walking, "walks on her own", "walks on his own"], de: [gehfähig, gehfaehig, "kann laufen", "kann gehen", "läuft selbst"]}
+      - {id: 2, code: cannot_walk, meaning: "Cannot walk.", en: ["cannot walk", "cant walk", "unable to walk", "can't walk"], de: ["nicht gehfähig", "nicht gehfaehig", "kann nicht laufen", "kann nicht gehen"]}
+      - {id: 3, code: trapped, meaning: "Stuck, needs technical rescue.", en: [trapped, stuck, pinned, "in the ravine"], de: [eingeklemmt, feststeckt, "steckt fest", eingeklemt, "in der schlucht"]}
+
+  age:
+    kind: enum
+    wire: Found.state bits 6-8
+    values:
+      - {id: 1, code: child, meaning: "Child, about 0 to 12 years.", en: [child, kid, boy, girl, toddler], de: [kind, junge, mädchen, maedchen, kleinkind]}
+      - {id: 2, code: teen, meaning: "Teenager, 13 to 17 years.", en: [teen, teenager, youth], de: [jugendlicher, jugendliche, teenager]}
+      - {id: 3, code: adult, meaning: "Adult.", en: [adult, man, woman, hiker], de: [erwachsener, erwachsene, mann, frau, wanderer, wanderin]}
+      - {id: 4, code: senior, meaning: "Older person, about 65+.", en: [senior, elderly, "old man", "old woman", pensioner], de: [senior, seniorin, "älterer mann", "ältere frau", "alter mann", "alte frau", rentner, rentnerin]}
+
+  injuries:
+    kind: flags
+    wire: Found.injuries (bit numbers)
+    values:
+      - {id: 0, code: hypothermia, meaning: "Too cold, hypothermia.", en: [hypothermia, hypothermic, "very cold", freezing, shivering], de: [unterkühlt, unterkuehlt, unterkühlung, unterkuehlung, "stark unterkühlt", friert, zittert, unterkült]}
+      - {id: 1, code: bleeding, meaning: "Bleeding.", en: [bleeding, blood, cut, wound], de: [blutet, blutung, wunde, schnittwunde]}
+      - {id: 2, code: fracture, meaning: "Broken bone (or suspected).", en: [fracture, broken, "broken leg", "broken arm", "broken ankle", "ankle injury", "leg injury"], de: [bruch, knochenbruch, gebrochen, "bein gebrochen", "knöchel verletzt", "knoechel verletzt", "bein verletzt", fraktur]}
+      - {id: 3, code: head, meaning: "Head injury.", en: ["head injury", "hit her head", "hit his head", "head wound", concussion], de: [kopfverletzung, platzwunde, "am kopf verletzt", gehirnerschütterung, "kopf verletzt"]}
+      - {id: 4, code: spine, meaning: "Back or neck injury.", en: ["back injury", "neck injury", spine, "hurt back"], de: [rückenverletzung, rueckenverletzung, wirbelsäule, "nacken verletzt", "rücken verletzt"]}
+      - {id: 5, code: exhaustion, meaning: "Exhausted.", en: [exhausted, "worn out", "too tired"], de: [erschöpft, erschoepft, "völlig fertig", entkräftet]}
+      - {id: 6, code: other, meaning: "Other injury.", en: [injured, hurt, injury], de: [verletzt, verletzung]}
+      - {id: 7, code: cardiac, meaning: "Chest pain or heart problem.", en: ["chest pain", "heart attack", "heart problem"], de: [brustschmerzen, herzinfarkt, "probleme mit dem herz", herzprobleme]}
+      - {id: 8, code: heat, meaning: "Heat illness or heat stroke.", en: ["heat stroke", overheated, "heat exhaustion"], de: [hitzschlag, sonnenstich, überhitzt, ueberhitzt]}
+      - {id: 9, code: burn, meaning: "Burns.", en: [burn, burns, burned], de: [verbrennung, verbrannt, brandwunde]}
+      - {id: 10, code: allergy, meaning: "Allergic reaction or sting.", en: [allergic, allergy, "bee sting", "wasp sting"], de: [allergie, allergisch, wespenstich, bienenstich]}
+
+  needs:
+    kind: flags
+    wire: Found.needs (bit numbers)
+    values:
+      - {id: 0, code: stretcher, meaning: "Stretcher or carry-out.", en: [stretcher, "carry out", litter], de: [trage, schleifkorb, "raustragen", "tragen"]}
+      - {id: 1, code: medic, meaning: "Paramedic or doctor.", en: [medic, paramedic, doctor, "medical help"], de: [sanitäter, sanitaeter, sani, notarzt, arzt, rettungsdienst, "medizinische hilfe"]}
+      - {id: 2, code: helicopter, meaning: "Helicopter.", en: [helicopter, heli, chopper, airlift], de: [hubschrauber, heli, rth, "christoph"]}
+      - {id: 3, code: warmth, meaning: "Blankets, dry clothes, heat.", en: [blanket, blankets, warmth, "dry clothes", "rescue blanket"], de: [decke, decken, wärme, waerme, rettungsdecke, "trockene kleidung"]}
+      - {id: 4, code: water, meaning: "Drinking water.", en: [water, drink], de: [wasser, trinken]}
+      - {id: 5, code: vehicle, meaning: "Off-road vehicle or ambulance to the track.", en: [vehicle, car, "4x4", truck, quad], de: [fahrzeug, auto, geländewagen, gelaendewagen, quad, rettungswagen, rtw]}
+      - {id: 6, code: other, meaning: "Other help.", en: [help], de: [hilfe]}
+      - {id: 7, code: aed, meaning: "Defibrillator.", en: [aed, defibrillator, defib], de: [aed, defibrillator, defi]}
+      - {id: 8, code: oxygen, meaning: "Oxygen.", en: [oxygen, "oxygen mask"], de: [sauerstoff, sauerstoffmaske]}
+      - {id: 9, code: first_aid, meaning: "First aid kit.", en: ["first aid kit", "first aid", "med kit"], de: ["erste hilfe", "erste-hilfe-set", verbandskasten, sanitätstasche]}
+      - {id: 10, code: rope, meaning: "Rope or technical rescue team.", en: [rope, "rope team", "technical rescue", climbing], de: [seil, höhenrettung, hoehenrettung, bergwacht, "technische rettung"]}
+      - {id: 11, code: light, meaning: "Light.", en: [light, lamp, torch, flashlight], de: [licht, lampe, taschenlampe, stirnlampe]}
+      - {id: 12, code: food, meaning: "Food.", en: [food, snack], de: [essen, verpflegung]}
+      - {id: 13, code: radio, meaning: "Radio or batteries.", en: [radio, batteries, battery], de: [funkgerät, funkgeraet, akku, batterien]}
+
+  sector.status:
+    kind: enum
+    wire: Sector.status
+    values:
+      - {id: 1, code: cleared, meaning: "Fully searched, nothing found.", en: [cleared, clear, done, "searched completely", "nothing found"], de: [abgesucht, frei, "komplett abgesucht", "nichts gefunden", erledigt]}
+      - {id: 2, code: partial, meaning: "Partly searched.", en: [partial, partly, "half done", "partially searched"], de: [teilweise, "zur hälfte", "teilweise abgesucht"]}
+      - {id: 3, code: blocked, meaning: "Cannot be searched.", en: [blocked, impassable, "can't get in", "no access"], de: [gesperrt, "nicht begehbar", unpassierbar, "kein durchkommen"]}
+
+  request.resource:
+    kind: enum
+    wire: Request.resource
+    values:
+      - {id: 1, code: stretcher, meaning: "Stretcher.", en: [stretcher, litter], de: [trage, schleifkorb]}
+      - {id: 2, code: medic, meaning: "Paramedic or doctor.", en: [medic, paramedic, doctor], de: [sanitäter, sanitaeter, sani, notarzt, arzt]}
+      - {id: 3, code: helicopter, meaning: "Helicopter.", en: [helicopter, heli, chopper], de: [hubschrauber, heli, rth]}
+      - {id: 4, code: vehicle, meaning: "Vehicle.", en: [vehicle, car, "4x4", quad], de: [fahrzeug, auto, geländewagen, quad]}
+      - {id: 5, code: searchers, meaning: "More people for the search.", en: [searchers, people, volunteers, helpers, "more people"], de: [suchkräfte, suchkraefte, leute, helfer, "mehr leute", einsatzkräfte]}
+      - {id: 6, code: dog_team, meaning: "Search dog team.", en: ["dog team", "search dog", dogs, k9], de: [hundestaffel, suchhund, hunde, rettungshund, mantrailer]}
+      - {id: 7, code: drone, meaning: "Drone.", en: [drone, uav, "thermal drone"], de: [drohne, wärmebilddrohne]}
+      - {id: 8, code: light, meaning: "Light.", en: [light, lights, lamp, floodlight], de: [licht, lampe, beleuchtung, scheinwerfer]}
+      - {id: 9, code: water, meaning: "Drinking water.", en: [water], de: [wasser]}
+      - {id: 10, code: food, meaning: "Food.", en: [food], de: [essen, verpflegung]}
+      - {id: 11, code: warmth, meaning: "Blankets.", en: [blankets, blanket], de: [decken, decke, rettungsdecke]}
+      - {id: 12, code: batteries, meaning: "Batteries or power banks.", en: [batteries, battery, powerbank], de: [akkus, akku, batterien, powerbank]}
+      - {id: 13, code: rope_team, meaning: "Rope or technical rescue team.", en: ["rope team", "technical rescue", "mountain rescue"], de: [höhenrettung, hoehenrettung, bergwacht, "technische rettung"]}
+      - {id: 14, code: ambulance, meaning: "Ambulance.", en: [ambulance], de: [rettungswagen, rtw, krankenwagen, ktw]}
+      - {id: 15, code: fire_brigade, meaning: "Fire brigade.", en: ["fire brigade", "fire department", firefighters], de: [feuerwehr]}
+      - {id: 16, code: other, meaning: "Something else.", en: [], de: []}
+
+  request.urgency:
+    kind: enum
+    wire: Request.urgency
+    values:
+      - {id: 1, code: now, meaning: "Needed immediately.", en: [now, immediately, asap, "right now"], de: [sofort, jetzt, "so schnell wie möglich", umgehend]}
+      - {id: 2, code: soon, meaning: "Within about 30 minutes.", en: [soon, "in half an hour", "within half an hour", "within 30 minutes", "in 30 minutes"], de: [bald, "in einer halben stunde", "innerhalb einer halben stunde", "innerhalb 30 minuten", "in 30 minuten"]}
+      - {id: 3, code: later, meaning: "Planned, when possible.", en: [later, "when possible", "no rush"], de: [später, spaeter, "wenn möglich", "keine eile"]}
+
+  hazard.kind:
+    kind: enum
+    wire: Hazard.kind
+    values:
+      - {id: 1, code: blocked_path, meaning: "Fallen trees or path closed.", en: ["fallen tree", "fallen trees", "path blocked", "trail blocked", windthrow], de: [windbruch, "baum über dem weg", "weg versperrt", "weg blockiert", "umgestürzter baum"]}
+      - {id: 2, code: rockfall, meaning: "Rockfall or landslide.", en: [rockfall, "falling rocks", landslide, mudslide], de: [steinschlag, felssturz, erdrutsch, hangrutsch]}
+      - {id: 3, code: water, meaning: "Flooding or fast water.", en: [flood, flooding, "high water", "fast water", "river"], de: [hochwasser, überflutet, überschwemmung, "reißender bach", "reissender bach", strömung]}
+      - {id: 4, code: fire, meaning: "Fire or smoke.", en: [fire, smoke, "forest fire"], de: [feuer, rauch, waldbrand, brand]}
+      - {id: 5, code: cliff, meaning: "Steep drop or unstable ground.", en: [cliff, "steep drop", "unstable ground", ravine, edge], de: [abgrund, steilhang, absturzgefahr, "steile kante", schlucht]}
+      - {id: 6, code: ice, meaning: "Ice or snow.", en: [ice, icy, snow], de: [eis, glatteis, schnee, vereist]}
+      - {id: 7, code: animal, meaning: "Dangerous animal.", en: ["wild boar", boar, "aggressive dog", wasps, hornets], de: [wildschwein, wildschweine, "aggressiver hund", wespen, hornissen]}
+      - {id: 8, code: power_line, meaning: "Power line down.", en: ["power line", "power line down", "live wire"], de: [stromleitung, "leitung am boden", oberleitung]}
+      - {id: 9, code: hunting, meaning: "Hunting in progress.", en: [hunting, hunters, "hunt in progress"], de: [jagd, jäger, jaeger, treibjagd, drückjagd]}
+      - {id: 10, code: weather, meaning: "Storm or lightning.", en: [storm, lightning, thunderstorm], de: [sturm, gewitter, blitz, unwetter]}
+      - {id: 11, code: other, meaning: "Other danger, for example an avalanche.", en: [avalanche, landslide, rockfall], de: [lawine, lawinengefahr, erdrutsch, steinschlag]}
+
+  hazard.severity:
+    kind: enum
+    wire: Hazard.severity
+    values:
+      - {id: 1, code: low, meaning: "Low risk, take care.", en: ["low risk", minor, small], de: ["geringe gefahr", klein, gering]}
+      - {id: 2, code: medium, meaning: "Medium risk.", en: [medium, moderate], de: [mittel, mäßig, maessig]}
+      - {id: 3, code: high, meaning: "High risk, keep out.", en: ["high risk", "keep out", "very dangerous", "do not enter"], de: ["hohe gefahr", "nicht betreten", "sehr gefährlich", lebensgefahr]}
+
+  mayday.reason:
+    kind: enum
+    wire: Mayday.reason
+    values:
+      - {id: 1, code: injured, meaning: "Team member injured.", en: ["colleague injured", "team member injured", "one of us is hurt", "i am injured"], de: ["kollege verletzt", "kollegin verletzt", "einsatzkraft verletzt", "bin verletzt", "truppmitglied verletzt"]}
+      - {id: 2, code: lost, meaning: "Team is lost or disoriented.", en: ["we are lost", "lost our way", "don't know where we are", "dont know where we are"], de: ["haben uns verlaufen", "wissen nicht wo wir sind", "orientierung verloren", "verirrt"]}
+      - {id: 3, code: missing_member, meaning: "Contact to a team member lost.", en: ["lost contact", "team member missing", "can't reach", "cant find our"], de: ["kontakt verloren", "kontakt zu truppmitglied verloren", "kollege vermisst", "kollegin vermisst", "nicht erreichbar"]}
+      - {id: 4, code: medical, meaning: "Sudden illness in the team.", en: ["collapsed", "medical emergency", "seizure"], de: ["zusammengebrochen", "medizinischer notfall", krampfanfall, kollabiert]}
+      - {id: 5, code: trapped, meaning: "Team stuck.", en: ["we are stuck", "we are trapped", "cut off"], de: ["sitzen fest", "kommen nicht weiter", eingeschlossen, abgeschnitten]}
+      - {id: 6, code: threat, meaning: "Threatened by a person or animal.", en: [threatened, attacked, "aggressive person"], de: [bedroht, angegriffen, "aggressive person"]}
+      - {id: 7, code: other, meaning: "Other emergency.", en: [], de: []}
+
+  ack.status:
+    kind: enum
+    wire: Ack.status
+    values:
+      - {id: 1, code: accepted, meaning: "We take it.", en: [accepted, "on our way", "we take it", copy], de: [angenommen, übernommen, "wir übernehmen", "sind unterwegs", verstanden]}
+      - {id: 2, code: declined, meaning: "We cannot take it.", en: [declined, "cannot take", unable], de: [abgelehnt, "können nicht", "nicht möglich"]}
+      - {id: 3, code: done, meaning: "Done.", en: [done, finished, completed], de: [erledigt, fertig, abgeschlossen]}
+
+modifiers:
+  negation:
+    meaning: A negation word right before a cue (up to 3 words) turns it off or flips it.
+    en: ["not", "no", "isn't", "isnt", "doesn't", "doesnt", "don't", "dont", "without", "never", "no longer"]
+    de: ["nicht", "kein", "keine", "keinen", "ohne", "nie", "nicht mehr"]
+  uncertainty:
+    meaning: The fact is unclear. Leave the field unknown instead of guessing.
+    en: ["unknown", "not sure", "unclear", "maybe", "can't tell", "cant tell", "don't know", "possibly"]
+    de: ["unklar", "unbekannt", "weiß nicht", "weiss nicht", "vielleicht", "nicht sicher", "eventuell"]
+  numbers:
+    meaning: Number words for counts.
+    en: {one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, a couple: 2, both: 2}
+    de: {ein: 1, eine: 1, einen: 1, eins: 1, zwei: 2, zwo: 2, drei: 3, vier: 4, "fünf": 5, fuenf: 5, sechs: 6, sieben: 7, acht: 8, neun: 9, zehn: 10, beide: 2}
+  helpers:
+    meaning: Words that mark a responders count ("2 more helpers") rather than found persons.
+    en: [helpers, people, "more people", responders, hands, "extra people", carriers]
+    de: [helfer, leute, "weitere leute", einsatzkräfte, "mann", träger, "personen zum tragen"]
+  persons:
+    meaning: Words that mark the number of persons found.
+    en: [persons, people, hikers, kids, children]
+    de: [personen, wanderer, kinder, leute]
+  person_nouns:
+    meaning: Generic nouns for one casualty. With a state code (consciousness, breathing, mobility, injury) and no request or hazard cue they count as a found cue.
+    en: [person, patient, casualty, victim]
+    de: [person, verletzter, verletzte, patient, patientin, opfer]
+  radius:
+    meaning: Words before or after a distance that make it a hazard radius. "1 km" = 1000 m.
+    en: [radius, around, "m around", "metres around", "meters around", within]
+    de: [umkreis, radius, "im umkreis von", "rund um"]
+  coverage:
+    meaning: Words for the searched share of a sector. A number before them is the percent.
+    en: [percent, "%", half, "half done"]
+    de: [prozent, "%", "zur hälfte", hälfte]
+    fixed: {half: 50, "zur hälfte": 50, hälfte: 50}
