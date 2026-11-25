@@ -22,8 +22,18 @@ def last_sent(gw):
 
 
 class Auto(unittest.TestCase):
-    def test_a_channel_without_meshtastic_users_gets_packed_text(self):
+    def test_a_channel_where_nobody_is_known_gets_normal_text(self):
         with gateway() as gw:
+            mode = gw.client.get("/v2/channels/RescueCodec/mode").json()
+            self.assertEqual((mode["send_as"], mode["reason"]), ("normal", "nobody_known"))
+            record = gw.post("/v2/text", text=HUT).json()
+            self.assertEqual(record["codec"]["version"], 0)
+            self.assertEqual(last_sent(gw)["port"], PORT_TEXT_MESSAGE)
+
+    def test_a_channel_with_only_rescuecodec_users_gets_packed_text(self):
+        with gateway() as gw:
+            gw.hear({"id": 1, "sector": {"sector": 3, "status": "cleared"}})       # a RescueCodec node on the channel
+            wait_for(lambda: len(gw.client.get("/v2/messages").json()["items"]) == 1)
             record = gw.post("/v2/text", text=HUT).json()
             self.assertEqual((record["codec"]["version"], record["codec"]["packed"]), (2, True))
             self.assertEqual(record["codec"]["size"], 42)
@@ -129,6 +139,8 @@ class Modes(unittest.TestCase):
     def test_each_channel_has_its_own_users(self):
         with base_gateway() as gw:
             gw.radio.inject_text(STOCK, "Hallo", channel=DRAEGER["index"])
+            gw.radio.inject(PEER, encode({"id": 1, "sector": {"sector": 3, "status": "cleared"}}))  # RescueCodec on the team channel
+            wait_for(lambda: len(gw.client.get("/v2/messages").json()["items"]) == 2)
             self.assertEqual(gw.client.get("/v2/channels/draeger-srs/mode").json()["send_as"], "normal")
             self.assertEqual(gw.client.get("/v2/channels/RescueCodec/mode").json()["send_as"], "compressed")
             self.assertEqual(gw.post("/v2/text", text=HUT).json()["channel"], RESCUECODEC)

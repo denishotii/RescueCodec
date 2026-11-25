@@ -1063,7 +1063,7 @@ components:
         send_as: { type: string, enum: [compressed, normal], description: "compressed = packed for RescueCodec when it saves at least 3 bytes; short texts still go normal." }
         reason:
           type: string
-          enum: [public_channel, mode_normal, mode_compressed, peer_rescuecodec, peer_unknown, meshtastic_users, rescuecodec_only]
+          enum: [public_channel, mode_normal, mode_compressed, peer_rescuecodec, peer_unknown, meshtastic_users, rescuecodec_only, nobody_known]
         meshtastic_users: { type: array, items: { type: string }, description: "Nodes that sent normal texts on this channel and no RescueCodec packet in the last 24 h." }
         rescuecodec_nodes: { type: array, items: { type: string }, description: "Nodes that sent RescueCodec packets here in the last 24 h." }
     ModeRequest:

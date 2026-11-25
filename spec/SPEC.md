@@ -99,7 +99,7 @@ A node not heard for 24 hours is forgotten. Readable copies (`[RC] ` texts) do n
 1. A public channel (section 2.2) always gets a normal text.
 2. Always normal: normal text. Always compressed: packed.
 3. Auto, direct chat: packed when the peer runs RescueCodec, else normal text.
-4. Auto, channel: packed when no Meshtastic user was heard on that channel in the last 24 hours, else normal text.
+4. Auto, channel: packed when at least one RescueCodec node and no Meshtastic user was heard on that channel in the last 24 hours. Otherwise normal text, also when nobody is known yet (reason `nobody_known`), so a new or foreign channel (for example a partner's) always gets text everyone can read.
 5. Packed only when it saves at least **3 bytes**: the packed packet (with id, `pos`, `time`, priority) must be at least 3 bytes smaller than the normal text (the words, cut to 200 bytes like `fit_plain`). Else normal text. A GPS position costs 11 bytes, so short texts with a position stay normal.
 
 Examples: "Ok" is 2 bytes as a normal text and 12 packed: normal. "We are at the hut, two people with us, waiting for the vehicle on the forest road" is 81 bytes as a normal text and 42 packed with an id (53 with a GPS position): packed on a RescueCodec channel. As soon as someone with the official app writes on that channel, the next text goes normal, so that person can read it.

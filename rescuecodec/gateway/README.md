@@ -113,7 +113,7 @@ The gateway picks per chat (a channel, or a direct chat with one node). It remem
 
 | Mode | A channel | A direct chat |
 |---|---|---|
-| `auto` (default) | Packed if no Meshtastic user was heard on it for 24 h, else normal | Packed if the peer runs RescueCodec, else normal |
+| `auto` (default) | Packed if a RescueCodec node and no Meshtastic user was heard on it for 24 h, else normal (also when nobody is known yet) | Packed if the peer runs RescueCodec, else normal |
 | `compressed` | Packed | Packed |
 | `normal` | Normal | Normal |
 

@@ -27,9 +27,12 @@ MEMORY_S = 24 * 3600
 
 
 def wants_packed(mode: str, *, public: bool, direct: bool, peer_rescuecodec: bool = False,
-                 meshtastic_users: int = 0) -> tuple[bool, str]:
+                 meshtastic_users: int = 0, rescuecodec_nodes: int = 0) -> tuple[bool, str]:
     """(packed wanted, reason). Reasons: public_channel, mode_normal, mode_compressed, peer_rescuecodec,
-    peer_unknown, meshtastic_users, rescuecodec_only."""
+    peer_unknown, meshtastic_users, rescuecodec_only, nobody_known.
+
+    Auto on a channel is careful: packed only when at least one RescueCodec node and no Meshtastic user was heard
+    there in the last 24 h. When nobody is known yet, normal text (everyone can read it)."""
     if public:
         return False, "public_channel"
     if mode == "normal":
@@ -38,7 +41,9 @@ def wants_packed(mode: str, *, public: bool, direct: bool, peer_rescuecodec: boo
         return True, "mode_compressed"
     if direct:
         return (True, "peer_rescuecodec") if peer_rescuecodec else (False, "peer_unknown")
-    return (False, "meshtastic_users") if meshtastic_users else (True, "rescuecodec_only")
+    if meshtastic_users:
+        return False, "meshtastic_users"
+    return (True, "rescuecodec_only") if rescuecodec_nodes else (False, "nobody_known")
 
 
 @dataclass

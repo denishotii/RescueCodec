@@ -47,6 +47,9 @@ class TextRoutes(
     /** Meshtastic users heard on [channel] in the last 24 h. */
     suspend fun meshtasticUsers(channel: String): List<Long> = seen.meshtasticUsers(channel, clock() - TextMode.MEMORY_MS)
 
+    /** RescueCodec nodes heard on [channel] in the last 24 h. */
+    suspend fun rescueCodecNodes(channel: String): List<Long> = seen.rescueCodecNodes(channel, clock() - TextMode.MEMORY_MS)
+
     /** The mode the person picked for [chat], else the default (channels: [AppSettings.defaultChannelMode]). */
     suspend fun modeOf(chat: ChatId): String = modes.get(chat.key)?.takeIf { it in TextMode.MODES } ?: defaultFor(chat)
 
@@ -62,7 +65,7 @@ class TextRoutes(
     /** Should a text in [chat] go packed? [public]: the chat is a public channel. */
     suspend fun wish(chat: ChatId, public: Boolean): TextMode.Wish = when (chat) {
         is ChatId.Direct -> TextMode.wantsPacked(modeOf(chat), public = false, direct = true, peerRescueCodec = isRescueCodec(chat.node))
-        is ChatId.Channel -> TextMode.wantsPacked(modeOf(chat), public = public, direct = false, meshtasticUsers = meshtasticUsers(chat.name).size)
+        is ChatId.Channel -> TextMode.wantsPacked(modeOf(chat), public = public, direct = false, meshtasticUsers = meshtasticUsers(chat.name).size, rescueCodecNodes = rescueCodecNodes(chat.name).size)
     }
 
     companion object {
@@ -87,6 +90,8 @@ class MemoryNodeSeenDao : NodeSeenDao {
         return rows.value.values.filter { it.channel == channel && it.port == 1 && it.lastSeenMs >= sinceMs && it.node !in rc }
             .map { it.node }.distinct().sorted()
     }
+    override suspend fun rescueCodecNodes(channel: String, sinceMs: Long): List<Long> =
+        rows.value.values.filter { it.channel == channel && it.port == 256 && it.lastSeenMs >= sinceMs }.map { it.node }.distinct().sorted()
     override suspend fun forget(beforeMs: Long) { rows.update { m -> m.filterValues { it.lastSeenMs >= beforeMs } } }
     override fun observeAll(): Flow<List<NodeSeenEntity>> = rows.map { m -> m.values.sortedByDescending { it.lastSeenMs } }
 }

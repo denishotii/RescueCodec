@@ -26,7 +26,7 @@ class TextRoutesTest {
 
     @Test
     fun autoFollowsWhoWasHeardAndForgetsAfter24Hours() = runBlocking<Unit> {
-        assertEquals(TextMode.Wish(true, "rescuecodec_only"), routes.wish(team, public = false))
+        assertEquals(TextMode.Wish(false, "nobody_known"), routes.wish(team, public = false))
         assertEquals(TextMode.Wish(false, "peer_unknown"), routes.wish(ChatId.Direct(a), public = false))
         routes.heardText(a, "RescueCodec")
         routes.heardRescueCodec(b, "RescueCodec")
@@ -37,6 +37,7 @@ class TextRoutesTest {
         // A node that also sends RescueCodec packets is no Meshtastic user, on any channel.
         routes.heardRescueCodec(a, "Bergwacht")
         assertEquals(emptyList(), routes.meshtasticUsers("RescueCodec"))
+        assertEquals(TextMode.Wish(true, "rescuecodec_only"), routes.wish(team, public = false))
         // 24 hours later both are forgotten.
         now += TextMode.MEMORY_MS + 1
         assertFalse(routes.isRescueCodec(b))

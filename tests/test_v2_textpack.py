@@ -68,7 +68,9 @@ class Rule(unittest.TestCase):
         self.assertEqual(wants_packed("auto", public=False, direct=True, peer_rescuecodec=True), (True, "peer_rescuecodec"))
         self.assertEqual(wants_packed("auto", public=False, direct=True), (False, "peer_unknown"))
         self.assertEqual(wants_packed("auto", public=False, direct=False, meshtastic_users=1), (False, "meshtastic_users"))
-        self.assertEqual(wants_packed("auto", public=False, direct=False), (True, "rescuecodec_only"))
+        self.assertEqual(wants_packed("auto", public=False, direct=False, rescuecodec_nodes=1), (True, "rescuecodec_only"))
+        self.assertEqual(wants_packed("auto", public=False, direct=False), (False, "nobody_known"))
+        self.assertEqual(wants_packed("auto", public=False, direct=False, meshtastic_users=1, rescuecodec_nodes=2), (False, "meshtastic_users"))
 
     def test_packed_when_it_saves_three_bytes(self):
         form = choose_form({"id": 3, "text": {"text": HUT}}, True, "rescuecodec_only")

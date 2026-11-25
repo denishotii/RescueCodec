@@ -114,6 +114,10 @@ interface NodeSeenDao {
     )
     suspend fun meshtasticUsers(channel: String, sinceMs: Long): List<Long>
 
+    /** Nodes that sent a RescueCodec packet on [channel] since [sinceMs]. */
+    @Query("SELECT DISTINCT node FROM nodes_seen WHERE channel = :channel AND port = 256 AND lastSeenMs >= :sinceMs ORDER BY node")
+    suspend fun rescueCodecNodes(channel: String, sinceMs: Long): List<Long>
+
     @Query("DELETE FROM nodes_seen WHERE lastSeenMs < :beforeMs")
     suspend fun forget(beforeMs: Long)
 

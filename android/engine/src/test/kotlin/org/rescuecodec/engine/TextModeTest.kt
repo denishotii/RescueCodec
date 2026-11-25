@@ -25,8 +25,10 @@ class TextModeTest {
         assertEquals(TextMode.Wish(true, "peer_rescuecodec"), TextMode.wantsPacked(TextMode.AUTO, public = false, direct = true, peerRescueCodec = true))
         assertEquals(TextMode.Wish(false, "peer_unknown"), TextMode.wantsPacked(TextMode.AUTO, public = false, direct = true))
         assertEquals(TextMode.Wish(false, "meshtastic_users"), TextMode.wantsPacked(TextMode.AUTO, public = false, direct = false, meshtasticUsers = 1))
-        assertEquals(TextMode.Wish(true, "rescuecodec_only"), TextMode.wantsPacked(TextMode.AUTO, public = false, direct = false))
-        assertEquals(TextMode.Wish(true, "rescuecodec_only"), TextMode.wantsPacked("something new", public = false, direct = false))
+        assertEquals(TextMode.Wish(true, "rescuecodec_only"), TextMode.wantsPacked(TextMode.AUTO, public = false, direct = false, rescueCodecNodes = 1))
+        assertEquals(TextMode.Wish(false, "nobody_known"), TextMode.wantsPacked(TextMode.AUTO, public = false, direct = false))
+        assertEquals(TextMode.Wish(false, "meshtastic_users"), TextMode.wantsPacked(TextMode.AUTO, public = false, direct = false, meshtasticUsers = 1, rescueCodecNodes = 2))
+        assertEquals(TextMode.Wish(true, "rescuecodec_only"), TextMode.wantsPacked("something new", public = false, direct = false, rescueCodecNodes = 1))
     }
 
     @Test

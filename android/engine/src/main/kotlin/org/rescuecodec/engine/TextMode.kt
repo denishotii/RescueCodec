@@ -12,8 +12,8 @@ import org.rescuecodec.codec.TextPack
  * 1. Every chat (a channel, or a direct chat with one node) has a mode: auto (default), compressed or normal.
  * 2. A public channel always gets normal text. Mode normal always gets normal text.
  * 3. Mode compressed: packed. Mode auto: a direct chat is packed when the peer runs RescueCodec (it sent a port 256
- *    packet in the last 24 h); a channel is packed when no Meshtastic user (a node that sent port 1 texts there and
- *    no port 256 packet) was heard on it in the last 24 h.
+ *    packet in the last 24 h); a channel is packed when at least one RescueCodec node and no Meshtastic user (a node
+ *    that sent port 1 texts there and no port 256 packet) was heard on it in the last 24 h. Nobody known: normal.
  * 4. Packed only when the packet is at least 3 bytes smaller than the words as a normal text. Else normal text.
  *
  * Example: "We are at the hut, two people with us, waiting for the vehicle on the forest road" is 81 B as a normal
@@ -35,7 +35,7 @@ object TextMode {
 
     /**
      * Reasons: public_channel, mode_normal, mode_compressed, peer_rescuecodec, peer_unknown, meshtastic_users,
-     * rescuecodec_only. An unknown [mode] counts as auto.
+     * rescuecodec_only, nobody_known. An unknown [mode] counts as auto.
      */
     fun wantsPacked(
         mode: String,
@@ -43,13 +43,15 @@ object TextMode {
         direct: Boolean,
         peerRescueCodec: Boolean = false,
         meshtasticUsers: Int = 0,
+        rescueCodecNodes: Int = 0,
     ): Wish = when {
         public -> Wish(false, "public_channel")
         mode == NORMAL -> Wish(false, "mode_normal")
         mode == COMPRESSED -> Wish(true, "mode_compressed")
         direct -> if (peerRescueCodec) Wish(true, "peer_rescuecodec") else Wish(false, "peer_unknown")
         meshtasticUsers > 0 -> Wish(false, "meshtastic_users")
-        else -> Wish(true, "rescuecodec_only")
+        rescueCodecNodes > 0 -> Wish(true, "rescuecodec_only")
+        else -> Wish(false, "nobody_known")
     }
 
     /**

@@ -391,9 +391,10 @@ class GatewayService:
         users: list[str] = []
         if to is None:
             users = sorted(n for n in self.store.nodes_on_port(PORT_TEXT_MESSAGE, since, channel["name"]) if n not in rescuecodec)
-        want, reason = wants_packed(mode, public=bool(channel.get("public")), direct=to is not None,
-                                    peer_rescuecodec=to in rescuecodec, meshtastic_users=len(users))
         heard = rescuecodec if to else self.store.nodes_on_port(PORT_PRIVATE_APP, since, channel["name"])
+        want, reason = wants_packed(mode, public=bool(channel.get("public")), direct=to is not None,
+                                    peer_rescuecodec=to in rescuecodec, meshtastic_users=len(users),
+                                    rescuecodec_nodes=0 if to else len(heard))
         return {"channel": None if to else channel["name"], "node": to, "mode": mode, "own_mode": own is not None,
                 "send_as": "compressed" if want else "normal", "reason": reason, "meshtastic_users": users,
                 "rescuecodec_nodes": sorted(n for n in heard if not to or n == to)}

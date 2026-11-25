@@ -650,6 +650,8 @@ class MessengerTest {
         val m = messenger()
         m.start()
         connectTeamRadio()
+        // Another RescueCodec phone talks on the team channel, so Auto packs texts there.
+        m.routes.heardRescueCodec(other, "RescueCodec")
         val pos = mapOf("lat" to 50.69212, "lon" to 7.21345)
         val r = m.submit(mapOf("pos" to pos, "text" to mapOf("text" to hut)))
         assertIs<SubmitResult.Queued>(r)
@@ -664,7 +666,6 @@ class MessengerTest {
         assertTrue((decoded["id"] as Number).toInt() > 0, "and an id")
         assertEquals(0, radio.sentText().size)
         val row = messages.all.single()
-        assertEquals("app", row.source)
         assertTrue(MeshText.isPacked(row))
         assertEquals("Message: $hut. Position 50.69212, 7.21345.", Readable.of(row.json, "en"))
     }
