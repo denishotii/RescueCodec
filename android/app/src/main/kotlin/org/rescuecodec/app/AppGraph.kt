@@ -21,7 +21,10 @@ import org.rescuecodec.app.radio.DefaultTransportFactory
 import org.rescuecodec.app.radio.LastRadioStore
 import org.rescuecodec.app.radio.RadioScanner
 import org.rescuecodec.app.radio.TransportFactory
+import org.rescuecodec.app.service.AppForeground
 import org.rescuecodec.app.service.MaydayNotifier
+import org.rescuecodec.app.service.TeamNotifier
+import org.rescuecodec.app.service.TeamWatcher
 import org.rescuecodec.app.ui.Permissions
 import java.io.File
 
@@ -69,6 +72,16 @@ class AppGraph(
         alerts = MaydayNotifier(appContext) { ui.language.value },
     )
 
+    /** Notifications and in-app cues for new messages, tasks and answers. It only reads the database. */
+    val teamNotifier = TeamNotifier(appContext) { ui.language.value }
+    val teamAlerts = TeamWatcher(
+        messages = database.messages(),
+        tasks = database.tasks(),
+        notifier = teamNotifier,
+        foreground = { AppForeground.visible },
+        soundsOn = { ui.sounds.value },
+    )
+
     private var started = false
 
     /** Starts the messenger loops (restores queue and tasks from the database). Safe to call often. */
@@ -77,6 +90,7 @@ class AppGraph(
         if (started) return
         started = true
         scope.launch { messenger.start() }
+        scope.launch { teamAlerts.run() }
     }
 
     /** Stops everything that was started. For tests. */
