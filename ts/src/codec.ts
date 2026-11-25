@@ -6,6 +6,7 @@ import * as C from "./codes.js";
 import { CodecError, type ErrorCode } from "./errors.js";
 import { EnvelopeSchema, type Envelope } from "./gen/rescuecodec/v2/rescuecodec_pb.js";
 import { MAX_UNPACKED_BYTES, PackError, knownDict, packText, unpackText } from "./textpack.js";
+import { MAX_WORDS_TEXT_BYTES, WORD_DICTS, WordsError, decodeWords, encodeWords, wordDictAvailable } from "./textwords.js";
 import type { RescueMessage } from "./types.js";
 
 type Obj = Record<string, unknown>;
@@ -260,9 +261,30 @@ function buildAck(b0: unknown): Body {
 }
 
 function buildText(b0: unknown): Body {
-  const b = checkKeys(b0, ["text", "dict"], "text");
+  const b = checkKeys(b0, ["text", "dict", "words"], "text");
   if ("dict" in b && !knownDict(int(b.dict, "text.dict", 1, 0xffffffff))) {
     throw err("invalid_value", "unknown dictionary, known: [1]", "text.dict");
+  }
+  if ("words" in b) {
+    // A compact text: the same words as 2-byte word tokens with the shared word dictionary (spec section 3.6).
+    if ("dict" in b) throw err("invalid_value", "give dict or words, not both", "text.words");
+    const version = int(b.words, "text.words", 1, 0xffffffff);
+    if (!Object.hasOwn(WORD_DICTS, version) || !wordDictAvailable(version)) {
+      throw err("invalid_value", `unknown word dictionary, known: [${Object.keys(WORD_DICTS).join(", ")}]`, "text.words");
+    }
+    let words: Uint8Array = new Uint8Array(0);
+    let wordsDict = 0;
+    if ("text" in b) {
+      if (typeof b.text !== "string") throw err("invalid_value", "must be a string", "text.text");
+      if (hasLoneSurrogate(b.text)) throw err("invalid_value", "must be valid Unicode", "text.text");
+      const size = byteLength(b.text);
+      if (size > 0) {
+        if (size > MAX_WORDS_TEXT_BYTES) throw err("invalid_value", `a compact text is at most ${MAX_WORDS_TEXT_BYTES} bytes`, "text.text");
+        words = encodeWords(b.text, version);
+        wordsDict = version;
+      }
+    }
+    return { case: "text", value: { text: "", deflate: new Uint8Array(0), dict: 0, words, wordsDict } } as Body;
   }
   let text = "";
   let deflate: Uint8Array = new Uint8Array(0);
@@ -282,10 +304,18 @@ function buildText(b0: unknown): Body {
   return { case: "text", value: { text, deflate, dict } } as Body;
 }
 
-type TextBody = { text: string; deflate: Uint8Array; dict: number };
+type TextBody = { text: string; deflate: Uint8Array; dict: number; words: Uint8Array; wordsDict: number };
 
-/** The words of a Text body: `text`, or `deflate` unpacked. Throws CodecError. */
+/** The words of a Text body: `text`, `deflate` unpacked or `words` decoded. Throws CodecError. */
 export function unpackedText(t: TextBody): string {
+  if (t.words.length > 0) {
+    try {
+      return decodeWords(t.words, t.wordsDict);
+    } catch (e) {
+      if (e instanceof WordsError) throw err(e.code, e.message, "text.words");
+      throw err("malformed", e instanceof Error ? e.message : String(e), "text.words");
+    }
+  }
   if (t.deflate.length === 0) return t.text;
   try {
     return unpackText(t.deflate, t.dict);
@@ -341,7 +371,13 @@ export function bodyType(env: Envelope): string {
   if (body.case === "text" && body.value.deflate.length > 0 && body.value.dict !== 0 && !knownDict(body.value.dict)) {
     return "unknown";
   }
+  if (body.case === "text" && wordsUnknown(body.value)) return "unknown";
   return body.case ?? "unknown";
+}
+
+/** A compact text whose word dictionary this library does not have (or whose copy fails its SHA-256 check). */
+function wordsUnknown(t: TextBody): boolean {
+  return t.words.length > 0 && t.wordsDict !== 0 && !t.text && t.deflate.length === 0 && !wordDictAvailable(t.wordsDict);
 }
 
 /** Value rules shared by encoder and decoder (spec section 5). */
@@ -414,6 +450,14 @@ export function validate(env: Envelope): void {
     case "text": {
       const t = body.value;
       if (kind === "unknown") break; // packed with a newer dictionary
+      if (t.words.length > 0) {
+        if (t.text || t.deflate.length > 0) throw err("invalid_value", "give one of text, deflate and words", "text.words");
+        if (t.dict) throw err("invalid_value", "dict is only allowed with deflate", "text.dict");
+        if (t.wordsDict === 0) throw err("missing_field", "a compact text needs its word dictionary number", "text.words_dict");
+        if (!unpackedText(t)) throw err("missing_field", "text must not be empty", "text.text");
+        break;
+      }
+      if (t.wordsDict) throw err("invalid_value", "words_dict is only allowed with words", "text.words_dict");
       if (t.deflate.length > 0) {
         if (t.text) throw err("invalid_value", "give text or deflate, not both", "text.deflate");
         if (t.dict === 0) throw err("missing_field", "a packed text needs its dictionary number", "text.dict");
@@ -512,11 +556,15 @@ export function fromProto(env: Envelope): RescueMessage {
       if (a.team) out.ack.team = a.team;
       break;
     }
-    case "text":
-      if (bodyType(env) === "unknown") out.unknown = {};
-      else if (body.value.deflate.length > 0) out.text = { text: unpackedText(body.value), dict: body.value.dict };
-      else out.text = { text: body.value.text };
+    case "text": {
+      const t = body.value;
+      // Unknown word dictionary: keep its number so the reader is told why, never guess the words.
+      if (bodyType(env) === "unknown") out.unknown = wordsUnknown(t) ? { words: t.wordsDict } : {};
+      else if (t.words.length > 0) out.text = { text: unpackedText(t), words: t.wordsDict };
+      else if (t.deflate.length > 0) out.text = { text: unpackedText(t), dict: t.dict };
+      else out.text = { text: t.text };
       break;
+    }
     default:
       out.unknown = {};
   }

@@ -127,7 +127,8 @@ export function render(msg: RescueMessage, lang = "en"): string {
       parts.push(body.text ?? "");
       break;
     default:
-      h = head("unknown");
+      // A compact text with a word dictionary we do not have: say so, never guess the words.
+      h = "words" in body && Object.hasOwn(L.head, "unknown_dict") ? head("unknown_dict", { n: body.words }) : head("unknown");
   }
 
   const endWith = (s: string) => (s.length > 0 && [".", "!", "?", p.end].includes(s[s.length - 1]) ? s : s + p.end);
