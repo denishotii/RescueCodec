@@ -1,0 +1,40 @@
+# 3 simulated Meshtastic nodes (real firmware, simulated radio) on one UDP multicast mesh.
+# Image tag is set in channel.env (MESHTASTICD_IMAGE) and passed by up.sh.
+name: rescuecodec-sim
+x-node: &node
+  image: ${MESHTASTICD_IMAGE:-meshtastic/meshtasticd:2.7.26.54e0d8d}
+  restart: unless-stopped
+  mem_limit: 256m
+  cpus: 0.5
+  networks: [mesh]
+  command: ["meshtasticd", "-c", "/etc/meshtasticd/config.yaml", "-d", "/var/lib/meshtasticd"]
+
+services:
+  field:
+    <<: *node
+    container_name: rc-sim-field
+    hostname: sim-field
+    ports: ["127.0.0.1:4403:4403"]
+    volumes:
+      - ./config/field.yaml:/etc/meshtasticd/config.yaml:ro
+      - ./data/field:/var/lib/meshtasticd
+  base:
+    <<: *node
+    container_name: rc-sim-base
+    hostname: sim-base
+    ports: ["127.0.0.1:4404:4403"]
+    volumes:
+      - ./config/base.yaml:/etc/meshtasticd/config.yaml:ro
+      - ./data/base:/var/lib/meshtasticd
+  relay:
+    <<: *node
+    container_name: rc-sim-relay
+    hostname: sim-relay
+    ports: ["127.0.0.1:4405:4403"]
+    volumes:
+      - ./config/relay.yaml:/etc/meshtasticd/config.yaml:ro
+      - ./data/relay:/var/lib/meshtasticd
+
+networks:
+  mesh:
+    driver: bridge
