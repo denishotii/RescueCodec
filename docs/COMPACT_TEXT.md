@@ -78,7 +78,7 @@ New apps read every older form forever: DEFLATE texts, word tokens with dictiona
 
 ## Where the word list comes from
 
-**Dictionary 2 (sent today):** `spec/vocab/words-dict-v2.txt`, **61,440 entries** (every code below the control range), 623,992 bytes, SHA-256 `3b6fff5d9bb04bfd0e624e5904afaa93895ee373f7fb88c52ae903a6e9a52616`. 22,545 single words and punctuation pieces, 38,895 two-word phrases ("in the", "do you"). Capitalised forms of common words ("I", "We", "The", "Please", "Hello") are entries of their own, so they cost 2 bytes, not 4. Built by `spec/tools/words_dict2.py` (reproducible, no randomness). In the APK: about **277 KB** extra (zip compressed). The gateway and the TypeScript library bundle the same file, checked by SHA-256.
+**Dictionary 2 (sent today):** `spec/vocab/words-dict-v2.txt`, **61,440 entries** (every code below the control range), 623,992 bytes, SHA-256 `c88c6b6bd08821b150a248c41f10b99c71ee5f34ab40d6840685738eb8f48dee`. 22,545 single words and punctuation pieces, 38,895 two-word phrases ("in the", "do you"). Capitalised forms of common words ("I", "We", "The", "Please", "Hello") are entries of their own, so they cost 2 bytes, not 4. Built by `spec/tools/words_dict2.py` (reproducible, no randomness). In the APK: about **277 KB** extra (zip compressed). The gateway and the TypeScript library bundle the same file, checked by SHA-256.
 
 **Dictionary 1 (spec 2.1):** `spec/vocab/words-dict-v1.txt`, 8192 entries, 66,607 bytes, SHA-256 `ffe93afb4623fcd364479169281ca745cc263317a4f83ce27f77d8d37b26a0d8`. Built by `spec/tools/words_dict.py`. Still bundled and readable forever.
 

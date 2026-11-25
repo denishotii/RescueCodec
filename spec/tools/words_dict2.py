@@ -120,7 +120,7 @@ def candidates(sets: dict[str, list[str]], known: set[str]) -> tuple[dict[str, f
             low = ascii_lower(w)
             if w == low:
                 word_score[w] += full
-                for form in {cap(w), ascii_upper(w)} - {w}:
+                for form in sorted({cap(w), ascii_upper(w)} - {w}):   # fixed order: float sums are reproducible
                     if occ.get(form):
                         word_score[w] += occ[form] * (len(form) + 1 + HEADER - 4) / total
             elif low in lower_ok and w in (cap(low), ascii_upper(low)):

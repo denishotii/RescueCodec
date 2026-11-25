@@ -28,7 +28,7 @@ from pathlib import Path
 MAX_TEXT_BYTES = 1024
 #: Dictionary versions: number -> (file in spec/vocab, SHA-256 of its bytes).
 DICTS = {1: ("words-dict-v1.txt", "ffe93afb4623fcd364479169281ca745cc263317a4f83ce27f77d8d37b26a0d8"),
-         2: ("words-dict-v2.txt", "3b6fff5d9bb04bfd0e624e5904afaa93895ee373f7fb88c52ae903a6e9a52616")}
+         2: ("words-dict-v2.txt", "c88c6b6bd08821b150a248c41f10b99c71ee5f34ab40d6840685738eb8f48dee")}
 #: The dictionary new texts are encoded with (2: 61,440 entries; 1 stays readable forever).
 CURRENT_DICT = 2
 
