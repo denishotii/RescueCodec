@@ -35,9 +35,17 @@ info:
     **Numbers in `/v2/stats`** carry `source: measured` (counted bytes, radio readings) or
     `source: estimated` (airtime calculated with the LoRa formula and Meshtastic's overhead).
 
+    **Plain Meshtastic texts** (SPEC section 2.1). The gateway also shows normal Meshtastic texts (port 1,
+    TEXT_MESSAGE_APP), for example from the official app: a broadcast on the team channel, or a direct message to
+    the gateway's radio. Texts on other channels (the public LongFast chat) are never shown. Such a record is a
+    normal `text` record with `codec.version: 0`; `codec.hex` holds the UTF-8 bytes of the text. A message with only
+    a text that you send goes out the same way (`--text-as-meshtastic on`, the default), so stock apps and radio
+    screens show it.
+
     **Other connectors** (not part of this HTTP API, same JSON): MQTT topic `rescuecodec/v2/messages`
     carries `MessageRecord` objects and `rescuecodec/v2/tasks` carries `Task` objects. The TAK
-    connector sends CoT markers. The readable-text connector posts `text.en` on the Meshtastic text channel.
+    connector sends CoT markers. The readable-text connector (`--text-over-air`) posts `text.en` on the
+    Meshtastic text port, with `[RC] ` in front so RescueCodec receivers skip the copy.
 servers:
   - url: http://127.0.0.1:8000
     description: Gateway on this computer
@@ -96,6 +104,11 @@ paths:
         Use `POST /v2/tasks/{key}/ack` to answer a task, not this endpoint.
         A text message that is over 200 bytes only with its position and id is cut to fit and ends with "…",
         like on the phone. The returned record shows the text that goes out.
+        A message with a `text` body goes out as a plain Meshtastic text (port 1, TEXT_MESSAGE_APP) on the team
+        channel while the gateway runs with `--text-as-meshtastic on` (the default): the official app, radio
+        screens and every Meshtastic device show it. Only the words go out (no id, `pos` or `time`), with the same
+        queue, priority, airtime budget and `want_ack`. The record then has `codec.version: 0` and no `key`.
+        With `--text-as-meshtastic off` it goes out as a RescueCodec text on port 256.
         With `dry_run: true` nothing is sent; you get the record as it would be queued.
       requestBody:
         required: true
@@ -192,11 +205,13 @@ paths:
     post:
       tags: [send]
       operationId: sendText
-      summary: Send a short free text (RescueCodec text message, port 256).
+      summary: Send a short free text (a normal Meshtastic text by default).
       description: |
         Shortcut for `POST /v2/messages` with a `text` body. 1 to 180 bytes of UTF-8.
-        Stock Meshtastic apps do not show port 256. To reach them, set `also_plain: true`:
-        the gateway then also posts the same text on the normal text port (TEXT_MESSAGE_APP).
+        With `--text-as-meshtastic on` (the default) it goes out as a plain Meshtastic text (port 1), which stock
+        apps show; `also_plain` then changes nothing. With `--text-as-meshtastic off` it goes out as a RescueCodec
+        text on port 256, which stock apps do not show. To reach them anyway, set `also_plain: true`: the gateway
+        then also posts `[RC] ` plus the text on the normal text port (TEXT_MESSAGE_APP).
       requestBody:
         required: true
         content:
@@ -677,7 +692,7 @@ components:
       additionalProperties: false
       required: [text]
       properties:
-        text: { type: string, minLength: 1, description: "1..180 bytes of UTF-8." }
+        text: { type: string, minLength: 1, description: "1..180 bytes of UTF-8. In a record of a plain Meshtastic text (`codec.version: 0`) up to 233 bytes, as the sender typed it." }
     Text2:
       type: object
       description: The message as one readable line, built from the spec templates.
@@ -731,7 +746,10 @@ components:
           type: object
           required: [version, size, hex]
           properties:
-            version: { type: integer, enum: [1, 2] }
+            version:
+              type: integer
+              enum: [0, 1, 2]
+              description: "2 = RescueCodec v2, 1 = v1. 0 = a plain Meshtastic text (port 1, TEXT_MESSAGE_APP), not a RescueCodec packet: `hex` is the UTF-8 text, `type` is `text`, there is no id and no task, and a received one can be up to 233 bytes. A UI can show it with a small \"via Meshtastic\" hint."
             size: { type: integer, description: "Payload bytes (measured)." }
             hex: { type: string }
         radio:

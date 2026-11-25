@@ -27,6 +27,8 @@ class GatewayConfig:
     # readable text line over the air: off | out | in | both
     text_over_air: str = "off"
     text_lang: str = "en"
+    # a message with only a text goes out as a plain Meshtastic text (port 1), so stock apps and radio screens show it
+    text_as_meshtastic: bool = True
 
     # connectors
     mqtt: str | None = None               # "host:port"

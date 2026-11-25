@@ -39,8 +39,13 @@ def build_parser() -> argparse.ArgumentParser:
     svc.add_argument("--preset", default=env("PRESET", "LONG_FAST"), help="modem preset for airtime estimates until the radio reports its own")
     svc.add_argument("--ack-timeout", type=float, default=float(env("ACK_TIMEOUT", 120)), help="seconds to wait for Meshtastic's delivery answer")
     svc.add_argument("--text-over-air", choices=["off", "out", "in", "both"], default=env("TEXT_OVER_AIR", "off"),
-                     help="also post the readable line on the plain Meshtastic text port, for stock apps. Off by default: it doubles airtime. out = what we send, in = what we receive")
+                     help="also post the readable line of each RescueCodec report on the plain Meshtastic text port, for stock apps, with '[RC] ' in front "
+                     "so RescueCodec receivers skip the copy. Off by default: it doubles airtime. out = what we send, in = what we receive")
     svc.add_argument("--text-lang", choices=["en", "de"], default=env("TEXT_LANG", "en"), help="language of that line")
+    svc.add_argument("--text-as-meshtastic", choices=["on", "off"], default=env("TEXT_AS_MESHTASTIC", "on"),
+                     help="a message with only a text (POST /v2/text, or /v2/messages with a text body) goes out as a normal "
+                     "Meshtastic text on the team channel (port 1), so the official app and radio screens show it. Only the "
+                     "words go out, no position or time. off = send it as a RescueCodec text on port 256 (default on)")
     con = p.add_argument_group("connectors")
     con.add_argument("--mqtt", metavar="HOST[:PORT]", default=env("MQTT"), help="publish JSON to this MQTT broker (needs paho-mqtt)")
     con.add_argument("--mqtt-user", default=env("MQTT_USER"))
@@ -69,7 +74,7 @@ def config_from_args(args: argparse.Namespace) -> GatewayConfig:
         tcp=args.tcp, serial=args.serial, emulator=args.emulator or args.emulator_demo, emulator_demo=args.emulator_demo,
         channel_index=args.channel, channel_name=args.channel_name, hop_limit=int(args.hop_limit) if args.hop_limit is not None else None,
         db_path=args.db, team=args.team, preset=args.preset, ack_timeout_s=args.ack_timeout,
-        text_over_air=args.text_over_air, text_lang=args.text_lang,
+        text_over_air=args.text_over_air, text_lang=args.text_lang, text_as_meshtastic=str(args.text_as_meshtastic).lower() in ("on", "1", "true", "yes"),
         mqtt=args.mqtt, mqtt_user=args.mqtt_user, mqtt_password=args.mqtt_password, mqtt_prefix=args.mqtt_prefix,
         cot=args.cot or bool(args.cot_tcp), cot_udp=args.cot_udp, cot_iface=args.cot_iface, cot_tcp=args.cot_tcp,
         cot_stale_min=args.cot_stale_min, host=args.host, http_port=args.port, static_dir=args.static_dir,

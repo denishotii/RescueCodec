@@ -38,6 +38,7 @@ class Contract(unittest.TestCase):
             gw.hear({"sector": {"sector": 12, "status": "partial", "coverage": 60}})
             gw.hear({"time": "14:30", "track": {"points": [{"lat": 50.69212, "lon": 7.21345, "s": 5}, {"lat": 50.6925, "lon": 7.2139, "s": 35}]}})
             gw.hear({"text": {"text": "Treffpunkt am Gasthaus"}})
+            gw.radio.inject_text("!0000e003", "Normal Meshtastic text from the official app")      # codec.version 0
             gw.hear({"priority": "critical", "id": 11, "found": {"count": 2}})
             sent = c.post("/v2/messages", json={"message": FOUND})
             self.assertEqual(sent.status_code, 202)

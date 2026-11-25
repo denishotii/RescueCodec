@@ -589,6 +589,21 @@ def fit_text(msg: Mapping) -> Mapping:
     return msg
 
 
+def fit_plain(text: str, limit: int = C.MAX_ENCODE_BYTES) -> str:
+    """Make a plain Meshtastic text (port 1) fit into `limit` UTF-8 bytes. Same rule as TextFit.fitPlain in Kotlin.
+
+    A text that fits comes back unchanged. A longer one is cut to the longest prefix that ends on a whole UTF-8
+    character, trailing spaces go, and "…" is added, so the result is at most `limit` bytes.
+    Example: a 230-byte readable line becomes 197 bytes of it plus "…" (200 bytes)."""
+    raw = text.encode("utf-8")
+    if len(raw) <= limit:
+        return text
+    cut = max(0, limit - len(ELLIPSIS.encode("utf-8")))
+    while cut > 0 and (raw[cut] & 0xC0) == 0x80:       # a cut here would split a character
+        cut -= 1
+    return raw[:cut].decode("utf-8").rstrip() + ELLIPSIS
+
+
 def _fallback(run: _Run | None, text: str, reason: str, cues: list[str] | None = None) -> Extraction:
     cut = _cut_text(text)
     msg = {"text": {"text": cut}} if cut else None

@@ -11,6 +11,11 @@ PORT_PRIVATE_APP = 256
 PORT_TEXT_MESSAGE = 1
 BROADCAST = "^all"
 
+#: In front of every readable copy of a RescueCodec message that a gateway posts on the text port (--text-over-air,
+#: also_plain). Stock apps show it as is. RescueCodec receivers drop texts that start with it: they already have the
+#: message from port 256 (SPEC section 2.1).
+TEXT_COPY_PREFIX = "[RC] "
+
 
 @dataclass
 class RadioPacket:
@@ -87,3 +92,11 @@ class RadioAdapter(ABC):
 
 def node_id(num: int) -> str:
     return f"!{num & 0xFFFFFFFF:08x}"
+
+
+def is_team_text(packet: RadioPacket, own_node: str | None, team_channel: int | None) -> bool:
+    """Is this plain Meshtastic text (port 1) for us? A broadcast only on the team channel (the same channel as
+    port 256), or a direct message to our own node on any channel. Never the public LongFast chatter."""
+    if packet.to == BROADCAST:
+        return team_channel is not None and packet.channel == team_channel
+    return own_node is not None and packet.to == own_node

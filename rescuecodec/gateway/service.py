@@ -17,14 +17,14 @@ from datetime import datetime, timezone
 from typing import Any
 
 from rescuecodec.encoding.airtime import PRESETS, message_airtime_seconds
-from rescuecodec.engine.extract import fit_text
+from rescuecodec.engine.extract import fit_plain, fit_text
 from rescuecodec.engine.sendqueue import BUDGET_LIMIT, Deduper, SendQueue
 from rescuecodec.engine.tasks import InvalidTransition, Task, TaskBoard, TASK_TYPES, task_key
 from rescuecodec.gateway import __version__
 from rescuecodec.gateway.config import GatewayConfig
 from rescuecodec.gateway.connectors.geojson import feature_collection
 from rescuecodec.gateway.events import EventBus
-from rescuecodec.gateway.radio.base import PORT_TEXT_MESSAGE, RadioAdapter, RadioPacket
+from rescuecodec.gateway.radio.base import BROADCAST, PORT_TEXT_MESSAGE, TEXT_COPY_PREFIX, RadioAdapter, RadioPacket
 from rescuecodec.gateway.store import Store
 from rescuecodec.v2 import codes as C
 from rescuecodec.v2.codec import (CodecError, decode, effective_priority, encode, message_type, node_from_json,
@@ -36,6 +36,10 @@ log = logging.getLogger("rescuecodec.gateway")
 
 NO_NODE = "!00000000"
 PRIORITY_LEVEL = {"routine": 1, "normal": 2, "urgent": 3, "critical": 4}
+#: `codec.version` of a record that is a plain Meshtastic text (port 1), not a RescueCodec packet. `codec.hex` then
+#: holds the UTF-8 bytes of the text (SPEC section 2.1).
+PLAIN_TEXT_VERSION = 0
+PLAIN_DEDUPE_S = 24 * 3600          # a plain text is a repeat when (sender, packet id) came in during the last 24 h
 
 
 class ApiError(Exception):
@@ -94,18 +98,16 @@ def metric(value: Any, unit: str, source: str, note: str | None = None) -> dict[
     return out
 
 
-def cut_utf8(text: str, limit: int) -> str:
-    """Shorten `text` to at most `limit` UTF-8 bytes without breaking a character."""
-    raw = text.encode("utf-8")
-    if len(raw) <= limit:
-        return text
-    return raw[:limit - 3].decode("utf-8", "ignore") + "..."
+def is_plain(record: dict[str, Any]) -> bool:
+    """True for a plain Meshtastic text record (port 1)."""
+    return record.get("codec", {}).get("version") == PLAIN_TEXT_VERSION
 
 
 @dataclass
 class _Out:
     record_seq: int
     want_ack: bool
+    port: int
 
 
 class GatewayService:
@@ -124,7 +126,8 @@ class GatewayService:
         self._task_seq: dict[str, int] = {}            # task key -> seq of the record that created it
         self._queued: dict[int, _Out] = {}             # send queue item seq -> record
         self._awaiting: dict[int, float] = {}          # record seq -> deadline (monotonic) for the Meshtastic answer
-        self._plain: deque[str] = deque(maxlen=50)     # readable lines waiting for the text port
+        self._plain: deque[str] = deque(maxlen=50)     # readable copies waiting for the text port (--text-over-air)
+        self._texts_seen: dict[tuple[str, Any], float] = {}  # plain texts heard: (sender, packet id) -> unix time
         self._heard: dict[str, dict[str, Any]] = {}    # node -> last rssi / snr / hops / time heard
         self._counters = {"in": 0, "out": 0, "bytes_in": 0, "bytes_out": 0, "text_bytes": 0, "airtime_s": 0.0,
                           "rejected": 0, "duplicates": 0}
@@ -174,7 +177,10 @@ class GatewayService:
                     record["status"] = "failed"
                 when = parse_iso(record["time"])
                 message = dict(record["message"])
-                if record["direction"] == "in":
+                if record["direction"] == "in" and is_plain(record):
+                    self._text_seen_before(record["from"], (record.get("radio") or {}).get("packet_id"),
+                                           bytes.fromhex(record["codec"]["hex"]), when.timestamp())
+                elif record["direction"] == "in":
                     self.deduper.seen(record["from"], message, bytes.fromhex(record["codec"]["hex"]), when.timestamp())
                 self._apply_to_board(record, message, when)
                 self._restore_stats(record, when)
@@ -229,6 +235,35 @@ class GatewayService:
                 "codec": {"version": 1 if message.get("v") == 1 else 2, "size": len(payload), "hex": payload.hex()},
                 "radio": radio, "message": public, "text": readable(message), "task_key": tkey}
 
+    def _plain_record(self, direction: str, sender: str, text: str, payload: bytes, now: datetime, status: str,
+                      radio: dict[str, Any] | None, priority: str | None = None) -> dict[str, Any]:
+        """A MessageRecord without `seq` for a plain Meshtastic text: type text, codec.version 0, no id, no task."""
+        message: dict[str, Any] = {"text": {"text": text}}
+        if priority in PRIORITY_LEVEL and priority != "normal":
+            message = {"priority": priority, **message}
+        return {"key": None, "direction": direction, "from": sender, "type": "text",
+                "priority": priority if priority in PRIORITY_LEVEL else "normal", "status": status, "error": None,
+                "time": iso(now), "event_time": None,
+                "codec": {"version": PLAIN_TEXT_VERSION, "size": len(payload), "hex": payload.hex()},
+                "radio": radio, "message": message, "text": readable(message), "task_key": None}
+
+    def _copy_line(self, record: dict[str, Any]) -> str:
+        """The readable copy of a RescueCodec record for stock apps, marked so RescueCodec receivers skip it."""
+        return TEXT_COPY_PREFIX + record["text"][self.config.text_lang if self.config.text_lang in ("en", "de") else "en"]
+
+    def _text_seen_before(self, sender: str, packet_id: Any, payload: bytes, now: float) -> bool:
+        """Dedupe for plain texts: the same (sender, Meshtastic packet id) within 24 h. Without a packet id: the
+        same (sender, bytes) within 10 minutes. Remembers the text and returns False when it is new."""
+        ttl = PLAIN_DEDUPE_S if packet_id else 600
+        key = (sender, packet_id) if packet_id else (sender, bytes(payload))
+        if len(self._texts_seen) > 1000:
+            self._texts_seen = {k: t for k, t in self._texts_seen.items() if now - t < PLAIN_DEDUPE_S}
+        seen = self._texts_seen.get(key)
+        if seen is not None and now - seen < ttl:
+            return True
+        self._texts_seen[key] = now
+        return False
+
     def _apply_to_board(self, record: dict[str, Any], message: dict[str, Any], when: datetime) -> Task | None:
         """Feed a record to the task board. Returns the task if it is a real (not placeholder) task that changed."""
         kind = record["type"]
@@ -247,13 +282,17 @@ class GatewayService:
         direction = record["direction"]
         self._counters[direction] += 1
         self._counters["bytes_" + direction] += record["codec"]["size"]
-        self._counters["text_bytes"] += len(record["text"]["en"].encode("utf-8"))
+        # A plain text is text already: it counts as its own size, so it never shows a saving it did not make.
+        self._counters["text_bytes"] += record["codec"]["size"] if is_plain(record) else len(record["text"]["en"].encode("utf-8"))
         slot = self._by_type.setdefault(record["type"], {"count": 0, "bytes": 0})
         slot["count"] += 1
         slot["bytes"] += record["codec"]["size"]
 
     # ------------------------------------------------------------------ receiving
     def _on_packet(self, packet: RadioPacket) -> None:
+        if packet.port == PORT_TEXT_MESSAGE:
+            self._on_text(packet)
+            return
         if packet.port != self.config.port_num:
             return
         try:
@@ -282,10 +321,49 @@ class GatewayService:
             if task:
                 self._publish("task", self._task_json(task))
             if self.config.text_over_air in ("in", "both"):
-                self._plain.append(record["text"][self.config.text_lang if self.config.text_lang in ("en", "de") else "en"])
+                self._plain.append(self._copy_line(record))
                 self._wake.set()
         log.info("received %s from %s (%d bytes, rssi %s, snr %s, hops %s)", record["type"], packet.sender,
                  record["codec"]["size"], packet.rssi, packet.snr, packet.hops)
+
+    def _on_text(self, packet: RadioPacket) -> None:
+        """A plain Meshtastic text (port 1), for example from the official app. The radio adapter passes only texts on
+        the team channel and direct messages to us. Stored as a normal `text` record with codec.version 0."""
+        own = self.own_node
+        if packet.to != BROADCAST and packet.to != own:        # a direct message to another node: not ours
+            return
+        try:
+            text = packet.payload.decode("utf-8")
+        except UnicodeDecodeError:
+            self._counters["rejected"] += 1
+            log.info("ignored a text from %s that is not UTF-8", packet.sender)
+            return
+        if not text.strip():
+            return
+        if text.startswith(TEXT_COPY_PREFIX):
+            # A gateway's readable copy of a RescueCodec message (--text-over-air). We have the message from port 256.
+            self._counters["duplicates"] += 1
+            log.debug("readable copy from %s dropped", packet.sender)
+            return
+        now = datetime.now(timezone.utc)
+        with self.lock:
+            if self._text_seen_before(packet.sender, packet.packet_id, packet.payload, now.timestamp()):
+                self._counters["duplicates"] += 1
+                log.debug("duplicate text from %s dropped", packet.sender)
+                return
+            radio = {"packet_id": packet.packet_id, "rssi": packet.rssi, "snr": packet.snr, "hops": packet.hops,
+                     "channel": packet.channel, "via": packet.via}
+            record = self.store.insert(self._plain_record("in", packet.sender, text, packet.payload, now, "received", radio))
+            self._count(record)
+            self._heard[packet.sender] = {"rssi": packet.rssi, "snr": packet.snr, "hops": packet.hops, "time": now}
+            if packet.rssi is not None:
+                self._last_rssi = packet.rssi
+            if packet.snr is not None:
+                self._last_snr = packet.snr
+            self._publish("message", record)
+        log.info("received a Meshtastic text from %s (%d bytes, %s, rssi %s, snr %s, hops %s)", packet.sender,
+                 len(packet.payload), "direct" if packet.to != BROADCAST else f"channel {packet.channel}",
+                 packet.rssi, packet.snr, packet.hops)
 
     def _on_connection(self, connected: bool) -> None:
         if connected:
@@ -338,24 +416,41 @@ class GatewayService:
             kind = message_type(message)
         except CodecError as exc:
             raise codec_error(exc) from exc
+        # A message with only a text goes out as a plain Meshtastic text (port 1) when --text-as-meshtastic is on, so
+        # the official app and radio screens show it. Only the words go out (SPEC section 2.1).
+        plain = kind == "text" and self.config.text_as_meshtastic
         with self.lock:
             assigned = None
             # Every message except an Ack gets an id, so a second "Hilfe" is not dropped as a repeat of the first
             # (SPEC section 14). It costs 1 to 2 bytes. Acks are repeats by design and carry none.
-            if kind != "ack" and not message.get("id"):
+            if kind != "ack" and not message.get("id") and not plain:
                 assigned = self.store.peek_message_id()
                 message["id"] = assigned
+            words = message.get("text", {}).get("text") if plain and isinstance(message.get("text"), dict) else None
             message = dict(fit_text(message))      # a long text plus position and id is cut to fit, like on the phone
             try:
-                payload = encode(message)
+                payload = encode(message)           # also checks a text that goes out plain: bad fields stay an error
                 canonical = decode(payload)
             except CodecError as exc:
                 raise codec_error(exc) from exc
             now = datetime.now(timezone.utc)
             sender = self.own_node or NO_NODE
+            port = self.config.port_num
+            if plain:                               # the words only, at most 200 bytes, no id, position or time
+                words = fit_plain(words)
+                payload, port = words.encode("utf-8"), PORT_TEXT_MESSAGE
+                canonical = {"text": {"text": words}}
+                if message.get("priority"):
+                    canonical = {"priority": message["priority"], **canonical}
+
+            def build(status: str) -> dict[str, Any]:
+                if plain:
+                    return self._plain_record("out", sender, words, payload, now, status, None,
+                                              effective_priority(canonical))
+                return self._build_record("out", sender, canonical, payload, now, status, None)
+
             if dry_run:
-                record = self._build_record("out", sender, canonical, payload, now, "dry_run", None)
-                return {"seq": 0, **record}
+                return {"seq": 0, **build("dry_run")}
             if not self.radio.connected:
                 raise ApiError(503, "radio_unavailable", "no Meshtastic radio connected")
             channel_error = self.radio.info().channel_error
@@ -371,11 +466,11 @@ class GatewayService:
                 retry = self._retry_after_s(kind, airtime, clock)
                 minutes = max(1, math.ceil(retry / 60))
                 raise ApiError(429, "airtime_limit", f"airtime budget used, send again in {minutes} min", None, retry)
-            item = self.queue.put(canonical)
+            item = self.queue.put(canonical, payload=payload)
             if item is None:                              # cannot happen after the check above
                 raise ApiError(409, "bad_request", "the same message is already queued")
-            record = self.store.insert(self._build_record("out", sender, canonical, payload, now, "queued", None))
-            self._queued[item.seq] = _Out(record["seq"], want_ack)
+            record = self.store.insert(build("queued"))
+            self._queued[item.seq] = _Out(record["seq"], want_ack, port)
             if assigned:
                 self.store.commit_message_id(assigned)
             self._count(record)
@@ -383,8 +478,8 @@ class GatewayService:
             self._publish("message", record)
             if task:
                 self._publish("task", self._task_json(task))
-            if self.config.text_over_air in ("out", "both"):
-                self._plain.append(record["text"][self.config.text_lang if self.config.text_lang in ("en", "de") else "en"])
+            if self.config.text_over_air in ("out", "both") and not plain:     # a plain text needs no copy
+                self._plain.append(self._copy_line(record))
             self._wake.set()
             return record
 
@@ -398,9 +493,9 @@ class GatewayService:
         if priority is not None:
             message["priority"] = priority
         record = self._queue_message(message, want_ack=True)
-        if also_plain:
+        if also_plain and not is_plain(record):          # sent as a plain text already: no second copy
             with self.lock:
-                self._plain.append(text)
+                self._plain.append(TEXT_COPY_PREFIX + text)
                 self._wake.set()
         return record
 
@@ -456,11 +551,11 @@ class GatewayService:
     def _pop_plain(self) -> str | None:
         if not self._plain:
             return None
-        air = message_airtime_seconds(len(cut_utf8(self._plain[0], 200).encode("utf-8")), self.queue.preset)
+        air = message_airtime_seconds(len(fit_plain(self._plain[0]).encode("utf-8")), self.queue.preset)
         now = time.monotonic()
         if not self.queue.budget.allows("text", air, now):
             return None
-        text = cut_utf8(self._plain.popleft(), 200)
+        text = fit_plain(self._plain.popleft())
         self.queue.budget.record(now, air)
         return text
 
@@ -478,7 +573,7 @@ class GatewayService:
                 self._awaiting[record_seq] = time.monotonic() + self.config.ack_timeout_s
         callback = (lambda ok, reason: self._on_delivery(record_seq, ok, reason)) if out.want_ack else None
         try:
-            self.radio.send(item.payload, port=self.config.port_num, want_ack=out.want_ack,
+            self.radio.send(item.payload, port=out.port, want_ack=out.want_ack,
                             priority=item.meshtastic_priority, channel=self.config.channel_index,
                             hop_limit=self.config.hop_limit, on_result=callback)
         except Exception as exc:
