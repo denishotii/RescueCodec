@@ -4,39 +4,35 @@ package org.rescuecodec.app.ui.chat
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.rescuecodec.app.R
@@ -50,6 +46,8 @@ import org.rescuecodec.app.data.MessageEntity
 import org.rescuecodec.app.data.MessageState
 import org.rescuecodec.app.ui.TaskItem
 import org.rescuecodec.app.ui.components.BigButton
+import org.rescuecodec.app.ui.components.GridChip
+import org.rescuecodec.app.ui.components.PlainTag
 import org.rescuecodec.app.ui.components.RcIcon
 import org.rescuecodec.app.ui.components.StateTag
 import org.rescuecodec.app.ui.components.Tag
@@ -68,8 +66,8 @@ import kotlin.math.sqrt
 class ChatActions(
     val answer: (TaskItem, String) -> Unit,
     val speak: (MessageEntity, String) -> Unit,
-    val copy: (String) -> Unit,
-    val details: (MessageEntity) -> Unit,
+    /** Long-press: the sheet with Read aloud, Show position, Copy text, Details. */
+    val menu: (MessageEntity) -> Unit,
 )
 
 /** Report types that render as a card in the stream. */
@@ -85,6 +83,17 @@ internal fun textBody(json: String?): String? = runCatching {
 
 /** The words a person would read for this row (text, or the readable sentence). Used by Copy and Read aloud. */
 internal fun wordsOf(m: MessageEntity, lang: String): String? = textBody(m.json) ?: Readable.of(m.json, lang)
+
+/**
+ * The line of a report card, without the position (the Grid chip shows it) and without the head word (the type tag
+ * shows it): "Child, conscious, hypothermia. Needs stretcher."
+ */
+internal fun cardLine(json: String?, type: String, lang: String): String? {
+    val full = Readable.withoutPosition(json, lang) ?: return null
+    val head = Labels.head(lang, type)
+    val rest = if (type != "mayday" && full.startsWith(head, ignoreCase = true)) full.substring(head.length).trimStart(':', ' ', ',', '.') else full
+    return rest.ifBlank { full }.replaceFirstChar { it.uppercase() }
+}
 
 /** A stable colour for a sender, from the palette that never uses state colours. */
 @Composable
@@ -102,50 +111,67 @@ internal fun distanceM(a: Fix, lat: Double, lon: Double): Double {
     return 2 * r * atan2(sqrt(h), sqrt(1 - h))
 }
 
+/** Compass direction from [a] to the point: N, NE, E, ... */
+internal fun bearingWord(a: Fix, lat: Double, lon: Double): String {
+    val p1 = Math.toRadians(a.lat)
+    val p2 = Math.toRadians(lat)
+    val dl = Math.toRadians(lon - a.lon)
+    val y = sin(dl) * cos(p2)
+    val x = cos(p1) * sin(p2) - sin(p1) * cos(p2) * cos(dl)
+    val deg = (Math.toDegrees(atan2(y, x)) + 360) % 360
+    return listOf("N", "NE", "E", "SE", "S", "SW", "W", "NW")[((deg + 22.5) / 45).toInt() % 8]
+}
+
 internal fun distanceText(m: Double): String = if (m < 1000) "${(m / 10).toInt() * 10} m" else "%.1f km".format(Locale.ROOT, m / 1000)
 
-private fun bubbleShape(mine: Boolean) = if (mine) RoundedCornerShape(18.dp, 18.dp, 6.dp, 18.dp) else RoundedCornerShape(18.dp, 18.dp, 18.dp, 6.dp)
+/** "450 m NE" from our position to the report, or null without a position. */
+internal fun distanceOf(json: String?, fix: Fix?): String? {
+    if (fix == null || json == null) return null
+    return runCatching {
+        val pos = Json.parseObject(json)["pos"] as? Map<*, *> ?: return null
+        val lat = (pos["lat"] as Number).toDouble()
+        val lon = (pos["lon"] as Number).toDouble()
+        "${distanceText(distanceM(fix, lat, lon))} ${bearingWord(fix, lat, lon)}"
+    }.getOrNull()
+}
+
+/** Overnight bubbles: 10 dp corners, the corner at the sender's side almost square. */
+private fun bubbleShape(mine: Boolean) = if (mine) RoundedCornerShape(10.dp, 3.dp, 10.dp, 10.dp) else RoundedCornerShape(3.dp, 10.dp, 10.dp, 10.dp)
 
 @Composable
-private fun maxBubbleWidth() = (LocalConfiguration.current.screenWidthDp * 0.84f).dp
+private fun maxBubbleWidth() = (LocalConfiguration.current.screenWidthDp * 0.86f).dp
 
 /** A row that holds one bubble or card, on the right for mine and on the left for others. */
 @Composable
 private fun Side(mine: Boolean, content: @Composable () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 3.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
         horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start,
     ) { content() }
 }
 
-/** The long-press menu: Read aloud, Copy, Details. */
-@Composable
-private fun RowMenu(open: Boolean, words: String?, m: MessageEntity, actions: ChatActions, onClose: () -> Unit) {
-    DropdownMenu(expanded = open, onDismissRequest = onClose, modifier = Modifier.semantics { testTagsAsResourceId = true }) {
-        if (words != null) {
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.action_read_aloud), style = MaterialTheme.typography.bodyLarge) },
-                leadingIcon = { RcIcon(R.drawable.ic_volume_up, null) },
-                onClick = { onClose(); actions.speak(m, words) },
-                modifier = Modifier.heightIn(min = 52.dp).testTag("menu_speak"),
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.action_copy), style = MaterialTheme.typography.bodyLarge) },
-                leadingIcon = { RcIcon(R.drawable.ic_content_copy, null) },
-                onClick = { onClose(); actions.copy(words) },
-                modifier = Modifier.heightIn(min = 52.dp).testTag("menu_copy"),
-            )
-        }
-        DropdownMenuItem(
-            text = { Text(stringResource(R.string.action_details), style = MaterialTheme.typography.bodyLarge) },
-            leadingIcon = { RcIcon(R.drawable.ic_info, null) },
-            onClick = { onClose(); actions.details(m) },
-            modifier = Modifier.heightIn(min = 52.dp).testTag("menu_details"),
-        )
-    }
+/**
+ * A 48 dp touch target that takes only [visual] of height in the layout, so a small icon in a text line stays easy to
+ * hit with a glove without making the line taller.
+ */
+private fun Modifier.compactTouch(visual: Dp): Modifier = this.layout { measurable, constraints ->
+    val p = measurable.measure(constraints)
+    val h = visual.roundToPx()
+    layout(p.width, h) { p.place(0, (h - p.height) / 2) }
 }
 
-/** One message in the stream: a text bubble, a report card, or a small centred line (answers, track points). */
+/** The small speaker: tap to hear the message read aloud. */
+@Composable
+private fun SpeakerIcon(words: String?, m: MessageEntity, actions: ChatActions) {
+    if (words == null) return
+    val desc = stringResource(R.string.action_read_aloud)
+    Box(
+        Modifier.compactTouch(20.dp).size(44.dp).clickable(role = Role.Button, onClickLabel = desc) { actions.speak(m, words) }.testTag("speak_${m.id}"),
+        contentAlignment = Alignment.Center,
+    ) { RcIcon(R.drawable.ic_volume_up, desc, tint = Rc.colors.muted, size = 18.dp) }
+}
+
+/** One message in the stream: a text bubble, a report card, or a small line (answers, track points). */
 @Composable
 fun ChatRow(
     m: MessageEntity,
@@ -159,10 +185,21 @@ fun ChatRow(
     val mine = m.dir == "out"
     when {
         m.json == null || m.state == MessageState.INVALID -> SystemLine(stringResource(R.string.feed_unreadable), R.drawable.ic_error_outline, Modifier.testTag("msg_${m.id}"))
-        m.type == "ack" -> AckLine(m, mine, taskType, lang, senderName)
+        m.type == "ack" -> AckLine(m, mine, task, taskType, lang, senderName)
         m.type in CARD_TYPES -> Side(mine) { ReportCard(m, task, lang, mine, senderName, fix, actions) }
         m.type == "track" -> SystemLine("${Labels.head(lang, "track")} · $senderName", R.drawable.ic_location_on, Modifier.testTag("msg_${m.id}"))
         else -> Side(mine) { TextBubble(m, lang, mine, senderName, actions) }
+    }
+}
+
+/** "D-Node 7  12:02  [speaker]": the first line of a message from someone else. */
+@Composable
+private fun WhoLine(name: String, m: MessageEntity, words: String?, actions: ChatActions) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(name, style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp), color = senderColor(m.node), maxLines = 1, modifier = Modifier.weight(1f, fill = false))
+        Text(timeOf(m.atMs), style = MaterialTheme.typography.bodySmall.copy(fontSize = 14.sp), color = Rc.colors.muted)
+        Box(Modifier.weight(1f))
+        SpeakerIcon(words, m, actions)
     }
 }
 
@@ -172,128 +209,62 @@ private fun TextBubble(m: MessageEntity, lang: String, mine: Boolean, senderName
     val c = Rc.colors
     val words = remember(m.json, lang) { textBody(m.json) ?: Readable.of(m.json, lang) }
     val grid = remember(m.json) { Readable.gridRef(m.json) }
-    var menu by remember { mutableStateOf(false) }
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        Surface(
-            shape = bubbleShape(mine),
-            color = if (mine) c.mine else MaterialTheme.colorScheme.surface,
-            contentColor = if (mine) c.onMine else MaterialTheme.colorScheme.onSurface,
-            border = if (mine) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-            modifier = Modifier.widthIn(max = maxBubbleWidth())
-                .combinedClickable(onClick = { if (mine) expanded = !expanded }, onLongClick = { menu = true })
-                .testTag("msg_${m.id}"),
-        ) {
-            Column(Modifier.padding(start = 14.dp, end = 12.dp, top = 8.dp, bottom = 6.dp)) {
-                if (!mine) Text(senderName, style = MaterialTheme.typography.labelLarge, color = senderColor(m.node))
-                Text(words.orEmpty(), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.testTag("msg_text_${m.id}"))
-                if (grid != null) PositionLine(grid, null)
-                Footer(m, mine, expanded, lang, saving = false)
-            }
-        }
-        RowMenu(menu, words, m, actions) { menu = false }
-    }
-}
-
-/** Time, and for my messages the status ticks and the byte caption. Tap a bubble of mine to read what the ticks mean. */
-@Composable
-private fun ColumnScope.Footer(m: MessageEntity, mine: Boolean, expanded: Boolean, lang: String, saving: Boolean) {
-    val c = Rc.colors
-    val muted = if (mine) c.onMine.copy(alpha = 0.72f) else MaterialTheme.colorScheme.onSurfaceVariant
-    Row(
-        Modifier.padding(top = 2.dp).align(Alignment.End),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    Surface(
+        shape = bubbleShape(mine),
+        color = if (mine) c.mine else MaterialTheme.colorScheme.surface,
+        contentColor = if (mine) c.onMine else MaterialTheme.colorScheme.onSurface,
+        border = if (mine) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier.widthIn(max = maxBubbleWidth())
+            .combinedClickable(onClick = {}, onLongClick = { actions.menu(m) })
+            .testTag("msg_${m.id}"),
     ) {
-        if (mine) {
-            val caption = remember(m.json, m.bytes.size, lang, saving) { captionOf(m, lang, saving) }
-            Text(
-                if (caption.second != null) stringResource(R.string.caption_saving, caption.first, caption.second!!) else stringResource(R.string.caption_bytes, caption.first),
-                style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp), color = muted,
-                modifier = Modifier.testTag("caption_${m.id}"),
-            )
-            Text("·", style = MaterialTheme.typography.bodySmall, color = muted)
+        Column(Modifier.padding(start = 11.dp, end = 11.dp, top = 8.dp, bottom = 8.dp)) {
+            if (!mine) WhoLine(senderName, m, words, actions)
+            Text(words.orEmpty(), style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp, lineHeight = 22.sp), modifier = Modifier.testTag("msg_text_${m.id}"))
+            if (grid != null) GridChip(grid)
+            if (mine) MineFooter(m, words, actions)
+            else if (org.rescuecodec.app.core.MeshText.isPlain(m)) ViaMeshtastic(m)
         }
-        // A normal Meshtastic text (port 1), not a RescueCodec message: a small quiet hint.
+    }
+}
+
+@Composable
+private fun ViaMeshtastic(m: MessageEntity) {
+    Text(stringResource(R.string.via_meshtastic), style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp), color = Rc.colors.muted, modifier = Modifier.padding(top = 2.dp).testTag("via_meshtastic_${m.id}"))
+}
+
+/** Under my own message: speaker, time and the state as a tag (Delivered, Sent, Waiting, Not confirmed). */
+@Composable
+private fun MineFooter(m: MessageEntity, words: String?, actions: ChatActions) {
+    Row(
+        Modifier.fillMaxWidth().padding(top = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End),
+    ) {
         if (org.rescuecodec.app.core.MeshText.isPlain(m)) {
-            Text(stringResource(R.string.via_meshtastic), style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp), color = muted, modifier = Modifier.testTag("via_meshtastic_${m.id}"))
-            Text("·", style = MaterialTheme.typography.bodySmall, color = muted)
+            Text(stringResource(R.string.via_meshtastic), style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp), color = Rc.colors.muted, modifier = Modifier.testTag("via_meshtastic_${m.id}"))
         }
-        Text(timeOf(m.atMs), style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp), color = muted)
-        if (mine) Ticks(m.state)
-    }
-    if (mine) {
-        val word = stateWord(m.state)
-        // A state that needs attention is always in words; a normal one (sent, relayed) only when tapped.
-        val loud = m.state !in setOf(MessageState.SENT, MessageState.DELIVERED)
-        if (loud || expanded) {
-            Text(word, style = MaterialTheme.typography.bodySmall.copy(fontSize = 14.sp), color = stateColor(m.state, muted), modifier = Modifier.align(Alignment.End).testTag("state_${m.id}"))
-        }
-        if (expanded) {
-            val note = when (m.state) {
-                MessageState.NOT_CONFIRMED -> stringResource(R.string.ms_not_confirmed_note)
-                MessageState.DELIVERED -> stringResource(R.string.stat_delivered)
-                else -> m.detail
-            }
-            if (!note.isNullOrBlank()) Text(note, style = MaterialTheme.typography.bodySmall, color = muted, modifier = Modifier.align(Alignment.End))
-        }
+        SpeakerIcon(words, m, actions)
+        Text(timeOf(m.atMs), style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp), color = Rc.colors.muted)
+        StateWordTag(m.state, Modifier.testTag("state_${m.id}"))
     }
 }
 
-/** (bytes sent, "4.6" times smaller) for my own message. The plain sentence of the same report is the text it is measured against. */
-private fun captionOf(m: MessageEntity, lang: String, report: Boolean): Pair<Int, String?> {
-    val sent = m.bytes.size
-    if (!report || sent == 0) return sent to null
-    val asText = Readable.of(m.json, lang)?.toByteArray(Charsets.UTF_8)?.size ?: return sent to null
-    val factor = asText.toDouble() / sent
-    return sent to (if (factor >= 1.5) "%.1f".format(Locale.ROOT, factor) else null)
-}
-
+/** The state of my message as a small tag. Colour and words: green relayed, grey sent, amber waiting, red failed. */
 @Composable
-private fun stateWord(state: String): String = stringResource(
-    when (state) {
-        MessageState.QUEUED -> R.string.ms_queued
-        MessageState.HELD -> R.string.ms_held
-        MessageState.REFUSED_AIRTIME -> R.string.ms_refused
-        MessageState.SENT -> R.string.ms_sent
-        MessageState.DELIVERED -> R.string.ms_delivered
-        MessageState.NOT_CONFIRMED -> R.string.ms_not_confirmed
-        MessageState.FAILED -> R.string.ms_failed
-        MessageState.EXPIRED -> R.string.ms_expired
-        MessageState.CANCELLED -> R.string.ms_cancelled
-        else -> R.string.feed_received
-    },
-)
-
-@Composable
-private fun stateColor(state: String, muted: Color): Color = when (state) {
-    MessageState.FAILED -> Rc.colors.maydayText
-    MessageState.NOT_CONFIRMED, MessageState.QUEUED, MessageState.HELD, MessageState.REFUSED_AIRTIME -> Rc.colors.open
-    else -> muted
-}
-
-/** Status ticks of my message: clock (waiting), one tick (sent), two ticks (relayed), ! (not confirmed or failed). */
-@Composable
-private fun Ticks(state: String) {
+fun StateWordTag(state: String, modifier: Modifier = Modifier) {
     val c = Rc.colors
-    val muted = c.onMine.copy(alpha = 0.72f)
-    val (icon, tint) = when (state) {
-        MessageState.QUEUED, MessageState.HELD, MessageState.REFUSED_AIRTIME -> R.drawable.ic_schedule to c.open
-        MessageState.SENT -> R.drawable.ic_check to muted
-        MessageState.DELIVERED -> R.drawable.ic_done_all to c.accepted
-        MessageState.NOT_CONFIRMED -> R.drawable.ic_error_outline to c.open
-        MessageState.FAILED -> R.drawable.ic_error_outline to c.maydayText
-        else -> R.drawable.ic_close to muted
-    }
-    RcIcon(icon, stateWord(state), tint = tint, size = 18.dp)
-}
-
-@Composable
-private fun PositionLine(grid: String, distance: String?) {
-    Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        RcIcon(R.drawable.ic_location_on, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, size = 18.dp)
-        Text(grid, style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace, fontSize = 14.sp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (distance != null) Text("· $distance", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val grey = MaterialTheme.colorScheme.surfaceContainerHighest
+    val ink = MaterialTheme.colorScheme.onSurface
+    when (state) {
+        MessageState.DELIVERED -> Tag(stringResource(R.string.ms_delivered_short), c.doneSoft, c.done, modifier)
+        MessageState.SENT -> Tag(stringResource(R.string.ms_sent_short), grey, ink, modifier)
+        MessageState.QUEUED, MessageState.HELD, MessageState.REFUSED_AIRTIME -> Tag(stringResource(R.string.ms_waiting_short), c.openSoft, c.open, modifier)
+        MessageState.NOT_CONFIRMED -> Tag(stringResource(R.string.ms_not_confirmed), c.openSoft, c.open, modifier)
+        MessageState.FAILED -> Tag(stringResource(R.string.ms_failed_short), c.mayday, c.onMayday, modifier)
+        MessageState.EXPIRED -> Tag(stringResource(R.string.ms_expired), grey, ink, modifier)
+        MessageState.CANCELLED -> Tag(stringResource(R.string.ms_cancelled), grey, ink, modifier)
+        else -> Unit
     }
 }
 
@@ -307,22 +278,22 @@ internal fun typeIcon(type: String): Int = when (type) {
     else -> R.drawable.ic_info
 }
 
-/** The field values of a report as short words: "Child", "Conscious", "Hypothermia", "Stretcher". */
+/** The field values of a report as short words: "child", "conscious", "hypothermia", "stretcher". */
 @Composable
 internal fun fieldWords(msg: Map<String, Any?>, lang: String): List<String> {
     val body = ReportFields.body(msg)
     val out = ArrayList<String>()
     for (def in ReportFields.present(msg)) when (def.kind) {
-        FieldKind.MANY -> (body[def.key] as? List<*>).orEmpty().forEach { out += Labels.value(lang, def.group, it.toString()).replaceFirstChar { ch -> ch.uppercase() } }
-        FieldKind.ONE -> out += Labels.value(lang, def.group, body[def.key].toString()).replaceFirstChar { ch -> ch.uppercase() }
+        FieldKind.MANY -> (body[def.key] as? List<*>).orEmpty().forEach { out += Labels.value(lang, def.group, it.toString()) }
+        FieldKind.ONE -> out += Labels.value(lang, def.group, body[def.key].toString())
         FieldKind.NUMBER -> out += numberLabel(def, (body[def.key] as? Number)?.toInt() ?: 0)
     }
     return out
 }
 
 /**
- * A report in the stream: icon and plain title ("Person found"), the field words, position and distance, the task
- * state and the answer buttons when the person may answer. A Mayday is a red card.
+ * A report in the stream, as an overnight card: the type and state tags, the readable line, the Grid chip with
+ * distance, and Accept and Decline when the person may answer. A Mayday is a red card.
  */
 @OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
@@ -330,128 +301,124 @@ private fun ReportCard(m: MessageEntity, task: TaskItem?, lang: String, mine: Bo
     val c = Rc.colors
     val isMayday = m.type == "mayday"
     val msg = remember(m.json) { runCatching { Json.parseObject(m.json!!) }.getOrNull() ?: emptyMap() }
-    val words = fieldWords(msg, lang)
+    val line = remember(m.json, lang) { cardLine(m.json, m.type, lang) }
     val grid = remember(m.json) { Readable.gridRef(m.json) }
-    val distance = remember(m.json, fix) {
-        val pos = msg["pos"] as? Map<*, *>
-        if (fix == null || pos == null) null
-        else distanceText(distanceM(fix, (pos["lat"] as Number).toDouble(), (pos["lon"] as Number).toDouble()))
-    }
+    val distance = remember(m.json, fix) { distanceOf(m.json, fix) }
     val readable = remember(m.json, lang) { wordsOf(m, lang) }
-    var menu by remember { mutableStateOf(false) }
-    var expanded by remember { mutableStateOf(false) }
     val prio = ReportFields.priorityOf(msg)
     val container = when {
         isMayday -> c.maydaySoft
         mine -> c.mine
         else -> MaterialTheme.colorScheme.surface
     }
-    val onContainer = if (mine && !isMayday) c.onMine else MaterialTheme.colorScheme.onSurface
-    Box {
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = container,
-            contentColor = onContainer,
-            border = when {
-                isMayday -> BorderStroke(2.dp, c.mayday)
-                mine -> null
-                else -> BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-            },
-            modifier = Modifier.widthIn(max = maxBubbleWidth()).fillMaxWidth()
-                .combinedClickable(onClick = { if (mine) expanded = !expanded }, onLongClick = { menu = true })
-                .testTag("msg_${m.id}"),
-        ) {
-            Column(Modifier.padding(start = 14.dp, end = 12.dp, top = 10.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (!mine) Text(senderName, style = MaterialTheme.typography.labelLarge, color = senderColor(m.node))
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    RcIcon(typeIcon(m.type), null, tint = if (isMayday) c.maydayText else onContainer, size = 24.dp)
-                    Text(
-                        if (isMayday) Labels.head(lang, "mayday").uppercase() else Labels.head(lang, m.type),
-                        style = MaterialTheme.typography.titleMedium.copy(fontSize = 20.sp),
-                        color = if (isMayday) c.maydayText else onContainer,
-                        modifier = Modifier.weight(1f, fill = false).testTag("card_title_${m.id}"),
-                    )
-                    if (!isMayday && (prio == "critical" || prio == "urgent") && msg["priority"] != null) {
-                        Tag(Labels.value(lang, "priority", prio).replaceFirstChar { it.uppercase() }, if (prio == "critical") c.mayday else c.openSoft, if (prio == "critical") c.onMayday else c.open)
-                    }
+    Surface(
+        shape = bubbleShape(mine),
+        color = container,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        border = when {
+            isMayday -> BorderStroke(1.5.dp, c.mayday)
+            mine -> null
+            else -> BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        },
+        modifier = Modifier.widthIn(max = maxBubbleWidth()).fillMaxWidth()
+            .combinedClickable(onClick = {}, onLongClick = { actions.menu(m) })
+            .testTag("msg_${m.id}"),
+    ) {
+        Column(Modifier.padding(start = 11.dp, end = 11.dp, top = 8.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            if (!mine) WhoLine(senderName, m, readable, actions)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                if (isMayday) Tag("⚠ " + Labels.head(lang, "mayday").uppercase(), c.mayday, c.onMayday, Modifier.testTag("card_title_${m.id}"))
+                else PlainTag(Labels.head(lang, m.type), Modifier.testTag("card_title_${m.id}"))
+                if (task != null) StateTag(task.state, Modifier.testTag("task_state_${task.key}"))
+                if (!isMayday && (prio == "critical" || prio == "urgent") && msg["priority"] != null) {
+                    Tag(Labels.value(lang, "priority", prio).replaceFirstChar { it.uppercase() }, if (prio == "critical") c.mayday else c.openSoft, if (prio == "critical") c.onMayday else c.open)
                 }
-                if (words.isNotEmpty()) {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        words.forEach { w ->
-                            Tag(w, if (mine && !isMayday) Color.White.copy(alpha = if (c.dark) 0.10f else 0.6f) else MaterialTheme.colorScheme.surfaceContainerHigh, onContainer)
-                        }
-                    }
-                }
-                if (grid != null) PositionLine(grid, distance?.let { stringResource(R.string.distance_away, it) })
-                if (task != null) TaskStatus(task, lang)
-                if (task != null && task.moves.isNotEmpty()) AnswerButtons(task, actions.answer)
-                Footer(m, mine, expanded, lang, saving = true)
             }
+            if (line != null) Text(line, style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp, lineHeight = 22.sp))
+            if (grid != null) GridChip(grid, distance = distance)
+            if (task != null) TaskWho(task)
+            if (task != null && task.moves.isNotEmpty()) AnswerButtons(task, actions.answer)
+            if (mine) MineFooter(m, readable, actions)
         }
-        RowMenu(menu, readable, m, actions) { menu = false }
     }
 }
 
-/** "Open", "Accepted by Trupp 3", "Done": the task line on a card. */
+/** "Accepted by Trupp 3" under a card, when someone answered. */
 @Composable
-private fun TaskStatus(t: TaskItem, lang: String) {
-    val last = t.answers.lastOrNull { it.status == t.state || (t.state == "accepted" && it.status == "accepted") }
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.testTag("task_state_${t.key}")) {
-        StateTag(t.state)
-        if (last != null) {
-            val who = last.team ?: if (last.own) stringResource(R.string.answer_you) else stringResource(R.string.answer_other_team)
-            Text(who, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+private fun TaskWho(t: TaskItem) {
+    val last = t.answers.lastOrNull { it.status == t.state } ?: return
+    if (t.state == "open") return
+    val who = last.team ?: if (last.own) stringResource(R.string.answer_you) else stringResource(R.string.answer_other_team)
+    val word = when (t.state) {
+        "accepted" -> stringResource(R.string.answer_accepted_by, who)
+        "done" -> stringResource(R.string.answer_done_by, who)
+        else -> stringResource(R.string.answer_declined_by, who)
     }
+    Text(word, style = MaterialTheme.typography.bodyMedium, color = Rc.colors.muted)
 }
 
-/** Accept (blue) and Done (green) at 56 dp, Decline smaller and apart. The same rules as the Tasks tab. */
+/** Accept (blue) and Done (ink) at 48 dp, Decline as an outline beside them. The same rules as the Tasks tab. */
 @Composable
 internal fun AnswerButtons(t: TaskItem, onAnswer: (TaskItem, String) -> Unit) {
     val c = Rc.colors
-    Row(Modifier.fillMaxWidth().padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+    val hasMain = "accepted" in t.moves || "done" in t.moves
+    Row(Modifier.fillMaxWidth().padding(top = 3.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         if ("accepted" in t.moves) BigButton(
             stringResource(R.string.action_accept), { onAnswer(t, "accepted") }, Modifier.weight(1f).testTag("accept_${t.key}"),
-            icon = R.drawable.ic_check, container = c.acceptSolid, content = c.onSolid,
+            icon = R.drawable.ic_check, container = c.acceptSolid, content = c.onSolid, height = 48.dp,
         )
         if ("done" in t.moves) BigButton(
             stringResource(R.string.action_done), { onAnswer(t, "done") }, Modifier.weight(1f).testTag("done_${t.key}"),
-            icon = R.drawable.ic_check_circle, container = c.doneSolid, content = c.onSolid,
+            icon = R.drawable.ic_check, container = MaterialTheme.colorScheme.primary, content = MaterialTheme.colorScheme.onPrimary, height = 48.dp,
         )
+        // Decline is narrower and apart, so a glove does not hit it by mistake.
         if ("declined" in t.moves) BigButton(
-            stringResource(R.string.action_decline), { onAnswer(t, "declined") }, Modifier.testTag("decline_${t.key}"),
-            outlined = true, container = MaterialTheme.colorScheme.onSurfaceVariant, height = 48.dp,
+            stringResource(R.string.action_decline), { onAnswer(t, "declined") }, Modifier.weight(if (hasMain) 0.6f else 1f).testTag("decline_${t.key}"),
+            outlined = true, container = c.ink3, height = 48.dp,
         )
     }
 }
 
-/** "Trupp 3 accepted · Person found": an answer as a small centred line. The card above shows the new state. */
+/**
+ * An answer as one small line: green with a check for accepted and done, grey for declined.
+ * "Base accepted your Hazard · ETA 10 min".
+ */
 @Composable
-private fun AckLine(m: MessageEntity, mine: Boolean, taskType: String?, lang: String, senderName: String) {
+private fun AckLine(m: MessageEntity, mine: Boolean, task: TaskItem?, taskType: String?, lang: String, senderName: String) {
+    val c = Rc.colors
     val status = remember(m.json) { TeamAlerts.ackStatus(m.json) }
+    val eta = remember(m.json) { runCatching { ((Json.parseObject(m.json!!)["ack"] as? Map<*, *>)?.get("eta") as? Number)?.toInt() }.getOrNull() }
     val who = if (mine) stringResource(R.string.answer_you) else (TeamAlerts.ackTeam(m.json) ?: senderName)
     val what = taskType?.takeIf { it != "unknown" }?.let { Labels.head(lang, it) } ?: stringResource(R.string.report_word)
-    val text = when (status) {
-        "accepted" -> stringResource(R.string.ack_line_accepted, who, what)
-        "done" -> stringResource(R.string.ack_line_done, who, what)
+    val text = when {
+        status == "accepted" && !mine && task?.local == true -> stringResource(R.string.ack_line_yours, who, what)
+        status == "accepted" -> stringResource(R.string.ack_line_accepted, who, what)
+        status == "done" -> stringResource(R.string.ack_line_done, who, what)
         else -> stringResource(R.string.ack_line_declined, who, what)
+    } + (eta?.takeIf { it > 0 && status == "accepted" }?.let { " · " + stringResource(R.string.ack_eta, it) } ?: "")
+    val suffix = if (mine && m.state in MessageState.WAITING) " · " + stringResource(R.string.ms_waiting_short) else ""
+    val color = if (status == "declined") c.muted else c.done
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 4.dp).testTag("ack_${m.id}"),
+        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RcIcon(if (status == "declined") R.drawable.ic_close else R.drawable.ic_check, null, tint = color, size = 16.dp)
+        Text(text + suffix, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp, fontWeight = FontWeight.Medium), color = color, textAlign = TextAlign.Center)
     }
-    val icon = when (status) { "done" -> R.drawable.ic_check_circle; "accepted" -> R.drawable.ic_check; else -> R.drawable.ic_close }
-    val suffix = if (mine && m.state in MessageState.WAITING) " · " + stringResource(R.string.ms_queued) else ""
-    SystemLine(text + suffix, icon, Modifier.testTag("ack_${m.id}"))
 }
 
-/** A small centred line on the chat ground: answers, day changes, track points. */
+/** A small centred line on the chat ground: day changes, track points. */
 @Composable
 fun SystemLine(text: String, icon: Int? = null, modifier: Modifier = Modifier) {
     Box(modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 6.dp), contentAlignment = Alignment.Center) {
         Row(
-            Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(14.dp)).padding(horizontal = 12.dp, vertical = 5.dp),
+            Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            if (icon != null) RcIcon(icon, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, size = 18.dp)
-            Text(text, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp), color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+            if (icon != null) RcIcon(icon, null, tint = Rc.colors.ink3, size = 16.dp)
+            Text(text, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp), color = Rc.colors.ink3, textAlign = TextAlign.Center)
         }
     }
 }

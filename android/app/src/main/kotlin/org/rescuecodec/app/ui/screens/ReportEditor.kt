@@ -147,6 +147,7 @@ fun FieldEditorSheet(editor: Editor, msg: Map<String, Any?>, lang: String, vm: R
                 }
                 Editor.Add -> {
                     SheetTitle(stringResource(R.string.sheet_add))
+                    if (msg["priority"] == null) OptionRow(stringResource(R.string.sheet_priority), selected = false, tag = "opt_add_priority") { onNext(Editor.Priority) }
                     ReportFields.missing(msg).forEach { d ->
                         OptionRow(fieldName(d), selected = false, tag = "opt_add_${d.key}") {
                             if (d.kind == FieldKind.NUMBER) vm.edit { m -> ReportFields.set(m, d, d.min.coerceAtLeast(1)) }
