@@ -62,6 +62,7 @@ export function ReportCard({ rec, fresh }: { rec: MessageRecord; fresh: boolean 
         {rec.radio?.snr != null && <span title="SNR">SNR {rec.radio.snr.toFixed(1)}</span>}
         {rec.radio?.hops != null && <span title={t("hops")}>{rec.radio.hops} {t("hops")}</span>}
         {rec.codec.version === 1 && <span>v1</span>}
+        {rec.codec.version === 0 && <span title={t("viaMeshtasticNote")}>{t("viaMeshtastic")}</span>}
         {task && task.state !== "open" && (
           <StateChip state={task.state}>{t(task.state)}</StateChip>
         )}
