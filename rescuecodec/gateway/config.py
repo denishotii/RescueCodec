@@ -34,6 +34,9 @@ class GatewayConfig:
     text_mode: str = "auto"
     # old setting, replaced by text_mode. False (--text-as-meshtastic off) = channels default to "compressed".
     text_as_meshtastic: bool = True
+    # compact text (SPEC section 3.6), opt-in: on a chat that packs, also build the word-token form and send it when its
+    # whole payload is smaller than what the rule above picked. Receiving compact texts works either way.
+    compact_text: bool = False
 
     # connectors
     mqtt: str | None = None               # "host:port"

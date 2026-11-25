@@ -102,15 +102,39 @@ def metric(value: Any, unit: str, source: str, note: str | None = None) -> dict[
     return out
 
 
+def check_text_words(words: Any, limit: int) -> None:
+    """The words of a text sent through the API: a non-empty string of at most `limit` bytes of UTF-8 (180, or 400 in
+    a chat that packs: SPEC section 3.6.6). Raises ApiError with the codec's error codes."""
+    if not isinstance(words, str):
+        raise ApiError(400, "invalid_value", "must be a string", "text.text")
+    try:
+        size = len(words.encode("utf-8"))
+    except UnicodeEncodeError:
+        raise ApiError(400, "invalid_value", "must be valid Unicode", "text.text") from None
+    if size == 0:
+        raise ApiError(400, "missing_field", "text must not be empty", "text.text")
+    if size > limit:
+        raise ApiError(400, "invalid_value", f"text is at most {limit} bytes in this chat",
+                       "text.text")
+
+
 def is_plain(record: dict[str, Any]) -> bool:
     """True for a plain Meshtastic text record (port 1)."""
     return record.get("codec", {}).get("version") == PLAIN_TEXT_VERSION
 
 
 def packed_words(message: dict[str, Any]) -> str | None:
-    """The words of a packed text message (one that came or went with `deflate`), else None."""
+    """The words of a packed text message (one that came or went with `deflate` or as compact `words`), else None."""
     body = message.get("text")
-    return body.get("text") if isinstance(body, dict) and body.get("dict") else None
+    return body.get("text") if isinstance(body, dict) and (body.get("dict") or body.get("words")) else None
+
+
+def text_form(message: dict[str, Any]) -> str | None:
+    """"words" for a compact text, "deflate" for a DEFLATE packed one, else None."""
+    body = message.get("text")
+    if not isinstance(body, dict):
+        return None
+    return "words" if body.get("words") else "deflate" if body.get("dict") else None
 
 
 @dataclass
@@ -250,6 +274,7 @@ class GatewayService:
         codec = {"version": 1 if message.get("v") == 1 else 2, "size": len(payload), "hex": payload.hex()}
         if packed_words(message) is not None:
             codec["packed"] = True               # a packed text: `message.text.text` holds the unpacked words
+            codec["form"] = text_form(message)   # "deflate" or "words" (compact text)
         return {"key": key, "direction": direction, "from": sender, "type": kind, "priority": priority, "status": status,
                 "error": None, "time": iso(now), "event_time": event_time, "codec": codec,
                 "radio": radio, "channel": channel, "to": to, "message": public, "text": readable(message),
@@ -594,7 +619,7 @@ class GatewayService:
         # that the official app and radio screens show. The chat's mode decides (SPEC section 2.3), not the client.
         is_text = kind == "text" and isinstance(message.get("text"), dict)
         if is_text:
-            message["text"] = {k: v for k, v in message["text"].items() if k != "dict"}
+            message["text"] = {k: v for k, v in message["text"].items() if k not in ("dict", "words")}
         plain = False
         with self.lock:
             assigned = None
@@ -605,12 +630,22 @@ class GatewayService:
                 assigned = self.store.peek_message_id()
                 message["id"] = assigned
             words = message["text"].get("text") if is_text else None
-            message = dict(fit_text(message))      # a long text plus position and id is cut to fit, like on the phone
-            try:
-                payload = encode(message)           # also checks a text that goes out plain: bad fields stay an error
-                canonical = decode(payload)
-            except CodecError as exc:
-                raise codec_error(exc) from exc
+            if is_text:
+                # Every field but the words is checked here; the words are checked against the chat's limit below
+                # (180 B, or 400 B in a chat that packs) and choose_form cuts what does not fit one packet.
+                try:
+                    canonical = decode(encode({**message, "text": {**message["text"], "text": "x"}}))
+                except CodecError as exc:
+                    raise codec_error(exc) from exc
+                canonical.pop("text", None)
+                payload = b""
+            else:
+                message = dict(fit_text(message))      # a long text plus position and id is cut to fit, like on the phone
+                try:
+                    payload = encode(message)
+                    canonical = decode(payload)
+                except CodecError as exc:
+                    raise codec_error(exc) from exc
             target = self._send_channel(channel, dry_run=dry_run, answer=answer)
             target_json = target.as_json() if isinstance(target, Channel) else target
             if target_json["public"] and kind not in ("text", "ack"):
@@ -620,13 +655,16 @@ class GatewayService:
             port = self.config.port_num
             if is_text:                             # packed (with id, position, time) or the words only, at most 200 B
                 route = self._chat_route(target_json, to)
-                form = choose_form({**canonical, "text": {"text": words}}, route["send_as"] == "compressed",
-                                   route["reason"])
+                packs = route["send_as"] == "compressed"
+                check_text_words(words, C.MAX_PACKED_TEXT_BYTES if packs else C.MAX_TEXT_BYTES)
+                form = choose_form({**canonical, "text": {"text": words}}, packs, route["reason"],
+                                   compact=self.config.compact_text)
                 plain, payload, canonical = not form.packed, form.payload, form.message
                 if plain:
                     words, port = canonical["text"]["text"], PORT_TEXT_MESSAGE
-                log.debug("text for %s: %s (%s, %d B packed, %s B normal)", to or target_json["name"],
-                          "packed" if form.packed else "normal", form.reason, form.plain_size, form.packed_size)
+                log.debug("text for %s: %s (%s, %d B normal, %s B deflate, %s B words%s)", to or target_json["name"],
+                          form.form, form.reason, form.plain_size, form.packed_size, form.words_size,
+                          ", cut to fit" if form.cut else "")
 
             def build(status: str) -> dict[str, Any]:
                 if plain:
@@ -846,7 +884,9 @@ class GatewayService:
             channel["mode"], channel["send_as"] = route["mode"], route["send_as"]
         return {"status": "ok" if info.connected else "degraded", "version": __version__, "spec_version": C.SPEC_VERSION,
                 "uptime_s": int((datetime.now(timezone.utc) - self.started).total_seconds()),
-                "radio": radio, "mqtt": {"connected": self.mqtt_connected}}
+                "radio": radio, "mqtt": {"connected": self.mqtt_connected},
+                "compact_text": self.config.compact_text,
+                "text_limits": {"text": C.MAX_TEXT_BYTES, "packed": C.MAX_PACKED_TEXT_BYTES}}
 
     def stats(self) -> dict[str, Any]:
         with self.lock:
@@ -919,6 +959,15 @@ class GatewayService:
             return feature_collection(records, state)
 
     # ------------------------------------------------------------------ tools
+    def text_route(self, channel: Any = None, to: Any = None) -> dict[str, Any]:
+        """How a text to this chat would go out now (the ChatMode JSON), for the composer preview. Raises ApiError."""
+        if to is not None:
+            to = self._mode_node(to)
+        with self.lock:
+            target = self._send_channel(channel, dry_run=True, answer=False)
+            target_json = target.as_json() if isinstance(target, Channel) else target
+            return self._chat_route(target_json, to)
+
     def encode_preview(self, message: Any) -> dict[str, Any]:
         if not isinstance(message, dict):
             raise ApiError(400, "bad_request", "message must be a JSON object", "message")

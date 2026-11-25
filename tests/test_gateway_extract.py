@@ -80,7 +80,7 @@ class Extract(unittest.TestCase):
         with gateway() as gw:
             cases = [({}, "text"), ({"text": ""}, "text"), ({"text": "   "}, "text"), ({"text": 5}, "text"),
                      ({"text": "x" * 1001}, "text"), ({"text": "hi", "lang": "fr"}, "lang"),
-                     ({"text": "hi", "channel": "x"}, "channel")]
+                     ({"text": "hi", "colour": "x"}, "colour")]
             for body, field in cases:
                 r = gw.client.post("/v2/extract", json=body)
                 self.assertEqual(r.status_code, 400, body)

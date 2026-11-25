@@ -123,6 +123,22 @@ Public channels always get normal text. A text is packed only when the packet is
 |---|---|---|
 | `--text-mode auto\|compressed\|normal` | `auto` | Mode of chats that have no mode of their own. Env `RESCUECODEC_TEXT_MODE`. |
 | `--text-as-meshtastic on\|off` | `on` | Old setting. `off` now means: channels are `compressed`. |
+| `--compact-text on\|off` | `off` | Compact encoding for text messages (word tokens, below). Env `RESCUECODEC_COMPACT_TEXT`. Shown in `GET /v2/health` as `compact_text`. |
+
+**Text limits.** A chat that packs takes up to 400 bytes of text; the packet stays at most 200 bytes. A text that does not fit one packet is cut to the longest prefix that fits and ends with "…" (the record shows what went out). Any other chat takes up to 180 bytes. There is no multipart message. `GET /v2/health` shows `text_limits`, `POST /v2/extract` with `channel` or `to` shows `max_text_bytes`, `form` and `cut` for that chat.
+
+### Compact texts (opt-in, off by default)
+
+With `--compact-text on`, a text in a chat that packs is also built as **word tokens** (spec/SPEC.md section 3.6): every word from the shared word dictionary (`spec/vocab/words-dict-v1.txt`, 8192 entries) is 2 bytes, a single space between two words costs nothing, and anything else (names, numbers, coordinates, emoji, other languages) goes as an exact literal. The gateway sends the smallest of the normal text, the DEFLATE packed text and the word tokens; a tie keeps the existing choice. The receiver gets the text back byte for byte. Never on a public channel or in a chat with a stock Meshtastic user (same rule as packing). GPS stays in the position field, so the message is still on the map.
+
+Receiving compact texts works whatever the flag says. The record has `codec.form: "words"` and `message.text.words: 1`. A compact text with a dictionary the gateway does not have becomes a record of type `unknown` ("Message encoded with a dictionary this app does not have"), never guessed words. An older gateway or app (before spec 2.1) drops a compact text as invalid (the app shows "Unreadable message"); if the team still has older apps, leave the flag off or set the chat to `normal`.
+
+```bash
+python -m rescuecodec.gateway.cli --emulator --compact-text on --db :memory: --port 8051
+curl -s -X PUT localhost:8051/v2/channels/RescueCodec/mode -H 'content-type: application/json' -d '{"mode":"compressed"}'
+curl -s localhost:8051/v2/text -H 'content-type: application/json' -d '{"text":"We are at the hut, two people with us, waiting for the vehicle on the forest road"}'
+# record: "codec": {"version": 2, "size": 33, "packed": true, "form": "words", ...}, "message": {"id": 1, "text": {"text": "We are at the hut, ...", "words": 1}}
+```
 
 ```bash
 # How does a text on the RescueCodec channel go out now, and why?
