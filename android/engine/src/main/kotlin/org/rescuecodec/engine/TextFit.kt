@@ -57,6 +57,25 @@ object TextFit {
         return String(bytes, 0, cut, Charsets.UTF_8).trimEnd() + ELLIPSIS
     }
 
+    /**
+     * Shortens a text for a chat that packs (spec section 3.6.6). Same rule as `fit_packed` in
+     * rescuecodec/engine/textmode.py, keep them identical. A text of at most [Codes.MAX_PACKED_TEXT_BYTES] (400) bytes
+     * that [fits] comes back unchanged (the same object). Else the longest prefix that ends on a whole UTF-8 character,
+     * with trailing whitespace stripped and [ELLIPSIS] added, that is at most 400 bytes and [fits]. [fits] says whether
+     * one form keeps the text exactly within 200 bytes.
+     */
+    fun fitPacked(text: String, fits: (String) -> Boolean): String {
+        val raw = text.toByteArray(Charsets.UTF_8)
+        if (raw.size <= Codes.MAX_PACKED_TEXT_BYTES && fits(text)) return text
+        val start = minOf(raw.size - 1, Codes.MAX_PACKED_TEXT_BYTES - ELLIPSIS.toByteArray(Charsets.UTF_8).size)
+        for (cut in start downTo 0) {
+            if (isContinuationByte(raw[cut])) continue // a cut here would split a character
+            val candidate = String(raw, 0, cut, Charsets.UTF_8).trimEnd() + ELLIPSIS
+            if (fits(candidate)) return candidate
+        }
+        return ELLIPSIS
+    }
+
     /** The codec's error code for [message], or null when it encodes. */
     private fun encodeError(message: Map<String, Any?>): String? = try {
         RescueCodec.encode(message)
