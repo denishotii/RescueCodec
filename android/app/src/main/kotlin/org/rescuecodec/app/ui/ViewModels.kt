@@ -566,7 +566,7 @@ data class ReportUi(
     val packed: Boolean = false,
     /** Bytes of a text as a normal Meshtastic text (as typed, when it goes packed), 0 when the message is not a text. */
     val plainBytes: Int = 0,
-    /** How a text goes: [TextMode.FORM_PLAIN], [TextMode.FORM_DEFLATE] or [TextMode.FORM_WORDS] (compact words). */
+    /** How a text goes: [TextMode.FORM_PLAIN], [TextMode.FORM_DEFLATE], [TextMode.FORM_WORDS] or [TextMode.FORM_LEAN] (compact). */
     val textForm: String = TextMode.FORM_PLAIN,
     /** The text is too long for one radio message and will be cut, ending with "…". */
     val textCut: Boolean = false,

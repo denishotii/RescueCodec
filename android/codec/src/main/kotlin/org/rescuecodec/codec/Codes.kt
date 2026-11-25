@@ -6,7 +6,7 @@ package org.rescuecodec.codec
  * and `spec/vocab/sar.yaml`. Flag tables map a name to its bit number.
  */
 object Codes {
-    const val SPEC_VERSION = "2.1.0"
+    const val SPEC_VERSION = "2.2.0"
     const val MAX_ENCODE_BYTES = 200
     const val MAX_DECODE_BYTES = 233
     const val MAX_ID = 16383

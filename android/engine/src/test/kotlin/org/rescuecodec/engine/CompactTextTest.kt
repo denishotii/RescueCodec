@@ -62,23 +62,36 @@ class CompactTextTest {
     }
 
     @Test
-    fun compactWinsOnlyWhenSmaller() {
-        var words = 0
+    fun compactSendsTheStrictlySmallest() {
+        var compact = 0
         for (text in texts) {
             val msg = mapOf("id" to 3, "text" to mapOf("text" to text))
             val off = TextMode.chooseForm(msg, true, "rescuecodec_only")
             val on = TextMode.chooseForm(msg, true, "rescuecodec_only", compact = true)
             assertTrue(on.payload.size <= off.payload.size, text)
-            if (on.form == "words") {
-                words++
-                assertTrue(on.wordsSize!! < off.payload.size, text)
-                assertTrue(on.packed)
-                assertEquals(mapOf("text" to text, "words" to 1), RescueCodec.decode(on.payload)["text"])
+            val sizes = listOfNotNull(on.leanSize, on.wordsSize, on.packedSize)
+            if (on.form == "plain") {
+                assertTrue(sizes.all { on.payload.size <= it }, text) // ties keep the normal text
             } else {
-                assertContentEquals(off.payload, on.payload, text) // ties and losses: the existing path
+                compact++
+                assertEquals(sizes.min(), on.payload.size, text)
+                assertTrue(on.payload.size < on.plainSize, text)
+                assertTrue(on.packed)
+                assertEquals(text, (RescueCodec.decodeAny(on.payload)["text"] as Map<*, *>)["text"])
             }
         }
-        assertTrue(words >= 3, "only $words texts went compact")
+        assertTrue(compact >= 3, "only $compact texts went compact")
+    }
+
+    @Test
+    fun helloWorldIsSixBytes() {
+        val form = TextMode.chooseForm(mapOf("id" to 3, "text" to mapOf("text" to "hello world")), true, "x", compact = true)
+        assertEquals(Triple("lean", 6, 11), Triple(form.form, form.payload.size, form.plainSize))
+        assertEquals(mapOf("text" to mapOf("text" to "hello world", "words" to 2)), form.message)
+        val ok = TextMode.chooseForm(mapOf("id" to 3, "text" to mapOf("text" to "Ok")), true, "x", compact = true)
+        assertEquals("plain", ok.form) // 2 bytes as a normal text: smaller than any frame
+        val urgent = TextMode.chooseForm(mapOf("id" to 3, "priority" to "urgent", "text" to mapOf("text" to "we need water now")), true, "x", compact = true)
+        assertEquals("lean" to "urgent", urgent.form to urgent.message["priority"])
     }
 
     @Test
@@ -90,19 +103,21 @@ class CompactTextTest {
     @Test
     fun compactExample() {
         val form = TextMode.chooseForm(mapOf("id" to 3, "text" to mapOf("text" to hut)), true, "rescuecodec_only", compact = true)
-        assertEquals("words", form.form)
+        assertEquals("lean", form.form)
+        assertTrue(form.leanSize!! < form.wordsSize!!)
         assertTrue(form.wordsSize!! < form.packedSize!!)
-        assertTrue(form.wordsSize!! < form.plainSize)
+        assertTrue(form.leanSize!! < form.plainSize)
         assertEquals(hut, form.text)
-        assertEquals(mapOf("text" to hut, "words" to 1), form.message["text"])
-        assertEquals(3, form.message["id"])
+        assertEquals(mapOf("text" to hut, "words" to 2), form.message["text"])
+        assertNull(form.message["id"]) // a compact frame has no id
     }
 
     @Test
     fun gpsStaysInThePositionField() {
         val msg = linkedMapOf("id" to 9, "priority" to "urgent", "pos" to pos, "text" to mapOf("text" to hut))
         val form = TextMode.chooseForm(msg, true, "x", compact = true)
-        assertEquals("words", form.form)
+        assertEquals("words", form.form) // a position keeps the Envelope
+        assertNull(form.leanSize)
         val decoded = RescueCodec.decode(form.payload)
         assertEquals(pos, decoded["pos"])
         assertEquals(hut, (decoded["text"] as Map<*, *>)["text"])
@@ -116,7 +131,7 @@ class CompactTextTest {
         val form = TextMode.chooseForm(mapOf("id" to 3, "text" to mapOf("text" to text)), true, "x", compact = true)
         assertTrue(form.packed)
         assertFalse(form.cut)
-        assertEquals(text, (RescueCodec.decode(form.payload)["text"] as Map<*, *>)["text"])
+        assertEquals(text, (RescueCodec.decodeAny(form.payload)["text"] as Map<*, *>)["text"])
     }
 
     @Test

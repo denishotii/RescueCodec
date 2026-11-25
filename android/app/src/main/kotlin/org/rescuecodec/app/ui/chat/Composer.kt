@@ -201,7 +201,8 @@ private fun TooLongNote() {
 private fun ByteLine(ui: ReportUi, text: Boolean) {
     if (ui.sentBytes <= 0) return
     val line = when {
-        text && ui.packed && ui.textForm == TextMode.FORM_WORDS -> stringResource(R.string.text_mode_words, ui.sentBytes, ui.plainBytes)
+        text && ui.packed && (ui.textForm == TextMode.FORM_WORDS || ui.textForm == TextMode.FORM_LEAN) ->
+            stringResource(R.string.text_mode_words, ui.sentBytes, ui.plainBytes)
         text && ui.packed -> stringResource(R.string.text_mode_packed, ui.sentBytes, ui.plainBytes)
         text -> stringResource(R.string.text_mode_plain)
         else -> stringResource(R.string.counter_line, ui.textBytes, ui.sentBytes)

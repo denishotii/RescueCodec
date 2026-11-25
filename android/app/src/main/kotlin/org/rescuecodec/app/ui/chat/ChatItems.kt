@@ -227,14 +227,21 @@ private fun TextBubble(m: MessageEntity, lang: String, mine: Boolean, senderName
             Text(words.orEmpty(), style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp, lineHeight = 22.sp), modifier = Modifier.testTag("msg_text_${m.id}"))
             if (grid != null) GridChip(grid)
             if (mine) MineFooter(m, words, actions)
-            else if (org.rescuecodec.app.core.MeshText.isPlain(m)) ViaMeshtastic(m)
+            else FormTag(m, Modifier.padding(top = 2.dp))
         }
     }
 }
 
+/**
+ * The small tag of a text that went packed for RescueCodec: "compact · 6 B" (word tokens) or "packed · 42 B" (DEFLATE),
+ * with the bytes on air of our payload. A plain Meshtastic text gets no tag.
+ */
 @Composable
-private fun ViaMeshtastic(m: MessageEntity) {
-    Text(stringResource(R.string.via_meshtastic), style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp), color = Rc.colors.muted, modifier = Modifier.padding(top = 2.dp).testTag("via_meshtastic_${m.id}"))
+private fun FormTag(m: MessageEntity, modifier: Modifier = Modifier) {
+    val tag = remember(m.json, m.source) { org.rescuecodec.app.core.MeshText.tagOf(m) } ?: return
+    val label = if (tag == org.rescuecodec.app.core.MeshText.TAG_COMPACT) stringResource(R.string.tag_compact, m.bytes.size)
+    else stringResource(R.string.tag_packed, m.bytes.size)
+    Text(label, style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp, fontFeatureSettings = "tnum"), color = Rc.colors.muted, modifier = modifier.testTag("form_tag_${m.id}"))
 }
 
 /** Under my own message: speaker, time and the state as a tag (Delivered, Sent, Waiting, Not confirmed). */
@@ -245,9 +252,7 @@ private fun MineFooter(m: MessageEntity, words: String?, actions: ChatActions) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End),
     ) {
-        if (org.rescuecodec.app.core.MeshText.isPlain(m)) {
-            Text(stringResource(R.string.via_meshtastic), style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp), color = Rc.colors.muted, modifier = Modifier.testTag("via_meshtastic_${m.id}"))
-        }
+        FormTag(m)
         SpeakerIcon(words, m, actions)
         Text(timeOf(m.atMs), style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp), color = Rc.colors.muted)
         StateWordTag(m.state, Modifier.testTag("state_${m.id}"))

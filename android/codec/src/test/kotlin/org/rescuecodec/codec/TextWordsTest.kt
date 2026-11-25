@@ -49,8 +49,9 @@ class TextWordsTest {
     @Test
     fun damagedCopyIsNotUsed() {
         assertTrue(TextWords.available(1))
-        assertFalse(TextWords.available(2))
-        assertFailsWith<IllegalArgumentException> { TextWords.dictionary(2) }
+        assertTrue(TextWords.available(2))
+        assertFalse(TextWords.available(9))
+        assertFailsWith<IllegalArgumentException> { TextWords.dictionary(9) }
         val data = File(System.getProperty("rescuecodec.spec"), "vocab/words-dict-v1.txt").readBytes()
         val sha = TextWords.DICTS.getValue(1).second
         assertNotNull(TextWords.checked(data, sha))
@@ -225,7 +226,7 @@ class TextWordsTest {
         val cases = listOf(
             mapOf("text" to "", "words" to 1) to ("missing_field" to "text.text"),
             mapOf("text" to "x", "words" to 1, "dict" to 1) to ("invalid_value" to "text.words"),
-            mapOf("text" to "x", "words" to 2) to ("invalid_value" to "text.words"),
+            mapOf("text" to "x", "words" to 9) to ("invalid_value" to "text.words"),
             mapOf("text" to "x".repeat(1025), "words" to 1) to ("invalid_value" to "text.text"),
         )
         for ((body, expected) in cases) {
@@ -257,8 +258,8 @@ class TextWordsTest {
 
     @Test
     fun unknownDictionaryIsVisibleNotGuessed() {
-        val msg = RescueCodec.decode(wire { setWords(bytes(enc("is safe"))); setWordsDict(2) })
-        assertEquals(mapOf<String, Any?>("id" to 7, "unknown" to mapOf("words" to 2)), msg)
+        val msg = RescueCodec.decode(wire { setWords(bytes(enc("is safe"))); setWordsDict(9) })
+        assertEquals(mapOf<String, Any?>("id" to 7, "unknown" to mapOf("words" to 9)), msg)
         val en = RescueCodec.reconstruct(msg, "en")
         assertTrue("dictionary this app does not have" in en, en)
         assertTrue("Wörterbuch" in RescueCodec.reconstruct(msg, "de"))
