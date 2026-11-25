@@ -26,3 +26,6 @@
 ## integrate (Wed 06:32)
 - integrate: done (already committed as 018a6c4, no new commit); review: none; open: cold-start 'No radio' not reproduced; text dedupe drops identical resend within 10 min (spec 14); text fallback 51 bytes vs 36 shown; resend-after-silent-drop has no unit test (emulator only); real-device BT/PIN/permissions/battery/radio/USB Heltec untested until Wed; e2e-full.sh needs playwright-cli (PLAYWRIGHT_CLI or npm i -g @playwright/cli).
 - note: .overnight/ORCHESTRATION.md and STATE.json modified by other jobs, not committed here.
+
+## design (Wed 06:57)
+- design-polish | done | critique: 12 issues | open: (1) logo mark not added to app status chip; (2) German feed filter chips still wrap to two rows at 1440 px; (3) app grid ref uses system monospace, JetBrains Mono not bundled (Android needs ttf, only woff/woff2 available); (4) mobile Mayday layout and sticky Accept bar not screenshotted with active Mayday; (5) dashboard/scripts/gallery.sh needs playwright-cli (not installed), screenshots taken with playwright-core script in scratchpad, not in repo
