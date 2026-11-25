@@ -70,8 +70,9 @@ import org.rescuecodec.app.voice.VoiceState
  * The composer at the bottom of every chat, overnight style. While the field is empty: the quick buttons
  * (+ Person found, + Need, + Hazard, + Sector) above it and the dark mic with its ring (hold to talk) beside it.
  * As soon as the text becomes a report: "What will be sent" with the chips (type in ink with a pencil, the fields with
- * a cross, + Add), "Send as plain text instead" and the green "105 bytes as text → 23 bytes sent" line; Send beside
- * the field. [textOnly] (direct messages, the public channel): plain text only, no quick buttons, no chips.
+ * a cross, + Add), "Send as plain text instead" and the green byte line ("105 bytes as text → 23 bytes sent"; for a
+ * text "Compressed for RescueCodec · 39 B instead of 81 B" or "Normal Meshtastic text · readable by everyone"); Send
+ * beside the field. [textOnly] (direct messages, the public channel): plain text only, no quick buttons, no chips.
  */
 @Composable
 fun Composer(vm: ReportViewModel, lang: String, textOnly: Boolean, onSent: () -> Unit) {
@@ -177,12 +178,18 @@ private fun SendButton(enabled: Boolean, onClick: () -> Unit) {
     }
 }
 
-/** "105 bytes as text → 23 bytes sent", in green. For plain text only the bytes sent. */
+/**
+ * "105 bytes as text → 23 bytes sent", in green. For a text how it goes (spec section 2.3): "Compressed for
+ * RescueCodec · 39 B instead of 81 B" or "Normal Meshtastic text · readable by everyone".
+ */
 @Composable
 private fun ByteLine(ui: ReportUi, text: Boolean) {
     if (ui.sentBytes <= 0) return
-    val line = if (text) stringResource(R.string.preview_text) + " · " + stringResource(R.string.preview_bytes_only, ui.sentBytes)
-    else stringResource(R.string.counter_line, ui.textBytes, ui.sentBytes)
+    val line = when {
+        text && ui.packed -> stringResource(R.string.text_mode_packed, ui.sentBytes, ui.plainBytes)
+        text -> stringResource(R.string.text_mode_plain)
+        else -> stringResource(R.string.counter_line, ui.textBytes, ui.sentBytes)
+    }
     Text(
         line,
         style = MaterialTheme.typography.titleSmall.copy(fontSize = 16.sp, fontWeight = FontWeight.SemiBold),

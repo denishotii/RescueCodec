@@ -279,6 +279,12 @@ private fun RescueScaffold(
                 inSettings = current == Screen.SETTINGS,
                 onSettings = { if (current == Screen.SETTINGS) screen = lastTab else go(Screen.SETTINGS) },
                 onStatus = { go(Screen.RADIO) },
+                // In a chat: the text mode (Auto, Always compressed, Always normal). A public channel is always normal.
+                menu = if (inChat && chat != null) ({
+                    val mode by chat.textMode.collectAsStateWithLifecycle()
+                    val public by chat.isPublic.collectAsStateWithLifecycle()
+                    if (!public) org.rescuecodec.app.ui.chat.ChatModeMenu(mode, chat::setTextMode)
+                }) else null,
             )
         },
         bottomBar = {
@@ -342,7 +348,7 @@ private fun statusOf(link: LinkState, queued: Int, inReach: Int): StatusLook {
 
 /**
  * The overnight top bar: a status pill ("● Radio connected, D-Node 2" and the screen name in condensed capitals; tap:
- * Radio) and the gear for Settings. Inside a chat: a back arrow, the pill with the chat name, no gear.
+ * Radio) and the gear for Settings. Inside a chat: a back arrow, the pill with the chat name, the ⋮ [menu], no gear.
  */
 @Composable
 private fun TopBar(
@@ -354,6 +360,7 @@ private fun TopBar(
     inSettings: Boolean,
     onSettings: () -> Unit,
     onStatus: () -> Unit,
+    menu: (@Composable () -> Unit)? = null,
 ) {
     val desc = stringResource(R.string.status_desc, status)
     Surface(color = MaterialTheme.colorScheme.background) {
@@ -389,6 +396,7 @@ private fun TopBar(
                     )
                 }
             }
+            menu?.invoke()
             if (onBack == null) Surface(
                 onClick = onSettings,
                 modifier = Modifier.size(48.dp).testTag("settings_button"),
