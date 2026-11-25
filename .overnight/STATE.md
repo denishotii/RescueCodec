@@ -32,3 +32,7 @@
 
 ## final (Wed 07:57)
 - final-fixes: done; 23 issues from Codex + real-device review; BLE transport blocker fixed; all suites + sim e2e 3/3 pass; open: nothing run on real BLE/USB/phone, cold-start "No radio" not reproduced (logcat tag RescueCodec), see FINAL_REVIEW.md. Committed by the orchestrator because the commit agent was blocked by the auto-mode classifier.
+
+## handover (Wed 08:08)
+- handover-docs: done, committed 16f7a10. Review: none. Open: no real Bluetooth/USB test yet (HARDWARE_CHECK.md is first real test); adb "sent found id=... 21 B" log not re-checked here (earlier android-e2e job did); Kotlin/TS libs not published to Maven/npm (composite build / local npm install); no LICENSE inside Python package (root LICENSE + pyproject); dist/RescueCodec-debug.apk is 07:27 build, rebuild and recopy if Android changes; Gradle daemon (JDK 17) left running.
+- morning-brief: done, committed 40e5cba. Review: none. Open: none.
