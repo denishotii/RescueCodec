@@ -60,6 +60,7 @@ import org.rescuecodec.app.core.TeamAlerts
 import org.rescuecodec.app.data.MessageEntity
 import org.rescuecodec.app.data.MessageState
 import org.rescuecodec.app.radio.LinkState
+import org.rescuecodec.app.ui.ChatViewModel
 import org.rescuecodec.app.ui.MessagesViewModel
 import org.rescuecodec.app.ui.ReportEvent
 import org.rescuecodec.app.ui.ReportViewModel
@@ -91,18 +92,20 @@ private sealed interface Entry {
  */
 @Composable
 fun ChatScreen(
+    chat: ChatViewModel,
     messagesVm: MessagesViewModel,
     tasksVm: TasksViewModel,
     reportVm: ReportViewModel,
     tasks: List<TaskItem>,
     link: LinkState,
-    channel: ChannelChoice,
+    radioChannel: ChannelChoice,
     snackbar: SnackbarHostState,
     lang: String,
     onOpenRadio: () -> Unit,
     onSos: () -> Unit,
 ) {
-    val messages by messagesVm.recent.collectAsStateWithLifecycle()
+    val loaded by chat.messages.collectAsStateWithLifecycle()
+    val messages = loaded.orEmpty()
     val speak by messagesVm.speaker.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -171,9 +174,11 @@ fun ChatScreen(
     }
 
     Column(Modifier.fillMaxSize().background(Rc.colors.chatGround)) {
-        RadioBanner(link, channel, onOpenRadio)
+        RadioBanner(link, radioChannel, onOpenRadio)
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            if (messages.isEmpty()) {
+            if (loaded == null) {
+                // Still reading the database: show nothing rather than a false "No messages yet".
+            } else if (messages.isEmpty()) {
                 EmptyChat()
             } else {
                 LazyColumn(

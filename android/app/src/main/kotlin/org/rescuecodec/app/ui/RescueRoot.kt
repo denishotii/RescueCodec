@@ -75,6 +75,7 @@ import org.rescuecodec.app.ui.components.RcIcon
 import org.rescuecodec.app.core.ChannelChoice
 import org.rescuecodec.app.ui.chat.ChatScreen
 import org.rescuecodec.app.ui.components.Hairline
+import org.rescuecodec.app.ui.components.SosDock
 import org.rescuecodec.app.ui.components.StatusDot
 import org.rescuecodec.app.ui.screens.ConnectScreen
 import org.rescuecodec.app.ui.screens.MaydayBanner
@@ -163,6 +164,10 @@ private fun RescueScaffold(graph: AppGraph, factory: AppViewModelFactory, settin
     val messages: MessagesViewModel = viewModel(factory = factory)
     val stats: StatsViewModel = viewModel(factory = factory)
     val report: ReportViewModel = viewModel(factory = factory)
+    // One conversation today: the team channel. A chat list would hold one of these per channel.
+    val chatChannel = ChatChannel.TEAM
+    val chat: ChatViewModel = viewModel(key = chatChannel.key, factory = ChatViewModelFactory(LocalContext.current.applicationContext as Application, graph, chatChannel))
+    val chatTitle by chat.title.collectAsStateWithLifecycle()
 
     var screen by rememberSaveable { mutableStateOf(initial.name) }
     var lastTab by rememberSaveable { mutableStateOf(if (initial.isTab) initial.name else Screen.TEAM.name) }
@@ -213,12 +218,14 @@ private fun RescueScaffold(graph: AppGraph, factory: AppViewModelFactory, settin
             MaydayBanner(tasksVm, tasks, waiting, lang) { go(Screen.TASKS) }
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when (current) {
-                    Screen.TEAM -> ChatScreen(messages, tasksVm, report, tasks, link, channel, snackbar, lang, onOpenRadio = { go(Screen.RADIO) }, onSos = onSos)
+                    Screen.TEAM -> ChatScreen(chat, messages, tasksVm, report, tasks, link, channel, snackbar, lang, onOpenRadio = { go(Screen.RADIO) }, onSos = onSos)
                     Screen.TASKS -> TasksScreen(tasksVm, tasks, snackbar, lang)
                     Screen.STATS -> StatsScreen(stats, lang)
                     Screen.RADIO -> ConnectScreen(connection, snackbar)
                     Screen.SETTINGS -> SettingsScreen(settings, connection, lang)
                 }
+                // SOS is always one hold away: in the composer on Team, at the bottom left everywhere else.
+                if (current != Screen.TEAM && !imeUp) SosDock(onSos, Modifier.align(Alignment.BottomStart))
             }
         }
     }
@@ -230,7 +237,7 @@ private fun RescueScaffold(graph: AppGraph, factory: AppViewModelFactory, settin
         topBar = {
             if (current.isTab) {
                 TabTopBar(
-                    title = if (current == Screen.TEAM) (channel as? ChannelChoice.Ready)?.name?.takeIf { it.isNotBlank() } ?: stringResource(R.string.nav_team) else stringResource(R.string.nav_tasks),
+                    title = if (current == Screen.TEAM) chatTitle ?: stringResource(R.string.nav_team) else stringResource(R.string.nav_tasks),
                     link = link,
                     queued = waiting.size,
                     lang = lang,
@@ -341,18 +348,15 @@ private fun TabTopBar(
                     .fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Surface(
+                ChannelTitle(
+                    title = title,
                     onClick = onStatus,
-                    color = androidx.compose.ui.graphics.Color.Transparent,
-                    shape = MaterialTheme.shapes.medium,
-                    modifier = Modifier.weight(1f).heightIn(min = 56.dp).testTag("status_pill").semantics { contentDescription = "$title. $statusDesc" },
+                    description = "$title. $statusDesc",
+                    modifier = Modifier.weight(1f),
                 ) {
-                    Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp), verticalArrangement = Arrangement.Center) {
-                        Text(title, style = MaterialTheme.typography.titleLarge.copy(fontSize = 24.sp), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag("top_title"))
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            StatusDot(dot, size = 10.dp)
-                            Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag("status_text"))
-                        }
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        StatusDot(dot, size = 10.dp)
+                        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag("status_text"))
                     }
                 }
                 LanguageToggle(lang, onLanguage)
@@ -365,7 +369,7 @@ private fun TabTopBar(
                     ) {
                         Box(contentAlignment = Alignment.Center) { RcIcon(R.drawable.ic_more_vert, stringResource(R.string.menu_more)) }
                     }
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, modifier = Modifier.semantics { testTagsAsResourceId = true }) {
                         listOf(Screen.RADIO, Screen.STATS, Screen.SETTINGS).forEach { s ->
                             DropdownMenuItem(
                                 text = { Text(stringResource(s.labelRes), style = MaterialTheme.typography.bodyLarge) },
@@ -378,6 +382,25 @@ private fun TabTopBar(
                 }
             }
             Hairline()
+        }
+    }
+}
+
+/**
+ * The conversation title with a line under it (today: the radio status). One tap target. Today it opens the Radio
+ * screen; with several channels it opens the chat list, and the radio status moves to its own chip.
+ */
+@Composable
+fun ChannelTitle(title: String, onClick: () -> Unit, description: String, modifier: Modifier = Modifier, subtitle: @Composable () -> Unit) {
+    Surface(
+        onClick = onClick,
+        color = androidx.compose.ui.graphics.Color.Transparent,
+        shape = MaterialTheme.shapes.medium,
+        modifier = modifier.heightIn(min = 56.dp).testTag("status_pill").semantics { contentDescription = description },
+    ) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp), verticalArrangement = Arrangement.Center) {
+            Text(title, style = MaterialTheme.typography.titleLarge.copy(fontSize = 24.sp), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag("top_title"))
+            subtitle()
         }
     }
 }

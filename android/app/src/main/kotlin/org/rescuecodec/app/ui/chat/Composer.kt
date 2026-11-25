@@ -40,6 +40,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -190,9 +191,15 @@ private fun PreviewStrip(ui: org.rescuecodec.app.ui.ReportUi, lang: String, onEd
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 RcIcon(if (isText) R.drawable.ic_forum else typeIcon(type), null, tint = if (type == "mayday") c.maydayText else MaterialTheme.colorScheme.onSurface, size = 20.dp)
-                Text(title, style = MaterialTheme.typography.titleSmall, color = if (type == "mayday") c.maydayText else MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false).testTag("preview_title"))
-                if (size.isNotEmpty()) Text("· $size", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, modifier = Modifier.testTag("byte_counter"))
-                Box(Modifier.weight(1f))
+                Text(
+                    androidx.compose.ui.text.buildAnnotatedString {
+                        withStyle(androidx.compose.ui.text.SpanStyle(fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, color = if (type == "mayday") c.maydayText else MaterialTheme.colorScheme.onSurface)) { append(title) }
+                        if (size.isNotEmpty()) append(" · $size")
+                    },
+                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f).testTag("preview_title"),
+                )
                 RcIcon(if (showRead) R.drawable.ic_expand_more else R.drawable.ic_expand_less, stringResource(if (showRead) R.string.preview_hide_read else R.string.preview_show_read), tint = MaterialTheme.colorScheme.onSurfaceVariant, size = 22.dp)
             }
             Row(
@@ -215,9 +222,9 @@ private fun PreviewStrip(ui: org.rescuecodec.app.ui.ReportUi, lang: String, onEd
                     ReportFields.present(msg).forEach { def ->
                         when (def.kind) {
                             FieldKind.MANY -> (body[def.key] as? List<*>).orEmpty().forEach { code ->
-                                RcChip(Labels.value(lang, def.group, code.toString()), onClick = { onEdit(Editor.Field(def)) }, modifier = Modifier.testTag("chip_${def.key}_$code"))
+                                RcChip(Labels.value(lang, def.group, code.toString()).replaceFirstChar { it.uppercase() }, onClick = { onEdit(Editor.Field(def)) }, modifier = Modifier.testTag("chip_${def.key}_$code"))
                             }
-                            FieldKind.ONE -> RcChip(Labels.value(lang, def.group, body[def.key].toString()), onClick = { onEdit(Editor.Field(def)) }, modifier = Modifier.testTag("chip_${def.key}"))
+                            FieldKind.ONE -> RcChip(Labels.value(lang, def.group, body[def.key].toString()).replaceFirstChar { it.uppercase() }, onClick = { onEdit(Editor.Field(def)) }, modifier = Modifier.testTag("chip_${def.key}"))
                             FieldKind.NUMBER -> RcChip(numberLabel(def, (body[def.key] as? Number)?.toInt() ?: 0), onClick = { onEdit(Editor.Field(def)) }, modifier = Modifier.testTag("chip_${def.key}"))
                         }
                     }

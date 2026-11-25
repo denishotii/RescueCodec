@@ -87,7 +87,7 @@
     <string name="chip_helpers">%1$d weitere Helfer</string>
     <string name="chip_times">%1$d x</string>
     <string name="chip_radius">%1$d m Radius</string>
-    <string name="chip_persons">%1$d Personen</string>
+    <string name="chip_persons">Personen: %1$d</string>
     <string name="chip_sector">Sektor %1$d</string>
     <string name="chip_coverage">%1$d%% abgesucht</string>
     <string name="sheet_type">Art der Meldung</string>

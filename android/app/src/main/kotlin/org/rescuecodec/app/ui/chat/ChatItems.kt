@@ -32,6 +32,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
@@ -119,7 +121,7 @@ private fun Side(mine: Boolean, content: @Composable () -> Unit) {
 /** The long-press menu: Read aloud, Copy, Details. */
 @Composable
 private fun RowMenu(open: Boolean, words: String?, m: MessageEntity, actions: ChatActions, onClose: () -> Unit) {
-    DropdownMenu(expanded = open, onDismissRequest = onClose) {
+    DropdownMenu(expanded = open, onDismissRequest = onClose, modifier = Modifier.semantics { testTagsAsResourceId = true }) {
         if (words != null) {
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.action_read_aloud), style = MaterialTheme.typography.bodyLarge) },
@@ -377,7 +379,7 @@ private fun ReportCard(m: MessageEntity, task: TaskItem?, lang: String, mine: Bo
                 }
                 if (grid != null) PositionLine(grid, distance?.let { stringResource(R.string.distance_away, it) })
                 if (task != null) TaskStatus(task, lang)
-                if (task != null && task.moves.isNotEmpty()) AnswerButtons(task, actions.answer, isMayday)
+                if (task != null && task.moves.isNotEmpty()) AnswerButtons(task, actions.answer)
                 Footer(m, mine, expanded, lang, saving = true)
             }
         }
@@ -400,12 +402,12 @@ private fun TaskStatus(t: TaskItem, lang: String) {
 
 /** Accept (blue) and Done (green) at 56 dp, Decline smaller and apart. The same rules as the Tasks tab. */
 @Composable
-internal fun AnswerButtons(t: TaskItem, onAnswer: (TaskItem, String) -> Unit, onRed: Boolean = false) {
+internal fun AnswerButtons(t: TaskItem, onAnswer: (TaskItem, String) -> Unit) {
     val c = Rc.colors
     Row(Modifier.fillMaxWidth().padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
         if ("accepted" in t.moves) BigButton(
             stringResource(R.string.action_accept), { onAnswer(t, "accepted") }, Modifier.weight(1f).testTag("accept_${t.key}"),
-            icon = R.drawable.ic_check, container = if (onRed) c.mayday else c.acceptSolid, content = c.onSolid,
+            icon = R.drawable.ic_check, container = c.acceptSolid, content = c.onSolid,
         )
         if ("done" in t.moves) BigButton(
             stringResource(R.string.action_done), { onAnswer(t, "done") }, Modifier.weight(1f).testTag("done_${t.key}"),
@@ -439,12 +441,12 @@ private fun AckLine(m: MessageEntity, mine: Boolean, taskType: String?, lang: St
 fun SystemLine(text: String, icon: Int? = null, modifier: Modifier = Modifier) {
     Box(modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 6.dp), contentAlignment = Alignment.Center) {
         Row(
-            Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(14.dp)).padding(horizontal = 12.dp, vertical = 6.dp),
+            Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(14.dp)).padding(horizontal = 12.dp, vertical = 5.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             if (icon != null) RcIcon(icon, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, size = 18.dp)
-            Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+            Text(text, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp), color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
         }
     }
 }

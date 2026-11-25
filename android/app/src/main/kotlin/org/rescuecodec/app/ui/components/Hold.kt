@@ -204,3 +204,20 @@ fun ComposerMic(
         }
     }
 }
+
+/**
+ * SOS on the screens without the composer (Tasks and the menu screens): the same red disc at the bottom left, where
+ * the left thumb reaches it, with the hold strip across the bottom while it is held.
+ */
+@Composable
+fun SosDock(onConfirm: () -> Unit, modifier: Modifier = Modifier) {
+    val progress = remember { mutableFloatStateOf(0f) }
+    var holding by remember { mutableStateOf(false) }
+    Box(modifier.fillMaxWidth(), contentAlignment = Alignment.BottomStart) {
+        if (holding || progress.floatValue >= 1f) SosHoldStrip(progress.floatValue, Modifier.padding(bottom = 72.dp))
+        // A ring of the page colour lifts the disc off the cards that scroll under it.
+        Box(Modifier.padding(start = 6.dp, bottom = 6.dp).size(60.dp).background(MaterialTheme.colorScheme.background, CircleShape), contentAlignment = Alignment.Center) {
+            SosButton(onConfirm, progress, { holding = it })
+        }
+    }
+}
