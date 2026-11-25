@@ -1,7 +1,10 @@
-import { Moon, Sun, Tv } from "lucide-react";
-import { useChannels, useData, useNow, useT } from "../state/hooks";
+import { useEffect, useRef, useState } from "react";
+import { ChartColumn, Moon, Sun, Tv, X } from "lucide-react";
+import { useData, useNow, useT } from "../state/hooks";
 import { setUi, useUi } from "../state/ui";
-import { clock } from "../lib/format";
+import { clock, fmtNum } from "../lib/format";
+import { StatsBand } from "./StatsBand";
+import { Nodes } from "./Nodes";
 
 function Mark() {
   // three contour lines around a summit point: the sheet, the search, the finding
@@ -14,11 +17,63 @@ function Mark() {
   );
 }
 
+/** One line in the header: what went on air against plain text. The full numbers live in Details. */
+function Saving({ onOpen }: { onOpen: () => void }) {
+  const { stats, nodes } = useData();
+  const t = useT();
+  const onAir = stats ? (stats.bytes_in.value ?? 0) + (stats.bytes_out.value ?? 0) : 0;
+  const asText = stats?.text_equivalent_bytes.value ?? 0;
+  const ratio = stats?.size_ratio.value;
+  const radios = Object.keys(nodes).length;
+  const tip = stats
+    ? `${t("bytesOnAir")}: ${t(stats.bytes_in.source)}. ${t("asText")}: ${t(stats.text_equivalent_bytes.source)}. ${t(stats.text_equivalent_bytes.source === "measured" ? "measuredTip" : "estimatedTip")}`
+    : t("details");
+  return (
+    <button className="saving" onClick={onOpen} title={tip} aria-haspopup="dialog">
+      <ChartColumn size={16} aria-hidden="true" />
+      {onAir > 0 ? (
+        <span className="saving-line num">
+          <b>{fmtNum(onAir)} B</b> {t("onAirInsteadOf")} {fmtNum(asText)} B
+          {ratio ? <> · <em>{fmtNum(ratio, 1)}× {t("smaller")}</em></> : null}
+        </span>
+      ) : <span className="saving-line">{t("details")}</span>}
+      <span className="saving-radios num">{radios} {t("radiosShort")}</span>
+    </button>
+  );
+}
+
+/** Traffic numbers and the radio list, out of the way until someone asks. */
+function DetailsDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const t = useT();
+  useEffect(() => {
+    const d = ref.current;
+    if (!d) return;
+    if (open && !d.open) d.showModal();
+    if (!open && d.open) d.close();
+  }, [open]);
+  return (
+    <dialog ref={ref} className="drawer" aria-labelledby="details-h" onClose={onClose}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      {open && (
+        <div className="drawer-body">
+          <header className="drawer-head">
+            <h2 id="details-h">{t("detailsTitle")}</h2>
+            <button className="icon-btn" onClick={onClose} aria-label={t("close")} title={t("close")}><X size={18} aria-hidden="true" /></button>
+          </header>
+          <StatsBand />
+          <Nodes />
+        </div>
+      )}
+    </dialog>
+  );
+}
+
 export function Header() {
   const { conn, health, lastContact } = useData();
   const ui = useUi();
   const t = useT();
-  const channels = useChannels();
+  const [details, setDetails] = useState(false);
   useNow(5000);
 
   const connLabel = conn === "live" ? t("connected") : conn === "connecting" ? t("connecting") : conn === "reconnecting" ? t("reconnecting") : t("offline");
@@ -44,8 +99,9 @@ export function Header() {
         </li>
         <li className={`status status-${health && !stale ? (radioOk ? "ok" : "bad") : "idle"}`}>
           <span className="dot" aria-hidden="true" />
-          <span>{stale ? `${t("radio")}: ?` : radioOk ? `${t("radio")} ${radio?.node ?? ""}` : t("radioOff")}</span>
-          {radioOk && <span className="muted">{[radio?.region, radio?.preset, radio?.channel].filter(Boolean).join(" · ")}</span>}
+          <span title={radioOk ? [radio?.region, radio?.preset, radio?.channel].filter(Boolean).join(" · ") : undefined}>
+            {stale ? `${t("radio")}: ?` : radioOk ? `${t("radio")} ${radio?.node ?? ""}` : t("radioOff")}
+          </span>
           {radioOk && radio?.channel_error && <span role="alert">{radio.channel_error}</span>}
         </li>
         <li className={`status status-${health?.mqtt.connected && !stale ? "ok" : "idle"}`}>
@@ -54,20 +110,9 @@ export function Header() {
         </li>
       </ul>
 
+      <Saving onOpen={() => setDetails(true)} />
+
       <div className="controls">
-        {channels.filter && (
-          <div className="seg seg-channels" role="group" aria-label={t("channel")}>
-            <button className={channels.pick === "all" ? "on" : ""} aria-pressed={channels.pick === "all"} title={t("allChannels")}
-              onClick={() => setUi({ channel: "all" })}>{t("all")}</button>
-            {channels.options.map((name) => {
-              const on = channels.pick.toLowerCase() === name.toLowerCase();
-              return (
-                <button key={name} className={on ? "on" : ""} aria-pressed={on} title={`${t("channel")} ${name}`}
-                  onClick={() => setUi({ channel: name })}>#{name}</button>
-              );
-            })}
-          </div>
-        )}
         <div className="seg" role="group" aria-label={t("language")}>
           {(["en", "de"] as const).map((l) => (
             <button key={l} className={ui.lang === l ? "on" : ""} aria-pressed={ui.lang === l} onClick={() => setUi({ lang: l })}>{l.toUpperCase()}</button>
@@ -81,6 +126,7 @@ export function Header() {
           {ui.theme === "dark" ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
         </button>
       </div>
+      <DetailsDrawer open={details} onClose={() => setDetails(false)} />
     </header>
   );
 }

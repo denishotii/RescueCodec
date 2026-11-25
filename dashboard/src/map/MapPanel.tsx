@@ -6,7 +6,7 @@ import {
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import { Protocol } from "pmtiles";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { Download, Layers, LocateFixed, Mountain, Square } from "lucide-react";
+import { Download, Ellipsis, Layers, LocateFixed, Mountain, Square } from "lucide-react";
 import { api, config } from "../api/client";
 import { useData, useT } from "../state/hooks";
 import { setUi, useUi, type Layers as LayerKeys } from "../state/ui";
@@ -86,7 +86,18 @@ export function MapPanel() {
   const fitted = useRef(false);
   const seenMayday = useRef(new Set<string>());
   const [selected, setSelected] = useState<string | null>(null);
-  const [layersOpen, setLayersOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // the map menu closes on a click outside it or on Escape
+  useEffect(() => {
+    if (!menuOpen) return;
+    const away = (e: PointerEvent) => { if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setMenuOpen(false); };
+    document.addEventListener("pointerdown", away);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("pointerdown", away); document.removeEventListener("keydown", esc); };
+  }, [menuOpen]);
 
   const colors = ui.theme === "dark" ? TRACK_COLORS_NIGHT : TRACK_COLORS_DAY;
   const nameOf = (id: string) => nodes[id]?.short_name || nodeLabel(id, nodes);
@@ -218,12 +229,34 @@ export function MapPanel() {
   return (
     <Panel id="map" title={t("map")} className="panel-map" actions={
       <div className="map-tools">
-        <div className="seg view-seg" role="group" aria-label="View">
-          <button className={!ui.view3d ? "on" : ""} aria-pressed={!ui.view3d} onClick={() => setUi({ view3d: false })}><Square size={14} aria-hidden="true" /> {t("view2d")}</button>
-          <button className={ui.view3d ? "on" : ""} aria-pressed={ui.view3d} onClick={() => setUi({ view3d: true })}><Mountain size={14} aria-hidden="true" /> {t("view3d")}</button>
-        </div>
         <button className="btn btn-quiet btn-sm" onClick={() => map && fit(map, model.bounds)}><LocateFixed size={14} aria-hidden="true" /> {t("fit")}</button>
-        <a className="btn btn-quiet btn-sm" href={api.geojsonUrl()} download="rescuecodec.geojson"><Download size={14} aria-hidden="true" /> {t("exportGeo")}</a>
+        <div className="map-more" ref={menuRef}>
+          <button className="btn btn-quiet btn-sm more-btn" aria-expanded={menuOpen} aria-label={t("mapMore")} title={t("mapMore")} onClick={() => setMenuOpen((o) => !o)}>
+            <Ellipsis size={18} aria-hidden="true" />
+          </button>
+          {menuOpen && (
+            <div className="map-menu" role="group" aria-label={t("mapMore")}>
+              <div className="view-block">
+                <p className="map-menu-h">{t("view")}</p>
+                <div className="seg" role="group" aria-label={t("view")}>
+                  <button className={!ui.view3d ? "on" : ""} aria-pressed={!ui.view3d} onClick={() => setUi({ view3d: false })}><Square size={14} aria-hidden="true" /> {t("view2d")}</button>
+                  <button className={ui.view3d ? "on" : ""} aria-pressed={ui.view3d} onClick={() => setUi({ view3d: true })}><Mountain size={14} aria-hidden="true" /> {t("view3d")}</button>
+                </div>
+              </div>
+              <p className="map-menu-h"><Layers size={14} aria-hidden="true" /> {t("layers")}</p>
+              <div className="layer-row">
+                {(Object.keys(LAYER_LABEL) as (keyof LayerKeys)[]).map((k) => (
+                  <button key={k} className={`chip-toggle layer-${k} ${ui.layers[k] ? "on" : ""}`} aria-pressed={ui.layers[k]}
+                    onClick={() => setUi({ layers: { ...ui.layers, [k]: !ui.layers[k] } })}>
+                    <i aria-hidden="true" />{t(LAYER_LABEL[k])} <span className="num">{counts[k]}</span>
+                  </button>
+                ))}
+              </div>
+              {counts.sectors > 0 && ui.layers.sectors && <p className="chip-note">{t("sectorNote")}</p>}
+              <a className="btn btn-quiet btn-sm" href={api.geojsonUrl()} download="rescuecodec.geojson"><Download size={14} aria-hidden="true" /> {t("exportGeo")}</a>
+            </div>
+          )}
+        </div>
       </div>
     }>
       <div className="map-wrap">
@@ -236,22 +269,6 @@ export function MapPanel() {
               <span className="grid-zone mono">{ticks.zone}</span>
             </>
           )}
-        </div>
-        <div className="layer-chips">
-          <button className="layer-btn" aria-expanded={layersOpen} onClick={() => setLayersOpen((o) => !o)}>
-            <Layers size={18} aria-hidden="true" /> {t("layers")}
-          </button>
-          {layersOpen && <div className="layer-pop" role="group" aria-label={t("layers")}>
-          <div className="layer-row">
-          {(Object.keys(LAYER_LABEL) as (keyof LayerKeys)[]).map((k) => (
-            <button key={k} className={`chip-toggle layer-${k} ${ui.layers[k] ? "on" : ""}`} aria-pressed={ui.layers[k]}
-              onClick={() => setUi({ layers: { ...ui.layers, [k]: !ui.layers[k] } })}>
-              <i aria-hidden="true" />{t(LAYER_LABEL[k])} <span className="num">{counts[k]}</span>
-            </button>
-          ))}
-          </div>
-          {counts.sectors > 0 && ui.layers.sectors && <p className="chip-note">{t("sectorNote")}</p>}
-          </div>}
         </div>
       </div>
       {map && pinItems.map((m) => { const v = pins.get(m.id); return v ? createPortal(<Badge m={m} selected={selected === m.id} />, v.el, m.id) : null; })}
