@@ -389,7 +389,20 @@ Every record carries the same report in English and German, so a log, a chat bot
 - MQTT: topic `rescuecodec/v2/readable`.
 - Any bytes you have: `POST /v2/decode` (above), or `render(msg, "en")` in the libraries. Languages: `en`, `de` (checked), `uk`, `tr`, `ar` (machine drafts, need a native check).
 - Stock Meshtastic apps do not show port 256. To let them show the line anyway, start the gateway with `--text-over-air out` (what it sends) or `both`. It costs extra airtime, so it is off by default. The copy starts with `[RC] `, and RescueCodec receivers skip such texts (SPEC section 2.1).
-- Free text is different: a message with only a text goes out as a normal Meshtastic text (port 1) by default, and normal texts on the private channels come in as `text` records with `codec.version: 0` (gateway `--text-as-meshtastic`, app setting "Send plain text as normal Meshtastic text").
+- Free text is different: a message with only a text goes out packed for RescueCodec (port 256, about 40 % smaller) or as a normal Meshtastic text (port 1), per chat (SPEC section 2.3). Auto packs only where everyone runs RescueCodec, so a person with the official app can always read the chat. Set it with `PUT /v2/channels/{name}/mode` or `PUT /v2/nodes/{node}/mode` (`auto`, `compressed`, `normal`), or in the app's chat menu. Normal texts on the private channels come in as `text` records with `codec.version: 0`; packed ones as `text` records with `codec.packed: true` and the words already unpacked.
+
+### Packed texts in your own code
+
+Every library unpacks them; you only need the dictionary file, which ships with the library.
+
+```python
+from rescuecodec.v2 import encode, decode
+data = encode({"id": 3, "text": {"text": "We are at the hut, two people with us, waiting for the vehicle on the forest road", "dict": 1}})
+print(len(data))                 # 42 (81 bytes as a normal text)
+print(decode(data)["text"])      # {'text': 'We are at the hut, ...', 'dict': 1}
+```
+
+TypeScript (`decode(bytes).text.text`) and Kotlin (`RescueCodec.decode(bytes)`) give the same JSON. Only send packed texts on port 256 to nodes that run RescueCodec: stock Meshtastic apps cannot unpack them.
 
 Example lines:
 

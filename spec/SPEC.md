@@ -55,7 +55,7 @@ RescueCodec apps and gateways also show and send normal Meshtastic texts (`TEXT_
 | Store and show | As a normal `text` message (`{"text": {"text": "..."}}`) with sender, time and the radio facts (RSSI, SNR, hops, packet id). It has no id and is never a task. The gateway marks the record with `codec.version: 0`, the Android app with `source = "meshtastic"`, so a UI can show a small "via Meshtastic" hint. A received text may be up to 233 bytes and is kept as sent. |
 | Duplicates | The same (sender node, Meshtastic packet id) within 24 hours is a repeat. Two texts with the same words but different packet ids are two messages. |
 | Readable copies | A gateway that posts the readable line of a RescueCodec message on port 1 (`--text-over-air`, `also_plain`) MUST start it with `[RC] ` (bracket, R, C, bracket, space). Receivers MUST NOT show a port 1 text that starts with `[RC] `: they already have the message from port 256, which goes on the same channel. Stock apps show the copy as it is. A plain text is never copied again. |
-| Send | A message whose body is `text` goes out as a port 1 broadcast on the team channel while the setting is on (app: "Send plain text as normal Meshtastic text", gateway: `--text-as-meshtastic`, both on by default). Only the words go out: no id, `pos` or `time`. It uses the same send queue, rank, priority (section 2 table), airtime budget and `want_ack` as a RescueCodec text. All other types always go out on port 256. |
+| Send | A chat text goes out as a normal port 1 text or packed for RescueCodec on port 256, as the rule in section 2.3 says. A normal text carries only the words: no id, `pos` or `time`. It uses the same send queue, rank, priority (section 2 table), airtime budget and `want_ack` as a RescueCodec text. All other types always go out on port 256. |
 | Size | At most 200 bytes of UTF-8 (Meshtastic allows 233). A longer text is cut to the longest prefix that ends on a whole character, trailing spaces go, and "…" is added (`fit_plain` in Python, `TextFit.fitPlain` in Kotlin). |
 
 ### 2.2 Several channels and direct messages
@@ -68,13 +68,45 @@ A radio can have up to 8 channels. Our base radio has four: the public LongFast,
 | Public | A channel is public when it has no key or the 1-byte default key. Anyone can read it. |
 | Listen | Receivers listen on port 256 and port 1 on **every private channel** (the gateway: `--channels all`, the default, or `--channels NAME,NAME`). Broadcasts on public channels are ignored unless the person turns them on (gateway `--show-public`). Direct messages to the receiver's own node are always kept, on any channel. |
 | Record | Every stored message carries `channel: {index, name, public}` and `to`. `to` is the peer for a direct message we sent, our own node for one we received, and null for a broadcast. |
-| Send | A message goes out on the default channel (the one named `RescueCodec`, section 14) unless the sender picks another one by name. Reports (port 256) never go out on a public channel. A direct message is always a port 1 text. |
+| Send | A message goes out on the default channel (the one named `RescueCodec`, section 14) unless the sender picks another one by name. Reports (port 256) never go out on a public channel. A direct message is always a text: packed on port 256 to that node, or a normal port 1 text (section 2.3). |
 | Answer | An Ack always goes out on the **same channel** as the report it answers, so the reporting team hears it. |
 | Duplicates | Unchanged. The same report heard on two channels is one report (same sender and id). |
 
 Example record fields: `"channel": {"index": 2, "name": "draeger-srs", "public": false}, "to": null`.
 
 Why a prefix and not content matching for copies: the copy and the original may arrive in any order and over different relays, and the readable line of the copy may be cut. A fixed prefix is checked on one packet, with no memory and no timing.
+
+### 2.3 Packed or normal: the text rule
+
+A chat text can go out two ways:
+- **Packed for RescueCodec**: a `text` message on port 256 whose words are compressed (section 3.5), with id and `pos` like every RescueCodec message. About 40 % smaller. Stock Meshtastic apps cannot read it.
+- **Normal Meshtastic text** on port 1: only the words. Every app and radio screen shows it.
+
+Why not Meshtastic's own compressed text port (7, `TEXT_MESSAGE_COMPRESSED_APP`)? Stock firmware does not unpack it (the code is commented out in `src/mesh/Router.cpp`), so a stock app would show nothing. Port 256 is the honest choice: only RescueCodec receivers get packed texts, and the rule below sends them only to chats where everyone runs RescueCodec.
+
+**Who runs RescueCodec.** Every app and gateway remembers, for 24 hours, what it heard:
+
+| Heard | Means |
+|---|---|
+| Any valid RescueCodec packet (port 256) from a node, on any channel | The node runs RescueCodec. |
+| A normal text (port 1) from a node on a channel, and no port 256 packet from it | The node is a **Meshtastic user** on that channel. |
+
+A node not heard for 24 hours is forgotten. Readable copies (`[RC] ` texts) do not count. Our own node does not count. The app keeps this in its database (Room), the gateway in SQLite (`nodes_seen`), so it survives a restart.
+
+**Mode per chat.** A chat is one channel or one direct chat with one node. Each has a mode: **Auto** (default), **Always compressed** or **Always normal**. The app shows it in the chat's menu; the gateway has `GET/PUT /v2/channels/{name}/mode`, `GET/PUT /v2/nodes/{node}/mode` and `--text-mode` for chats without their own mode.
+
+**The rule**, in this order:
+1. A public channel (section 2.2) always gets a normal text.
+2. Always normal: normal text. Always compressed: packed.
+3. Auto, direct chat: packed when the peer runs RescueCodec, else normal text.
+4. Auto, channel: packed when no Meshtastic user was heard on that channel in the last 24 hours, else normal text.
+5. Packed only when it saves at least **3 bytes**: the packed packet (with id, `pos`, `time`, priority) must be at least 3 bytes smaller than the normal text (the words, cut to 200 bytes like `fit_plain`). Else normal text. A GPS position costs 11 bytes, so short texts with a position stay normal.
+
+Examples: "Ok" is 2 bytes as a normal text and 12 packed: normal. "We are at the hut, two people with us, waiting for the vehicle on the forest road" is 81 bytes as a normal text and 42 packed with an id (53 with a GPS position): packed on a RescueCodec channel. As soon as someone with the official app writes on that channel, the next text goes normal, so that person can read it.
+
+The old setting "Send plain text as normal Meshtastic text" (app) and `--text-as-meshtastic` (gateway) are replaced by the mode. Migration: if the setting was off, channels start as Always compressed.
+
+Libraries: `rescuecodec.engine.textmode` (`wants_packed`, `choose_form`) in Python and `TextMode` in the Kotlin engine give the same answers.
 
 ## 3. Wire format
 
@@ -159,7 +191,42 @@ The packing keeps a typical found at 23 bytes. Five separate enum fields would c
 
 **ack** (answer to a message with an id): `ref` = id of the answered message (required), `node` = Meshtastic node number of its sender (`fixed32`, required), `status` (1 accepted, 2 declined, 3 done; required), `eta` minutes (0 = not stated, at most 1440), `team` label (at most 12 bytes UTF-8, for example "Trupp 3", never a personal name). Acks are broadcast, so every team sees who took a task.
 
-**text**: 1 to 180 bytes of UTF-8 for anything the codes cannot say.
+**text**: 1 to 180 bytes of UTF-8 for anything the codes cannot say. Or the same words packed (section 3.5).
+
+### 3.5 Packed text
+
+`Text` has three fields. Exactly one of `text` and `deflate` is set.
+
+| # | Field | Meaning |
+|---|---|---|
+| 1 | `text` | The words, 1 to 180 bytes of UTF-8. |
+| 2 | `deflate` | The words packed: raw DEFLATE (RFC 1951, no zlib header or checksum) of the UTF-8 text, using the text dictionary as preset dictionary. Unpacked 1 to 1024 bytes of UTF-8. |
+| 3 | `dict` | Number of the text dictionary, required with `deflate`. `1` = `vocab/text-dict-v1.txt`. |
+
+Packing: zlib with window bits -15 (raw), level 9, memLevel 8, default strategy, and the dictionary set before the first byte: `zlib.compressobj(9, zlib.DEFLATED, -15, 8, zlib.Z_DEFAULT_STRATEGY, zdict=...)` in Python, `Deflater(9, true)` plus `setDictionary` in Java and Kotlin, `pako.deflateRaw(..., {level: 9, dictionary})` in TypeScript. Any valid DEFLATE stream unpacks to the same words everywhere, so only the dictionary bytes must be identical. Two compressors may make different bytes for the same words; both are valid.
+
+Unpacking rules (decoders MUST follow them):
+- Stop after 1024 bytes of output. More is `too_large` (field `text.deflate`): a packet of 233 bytes could otherwise unpack to about 240 KB.
+- A broken stream, a stream that is cut off, bytes after the end of the stream, or output that is not UTF-8 is `malformed` (`text.deflate`).
+- Empty output is `missing_field` (`text.text`). Both `text` and `deflate` set is `invalid_value` (`text.deflate`). `deflate` without `dict` is `missing_field` (`text.dict`); `dict` without `deflate` is `invalid_value` (`text.dict`).
+- A `dict` number the decoder does not know (2 and up, from a newer spec) is not an error: the message is shown as "message of a newer type" (body `unknown`), like an unknown body.
+
+**The dictionary** `vocab/text-dict-v1.txt` is 15835 bytes of UTF-8 text, SHA-256 `f1cc69167232438d0440ec8f2be9fa4270c4dd04c502dae13aa2d91bd31c6ec9`. It is frozen: never change a byte. A better one becomes dictionary 2. It is built by `tools/text_dict.py` from three sources, in this order, because DEFLATE codes near matches more cheaply, so the most useful words come last:
+1. the German and English words of `vocab/sar.yaml` (typos, ASCII umlaut spellings and short single words left out),
+2. the German and English strings of `i18n/de.json` and `en.json`,
+3. `tools/text-dict-words.txt`: places, kit, weather, radio talk, times, directions, search status, common chat phrases, and the most common German and English sentence parts last.
+A phrase that also comes later is left out. `.gitattributes` keeps the file byte for byte (no line ending changes). Libraries check the SHA-256 when they load it.
+
+**Measured** (`tools/text_dict.py measure`, messages in `tools/text-corpus.json`). Bytes of the words only:
+
+| Messages | UTF-8 | DEFLATE, no dictionary | DEFLATE with dictionary | Saved |
+|---|---|---|---|---|
+| 20 German, held out (not used for tuning) | 1183 B | 1180 B | 661 B | **44 %** |
+| 20 English, held out | 1087 B | 1038 B | 618 B | **43 %** |
+| 36 German, used for tuning | 1814 B | 1828 B | 770 B | 58 % |
+| 36 English, used for tuning | 1721 B | 1681 B | 758 B | 56 % |
+
+Without a dictionary DEFLATE saves nothing on texts this short. With the 3-byte rule (section 2.3), all 40 held-out messages go packed when the packet has only an id; with a GPS position 31 of 40 do (18 German, 13 English). Example: "We are at the hut, two people with us, waiting for the vehicle on the forest road" is 81 bytes, 34 bytes packed, 42 bytes as a whole packet with an id.
 
 ## 4. Canonical JSON
 
@@ -174,6 +241,7 @@ Every library, the gateway API, MQTT and the test vectors use one JSON shape. Ru
 - `time` is `"HH:MM"` (UTC, two digits each).
 - `track` is `{"points": [{"lat", "lon", "s"}]}` with absolute positions. `s` is seconds after the `time` minute, cumulative (never goes down). Give `s` on every point or on none.
 - `ack.node` is the Meshtastic id string `"!a1b2c3d4"` (8 lowercase hex digits).
+- `text` is always the unpacked words. A packed text (section 3.5) adds `"dict": 1`: `{"text": {"text": "Bin unterwegs", "dict": 1}}`. Encoders pack when `dict` is given. Example of a decoded packed text: `{"id": 3, "text": {"text": "We are at the hut, ...", "dict": 1}}`.
 - Decoders of old v1 packets add `"v": 1` (section 7). v2 decoders MAY add `"v": 2`.
 
 Example (the found report from section 3.2):
@@ -191,14 +259,14 @@ Encoders and decoders apply the same value rules. A decoder MUST reject a packet
 | Code | When |
 |---|---|
 | `empty` | Zero bytes. |
-| `too_large` | Encoder output over 200 bytes, or decoder input over 233 bytes. |
+| `too_large` | Encoder output over 200 bytes, decoder input over 233 bytes, or a packed text that unpacks to more than 1024 bytes (`text.deflate`). |
 | `unsupported_version` | First byte 0x00 or 0x02..0x07 (reserved), or 0x01 given to a v2-only decoder. |
-| `malformed` | Not valid protobuf (cut-off varint, length past the end, invalid UTF-8 in a string). |
+| `malformed` | Not valid protobuf (cut-off varint, length past the end, invalid UTF-8 in a string), or a packed text that is not a complete DEFLATE stream of UTF-8 (`text.deflate`). |
 | `no_body` | No body field at all, and no unknown field that could be a newer body type. |
 | `multiple_bodies` | JSON with more than one body key. (On the wire protobuf keeps the last one.) |
 | `unknown_key` | JSON key that the spec does not define. |
-| `missing_field` | A required value is 0 or missing: id for found/request/hazard/mayday, `sector.sector`, `sector.status`, `request.resource`, `hazard.kind`, `ack.ref`, `ack.node`, `ack.status`, `text.text`, track points, `time` for a track with times. |
-| `invalid_value` | Out of range or wrong type: id over 16383, lat outside -90..90, lon outside -180..180, time over 1439, counts over 255, coverage over 100, radius over 100000, eta over 1440, team over 12 bytes, text over 180 bytes, more than 16 track points, track lists of different length, unknown names in JSON. |
+| `missing_field` | A required value is 0 or missing: id for found/request/hazard/mayday, `sector.sector`, `sector.status`, `request.resource`, `hazard.kind`, `ack.ref`, `ack.node`, `ack.status`, `text.text`, `text.dict` with `deflate`, track points, `time` for a track with times. |
+| `invalid_value` | Out of range or wrong type: id over 16383, lat outside -90..90, lon outside -180..180, time over 1439, counts over 255, coverage over 100, radius over 100000, eta over 1440, team over 12 bytes, text over 180 bytes (packed: over 1024), more than 16 track points, track lists of different length, unknown names in JSON, an unknown `text.dict` in JSON, `text` and `deflate` both set, `dict` without `deflate`. |
 
 Forward compatibility comes first: unknown enum numbers, unknown flag bits, reserved state bits and unknown fields are **not** errors.
 
@@ -211,6 +279,8 @@ Forward compatibility comes first: unknown enum numbers, unknown flag bits, rese
 | id, ack.ref | 1..16383 |
 | Track points | 1..16 per packet |
 | Text | 1..180 bytes UTF-8 |
+| Packed text | 1..1024 bytes UTF-8 after unpacking, packet still at most 200 bytes |
+| Text dictionary | under 16 KB |
 | Team label | 0..12 bytes UTF-8 |
 | count, responders, persons | 0..255 |
 
@@ -270,6 +340,7 @@ Bytes are measured from the test vectors. Airtime is **estimated** with the LoRa
 | Ack accepted, ETA, team | `ack-accepted` | 22 B | 52 B | 0.60 s | 0.80 s |
 | Ack done | `ack-done` | 11 B | 24 B | 0.52 s | 0.60 s |
 | Text, 31 characters | `text-en` | 37 B | 41 B | 0.68 s | 0.72 s |
+| Packed text, 81 characters | `packed-en-hut` | 42 B | 81 B | 0.72 s | 1.01 s |
 | Track, 1 point | `track-1` | 13 B | | 0.52 s | |
 | Track, 10 points with times | `track-10` | 48 B | | 0.76 s | |
 | Track, 16 points (maximum) | `track-16-max` | 64 B | | 0.89 s | |
@@ -327,6 +398,8 @@ Rules for extractors:
    - `decode_only`: `decode(hex)` gives `decoded`.
    - `invalid_encode`, `invalid_decode`: rejected. Error codes SHOULD match `error`; `field` MAY be compared.
    - `v1`: if you support v1, `decode_any(hex)` gives `decoded`.
+   - `packed_text`: `unpack(deflate, dict)` gives `text` (inflate the reference bytes), `decode(hex)` gives `decoded`, and `decode(encode(decoded))` gives `decoded` again. The bytes of your own packing may differ from `deflate`.
+   - `text_dicts`: the SHA-256 of your bundled dictionary matches.
 4. Level 2 (optional): `render(decoded, "en")` and `"de"` give the `text` strings exactly.
 5. Level 3 (optional): your extractor passes `vectors/extraction.json`.
 6. State in your README: "Passes RescueCodec 2.0.0 conformance Level 1 (and 2, 3)". That is the proof. Never edit the vectors to make a library pass; report a bug instead.
@@ -396,7 +469,9 @@ Any other move is an `invalid_transition` error. A valid move produces an Ack to
 | `spec/rescuecodec/v2/rescuecodec.proto` | Wire format |
 | `spec/vocab/sar.yaml` | Codes, meanings, German and English words |
 | `spec/i18n/{en,de,uk,tr,ar}.json` | Words for readable text (uk, tr, ar are machine drafts) |
-| `spec/vectors/codec.json` | 113 conformance cases (42 valid, 7 decode-only, 59 invalid, 5 v1) |
+| `spec/vectors/codec.json` | 143 conformance cases (43 valid, 13 decode-only, 77 invalid, 5 v1, 5 packed texts) and the SHA-256 of each text dictionary |
+| `spec/vocab/text-dict-v1.txt` | Text dictionary 1 for packed texts (frozen) |
+| `spec/tools/text_dict.py` | Builds and measures the text dictionary (`text-dict-words.txt`, `text-corpus.json`) |
 | `spec/vectors/extraction.json` | 73 extraction sentences |
 | `spec/api/openapi.yaml` | Gateway REST and WebSocket API |
 | `spec/tools/gen_vectors.py` | Regenerates `codec.json` from the reference |
