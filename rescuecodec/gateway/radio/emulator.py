@@ -69,7 +69,7 @@ class EmulatorRadio(RadioAdapter):
 
     def info(self) -> RadioInfo:
         return RadioInfo(connected=self._connected, kind="sim", node=self.node if self._connected else None,
-                         channel="RescueCodec" if self._connected else None, region="EU_868" if self._connected else None,
+                         channel="RescueCodec" if self._connected else None, channel_index=0 if self._connected else None, region="EU_868" if self._connected else None,
                          preset="LONG_FAST" if self._connected else None,
                          firmware="emulator" if self._connected else None, detail="in-memory emulator")
 
@@ -86,7 +86,7 @@ class EmulatorRadio(RadioAdapter):
 
     # ------------------------------------------------------------ radio
     def send(self, payload: bytes, *, port: int = PORT_PRIVATE_APP, want_ack: bool = False, priority: int | None = None,
-             channel: int = 0, hop_limit: int | None = None, on_result: ResultCallback | None = None) -> int:
+             channel: int | None = None, hop_limit: int | None = None, on_result: ResultCallback | None = None) -> int:
         if not self._connected:
             raise RuntimeError("no Meshtastic radio connected")
         packet_id = next(self._ids)

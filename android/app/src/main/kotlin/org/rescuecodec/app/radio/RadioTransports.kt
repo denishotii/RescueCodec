@@ -3,7 +3,6 @@
 
 package org.rescuecodec.app.radio
 
-import com.juul.kable.Peripheral
 import com.juul.kable.Scanner
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
@@ -36,16 +35,28 @@ fun interface RadioScanner {
  * SDK first reads from the radio (see the SDK's BLE notes). [bluetoothReady] tells us if the
  * runtime permissions are granted, so we can say so instead of failing with a stack trace.
  */
-class DefaultTransportFactory(private val bluetoothReady: () -> Boolean = { true }) : TransportFactory {
+class DefaultTransportFactory(
+    private val bluetoothReady: () -> Boolean = { true },
+    /** False while the Bluetooth adapter is switched off. */
+    private val bluetoothOn: () -> Boolean = { true },
+) : TransportFactory {
     override suspend fun open(target: RadioTarget): OpenedTransport = when (target) {
         is RadioTarget.Tcp -> OpenedTransport(TcpTransport(host = target.host, port = target.port))
         is RadioTarget.Ble -> {
             if (!bluetoothReady()) {
                 throw RadioUnavailableException("Bluetooth permission is missing. Allow Nearby devices in the app settings.")
             }
-            val peripheral = Peripheral(target.address) {}
-            OpenedTransport(BleTransport(peripheral = peripheral, address = target.address)) {
-                withContext(NonCancellable) { runCatching { peripheral.close() } }
+            // The SDK's Android factory (BleTransport.android.kt), not the plain constructor: it adds the
+            // post-connect step that asks for MTU 517 and a high connection priority for 30 s. Without it
+            // the link stays at the default 23-byte MTU and the config and node list download is slow
+            // enough to hit the handshake timeout in a hall full of radios.
+            if (!bluetoothOn()) throw BluetoothOffException()
+            val transport = BleTransport(target.address)
+            OpenedTransport(transport) {
+                withContext(NonCancellable) {
+                    runCatching { transport.disconnect() }
+                    runCatching { transport.shutdown() }
+                }
             }
         }
     }

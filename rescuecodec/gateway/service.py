@@ -128,6 +128,7 @@ class GatewayService:
         self._counters = {"in": 0, "out": 0, "bytes_in": 0, "bytes_out": 0, "text_bytes": 0, "airtime_s": 0.0,
                           "rejected": 0, "duplicates": 0}
         self._by_type: dict[str, dict[str, int]] = {}
+        self._tx_times: deque[float] = deque()         # monotonic times of the last API sends (rate limit)
         self._last_rssi: int | None = None
         self._last_snr: float | None = None
         self._stats_since = datetime.now(timezone.utc)
@@ -315,6 +316,18 @@ class GatewayService:
                 return max(1, math.ceil(t + budget.window_s - now))
         return max(1, math.ceil(budget.window_s))
 
+    def _check_tx_rate(self, now: float) -> None:
+        """At most `tx_per_minute` messages from the API per minute. Protects the radio and the airtime from a runaway client."""
+        limit = self.config.tx_per_minute
+        if limit <= 0:
+            return
+        while self._tx_times and self._tx_times[0] <= now - 60:
+            self._tx_times.popleft()
+        if len(self._tx_times) >= limit:
+            retry = max(1, math.ceil(self._tx_times[0] + 60 - now))
+            raise ApiError(429, "rate_limited", f"more than {limit} messages in one minute, send again in {retry} s", None, retry)
+        self._tx_times.append(now)
+
     def _queue_message(self, message: dict[str, Any], *, want_ack: bool, dry_run: bool = False) -> dict[str, Any]:
         """Validate, assign an id, queue and record an outgoing message. Raises ApiError."""
         if not isinstance(message, dict):
@@ -326,7 +339,9 @@ class GatewayService:
             raise codec_error(exc) from exc
         with self.lock:
             assigned = None
-            if kind in C.ID_REQUIRED and not message.get("id"):
+            # Every message except an Ack gets an id, so a second "Hilfe" is not dropped as a repeat of the first
+            # (SPEC section 14). It costs 1 to 2 bytes. Acks are repeats by design and carry none.
+            if kind != "ack" and not message.get("id"):
                 assigned = self.store.peek_message_id()
                 message["id"] = assigned
             try:
@@ -341,9 +356,13 @@ class GatewayService:
                 return {"seq": 0, **record}
             if not self.radio.connected:
                 raise ApiError(503, "radio_unavailable", "no Meshtastic radio connected")
+            channel_error = self.radio.info().channel_error
+            if channel_error:
+                raise ApiError(503, "radio_unavailable", f"no private channel to send on: {channel_error}")
             pending = self.store.find_pending_hex(payload.hex())
             if pending is not None:                       # the same bytes already wait in the queue
                 return pending
+            self._check_tx_rate(time.monotonic())
             airtime = message_airtime_seconds(len(payload), self.queue.preset)
             clock = time.monotonic()
             if kind != "mayday" and not self.queue.budget.allows(kind, airtime, clock):

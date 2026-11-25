@@ -45,6 +45,7 @@ export function Header() {
           <span className="dot" aria-hidden="true" />
           <span>{stale ? `${t("radio")}: ?` : radioOk ? `${t("radio")} ${radio?.node ?? ""}` : t("radioOff")}</span>
           {radioOk && <span className="muted">{[radio?.region, radio?.preset, radio?.channel].filter(Boolean).join(" · ")}</span>}
+          {radioOk && radio?.channel_error && <span role="alert">{radio.channel_error}</span>}
         </li>
         <li className={`status status-${health?.mqtt.connected && !stale ? "ok" : "idle"}`}>
           <span className="dot" aria-hidden="true" />

@@ -606,7 +606,13 @@ object RescueCodec {
     }
 
     /** True when the packet has a top-level field this version does not define (a newer body type). */
-    private fun hasUnknownTopLevelField(bytes: ByteArray): Boolean {
+    private fun hasUnknownTopLevelField(bytes: ByteArray): Boolean = try {
+        scanForUnknownTopLevelField(bytes)
+    } catch (e: RuntimeException) {
+        false // a packet that parsed but cannot be walked again: not "a newer body", the caller reports no_body
+    }
+
+    private fun scanForUnknownTopLevelField(bytes: ByteArray): Boolean {
         val buf = ByteBuffer.wrap(bytes)
         fun varint(): Long {
             var shift = 0
@@ -626,7 +632,11 @@ object RescueCodec {
             if (known[number] != wire) return true
             when (wire) {
                 0 -> varint()
-                2 -> buf.position(buf.position() + varint().toInt())
+                2 -> {
+                    val len = varint()
+                    if (len < 0 || len > buf.remaining()) return false
+                    buf.position(buf.position() + len.toInt())
+                }
             }
         }
         return false

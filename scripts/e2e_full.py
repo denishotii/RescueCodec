@@ -163,7 +163,8 @@ def inject_text(text: str, screen="REPORT") -> None:
 
 
 def app_link_connected() -> bool:
-    return "Connected to SIM-FIELD" in screen_text()
+    text = screen_text()      # the Radio screen says "Connected to ...", the header chip on other screens "Radio connected, ..."
+    return "Connected to SIM-FIELD" in text or "Radio connected, SIM-FIELD" in text
 
 
 def intent_json(message: dict) -> None:

@@ -101,8 +101,15 @@ class Sending(unittest.TestCase):
             c = gw.post("/v2/messages", message={"sector": {"sector": 4, "status": "cleared"}}).json()
             self.assertEqual(a["message"]["id"], 1)
             self.assertEqual(b["message"]["id"], 500)
-            self.assertNotIn("id", c["message"])                     # sector does not need an id
-            self.assertIsNone(c["key"])
+            self.assertEqual(c["message"]["id"], 2)                  # every message but an Ack gets an id (SPEC section 14)
+            self.assertEqual(c["key"], "0000e001-2")
+
+    def test_the_same_text_twice_is_two_messages(self):
+        with gateway() as gw:
+            first = gw.post("/v2/text", text="Hilfe").json()
+            second = gw.post("/v2/text", text="Hilfe").json()
+            self.assertNotEqual(first["seq"], second["seq"])
+            self.assertNotEqual(first["codec"]["hex"], second["codec"]["hex"])     # different ids, so no dedupe at the receiver
 
     def test_dry_run_sends_nothing(self):
         with gateway() as gw:
@@ -173,7 +180,7 @@ class Sending(unittest.TestCase):
                                 {"mayday": {"reason": "injured"}}):
                     gw.service._queue_message(message, want_ack=False)
             wait_for(lambda: len(order) == 3)
-            self.assertEqual(order[0], encode({"id": 1, "mayday": {"reason": "injured"}}))
+            self.assertEqual(order[0], encode({"id": 3, "mayday": {"reason": "injured"}}))
 
     def test_text_and_also_plain(self):
         with gateway() as gw:

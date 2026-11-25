@@ -70,6 +70,14 @@ enum class Outcome {
  * Dedupe: the same (sender, id) within [dedupeMs] (24 h) is a duplicate. Messages without an id
  * can be deduped by payload within [payloadDedupeMs] (10 min) with [isDuplicatePayload].
  *
+ * Answers for a task we never saw are kept as placeholders (the report may still arrive). They are bounded:
+ * at most [MAX_PLACEHOLDERS], and one that no report filled in for [PLACEHOLDER_TTL_MS] is forgotten, so a flood of
+ * Acks cannot grow memory. Trust: the private channel key is the only trust boundary. Anyone who holds it can send
+ * an Ack for any task, and a `done` closes the task for everyone.
+ *
+ * Same (sender, id) means the same report again (a retransmit), never an update. A sender who changes a report
+ * sends it with a new id.
+ *
  * Not thread-safe: call it from one thread, or lock outside.
  */
 class RequestTracker(
@@ -92,6 +100,7 @@ class RequestTracker(
 
     /** Registers a task we send ourselves. [selfNode] is our Meshtastic node number. */
     fun onSent(selfNode: Long, message: Map<String, Any?>): Task? {
+        purge(clock())
         val type = taskType(message) ?: return null
         val id = (message["id"] as Number).toInt()
         val key = TaskKey(selfNode, id)
@@ -137,7 +146,9 @@ class RequestTracker(
         val status = ack["status"] as? String ?: return Outcome.IGNORED
         if (status != "accepted" && status != "declined" && status != "done") return Outcome.IGNORED
         val key = TaskKey(node, ref)
+        val isNew = key !in tasks
         val e = tasks.getOrPut(key) { Entry(key, "unknown", null, false, now) }
+        if (isNew) purgePlaceholders(now, keep = e)
         val before = e.latest[sender]
         if (before != null && before.status == status && before.team == (ack["team"] as? String)) return Outcome.IGNORED
         val a = Answer(sender, status, ack["team"] as? String, (ack["eta"] as? Number)?.toInt(), now)
@@ -180,6 +191,16 @@ class RequestTracker(
 
     private fun purge(now: Long) {
         tasks.values.removeAll { now - it.created > dedupeMs && now - it.updated > dedupeMs }
+        purgePlaceholders(now, keep = null)
+    }
+
+    /** Drops placeholders (answers without a report) that are too old, then the oldest ones beyond the cap. */
+    private fun purgePlaceholders(now: Long, keep: Entry?) {
+        tasks.values.removeAll { it.message == null && !it.local && it !== keep && now - it.updated > PLACEHOLDER_TTL_MS }
+        val stubs = tasks.values.filter { it.message == null && !it.local }
+        if (stubs.size > MAX_PLACEHOLDERS) {
+            stubs.filter { it !== keep }.sortedBy { it.updated }.take(stubs.size - MAX_PLACEHOLDERS).forEach { tasks.remove(it.key) }
+        }
     }
 
     private fun snapshot(e: Entry): Task {
@@ -196,6 +217,12 @@ class RequestTracker(
 
     companion object {
         private val TASK_TYPES = setOf("found", "request", "hazard", "mayday")
+
+        /** Most answers-without-report we keep. */
+        const val MAX_PLACEHOLDERS = 500
+
+        /** An answer whose report never came is forgotten after this long. */
+        const val PLACEHOLDER_TTL_MS = 30 * 60_000L
 
         /** Message type if it is a task (has a body of a taskable type and an id), else null. */
         fun taskType(message: Map<String, Any?>): String? {

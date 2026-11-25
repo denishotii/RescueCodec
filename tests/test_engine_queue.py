@@ -212,6 +212,19 @@ class Tasks(unittest.TestCase):
         self.assertIs(again, t)
         self.assertEqual((t.state, t.type), ("accepted", "found"))
 
+    def test_ack_flood_is_bounded_and_old_placeholders_expire(self):
+        from rescuecodec.engine.tasks import MAX_PLACEHOLDERS, PLACEHOLDER_TTL_S
+        b = TaskBoard()
+        real = b.on_message("!a1b2c3d4", {"id": 1, "found": {}}, self.NOW)
+        for n in range(1, MAX_PLACEHOLDERS + 200):
+            b.on_message("!0badc0de", {"ack": {"ref": n, "node": "!a1b2c3d4", "status": "accepted"}}, self.NOW + timedelta(seconds=n // 100))
+        stubs = [t for t in b.list() if t.type is None]
+        self.assertLessEqual(len(stubs), MAX_PLACEHOLDERS)
+        self.assertIs(b.get(real.key), real)                       # real tasks are never dropped
+        later = self.NOW + timedelta(seconds=PLACEHOLDER_TTL_S + 60)
+        b.on_message("!a1b2c3d4", {"id": 2, "found": {}}, later)
+        self.assertEqual([t for t in b.list() if t.type is None], [])
+
     def test_list_order_mayday_first(self):
         b = TaskBoard()
         b.on_message("!a1b2c3d4", {"id": 1, "request": {"resource": "medic"}}, self.NOW)

@@ -11,6 +11,10 @@ Moves you make yourself (`transition`): open -> accepted | declined; accepted ->
 declined -> accepted; the same state again is allowed (it re-sends the Ack). Everything else raises InvalidTransition
 (the gateway answers 409). Acks that arrive from the radio (`on_ack`) are applied as they come, newest wins,
 except that done stays done and a late Ack for a missing task makes an `unknown` placeholder.
+
+Placeholders are bounded: at most MAX_PLACEHOLDERS are kept and one that no report has filled in for
+PLACEHOLDER_TTL_S is dropped, so a flood of Acks cannot grow memory. Trust: the private channel key is the only
+trust boundary. Anyone who holds it can send an Ack for any task (a `done` closes it for everyone).
 """
 from __future__ import annotations
 
@@ -24,6 +28,8 @@ from rescuecodec.v2 import codes as C
 from rescuecodec.v2.codec import effective_priority, message_type, node_from_json, node_to_json
 
 TASK_TYPES = ("found", "request", "hazard", "mayday")
+MAX_PLACEHOLDERS = 500            # tasks that only an Ack has mentioned so far
+PLACEHOLDER_TTL_S = 30 * 60       # an Ack whose report never came is forgotten after this
 STATES = ("open", "accepted", "declined", "done", "unknown")
 ALLOWED = {"open": {"accepted", "declined"}, "accepted": {"done", "declined"}, "declined": {"accepted"}}
 
@@ -75,6 +81,17 @@ class TaskBoard:
     def get(self, key: str) -> Task | None:
         return self._tasks.get(key)
 
+    def purge(self, now: datetime | None = None) -> None:
+        """Forget old placeholders and keep at most MAX_PLACEHOLDERS (oldest go first). Real tasks are kept."""
+        now = now or datetime.now(timezone.utc)
+        stubs = [t for t in self._tasks.values() if t.type is None]
+        for task in stubs:
+            if (now - task.updated).total_seconds() > PLACEHOLDER_TTL_S:
+                del self._tasks[task.key]
+        stubs = sorted((t for t in self._tasks.values() if t.type is None), key=lambda t: t.updated)
+        for task in stubs[:max(0, len(stubs) - MAX_PLACEHOLDERS)]:
+            del self._tasks[task.key]
+
     def list(self, states: set[str] | list[str] | None = None) -> list[Task]:
         """Tasks in the order a command post wants them: Mayday first, then type rank and priority, open before
         answered, newest first."""
@@ -88,6 +105,7 @@ class TaskBoard:
     def on_message(self, sender: int | str, msg: Mapping, now: datetime | None = None) -> Task | None:
         """Register a received (or own sent) message. Acks update their task. Returns the task or None."""
         now = now or datetime.now(timezone.utc)
+        self.purge(now)
         kind = message_type(msg)
         if kind == "ack":
             return self.on_ack(sender, msg, now)
@@ -121,6 +139,7 @@ class TaskBoard:
         if task is None:
             task = Task(key, ack["node"], int(ack["ref"]), None, None, "unknown", now, now)
             self._tasks[key] = task
+            self.purge(now)            # keep the cap right after adding, not only before the next message
         by = node_to_json(node_from_json(sender) if isinstance(sender, str) else int(sender))
         entry = {"by": by, "status": ack["status"], "eta": ack.get("eta"), "team": ack.get("team"), "time": now}
         task.acks.append({k: v for k, v in entry.items() if v is not None})

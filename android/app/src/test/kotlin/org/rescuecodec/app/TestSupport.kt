@@ -28,9 +28,10 @@ suspend fun eventually(timeoutMs: Long = 10_000, what: String = "condition", che
 }
 
 /** A mesh packet on port 256 as another radio would deliver it to the phone. */
-fun privateAppPacket(from: Long, id: Int, payload: ByteArray, hopStart: Int = 3, hopLimit: Int = 2): MeshPacket =
+fun privateAppPacket(from: Long, id: Int, payload: ByteArray, hopStart: Int = 3, hopLimit: Int = 2, channel: Int = 0): MeshPacket =
     MeshPacket.Builder().also { b ->
         b.from = from.toInt()
+        b.channel = channel
         b.to = -1
         b.id = id
         b.hop_start = hopStart

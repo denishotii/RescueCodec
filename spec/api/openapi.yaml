@@ -18,8 +18,14 @@ info:
       The same JSON goes into `POST /v2/messages`, comes out of `GET /v2/messages`, and is used on MQTT.
     - Node ids look like `!a1b2c3d4` (Meshtastic style, 8 lowercase hex digits).
     - A **task key** names a message that can be answered: `<node hex>-<id>`, for example `a1b2c3d4-7`.
-    - No authentication: the gateway listens on localhost by default. If you open it to a LAN,
-      put it behind a reverse proxy with a password.
+    - Authentication: none by default, because the gateway listens on localhost only. The gateway refuses
+      to listen on any other address unless it has a token (`--token`). With a token every `/v2` call needs
+      `Authorization: Bearer <token>`, and the WebSocket and the dashboard take `?token=<token>` because
+      browsers cannot set headers there. A WebSocket from a web page must come from localhost, from
+      `--cors-origin`, or (with a token) from the gateway's own address. Programs without an `Origin` are fine.
+    - The API may queue at most 30 messages per minute (`--tx-per-minute`). More gives `429 rate_limited`.
+    - Wording: `delivered` means a neighbouring radio repeated our packet. It does not mean that a team
+      received it. The `ack` from a person is the proof of that.
 
     **Sending is asynchronous.** `POST` returns `202` with a record in status `queued`. The status then
     moves to `sent` (handed to the radio), and for `want_ack` packets to `delivered` (Meshtastic
@@ -834,7 +840,10 @@ components:
             kind: { type: string, enum: [serial, tcp, ble, sim, none] }
             node: { type: [string, "null"] }
             port: { type: integer, description: Meshtastic port number used, 256 = PRIVATE_APP. }
-            channel: { type: [string, "null"] }
+            channel: { type: [string, "null"], description: Name of the channel we send and listen on. }
+            channel_index: { type: [integer, "null"], description: Meshtastic index of that channel. Reports are sent only there, and port 256 packets from other channels are dropped. }
+            channel_error: { type: [string, "null"], description: "Why there is no safe channel (none named RescueCodec, only the public key). Sending is refused while this is set." }
+            other_channel: { type: integer, description: Port 256 packets dropped because they came in on another channel. }
             region: { type: [string, "null"] }
             preset: { type: [string, "null"] }
             firmware: { type: [string, "null"] }
@@ -928,10 +937,10 @@ components:
               description: |
                 Codec codes: empty, too_large, unsupported_version, malformed, no_body, multiple_bodies,
                 unknown_key, invalid_value, missing_field. Gateway codes: bad_request, not_found,
-                invalid_transition, radio_unavailable, airtime_limit.
+                invalid_transition, radio_unavailable, airtime_limit, rate_limited, unauthorized.
             message: { type: string, description: Plain English for people. }
             field: { type: [string, "null"], description: "Path of the bad field, for example pos.lat." }
-            retry_after_s: { type: integer, description: Only for airtime_limit. }
+            retry_after_s: { type: integer, description: Only for airtime_limit and rate_limited. }
 
   examples:
     InFoundRecord:

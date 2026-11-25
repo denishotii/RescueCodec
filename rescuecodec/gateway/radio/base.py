@@ -32,7 +32,10 @@ class RadioInfo:
     connected: bool = False
     kind: str = "none"             # serial | tcp | ble | sim | none
     node: str | None = None
-    channel: str | None = None
+    channel: str | None = None     # name of the channel we send on
+    channel_index: int | None = None
+    channel_error: str | None = None   # why no safe channel was found (messages are refused then)
+    other_channel: int = 0             # port 256 packets dropped because they came in on another channel
     region: str | None = None
     preset: str | None = None
     firmware: str | None = None
@@ -40,7 +43,8 @@ class RadioInfo:
 
     def as_health(self, port: int = PORT_PRIVATE_APP) -> dict[str, Any]:
         return {"connected": self.connected, "kind": self.kind, "node": self.node, "port": port,
-                "channel": self.channel, "region": self.region, "preset": self.preset, "firmware": self.firmware}
+                "channel": self.channel, "channel_index": self.channel_index,
+                "channel_error": self.channel_error, "other_channel": self.other_channel, "region": self.region, "preset": self.preset, "firmware": self.firmware}
 
 
 #: result callback for a sent packet: (delivered, reason). Called at most once, from any thread.
@@ -71,8 +75,9 @@ class RadioAdapter(ABC):
 
     @abstractmethod
     def send(self, payload: bytes, *, port: int = PORT_PRIVATE_APP, want_ack: bool = False, priority: int | None = None,
-             channel: int = 0, hop_limit: int | None = None, on_result: ResultCallback | None = None) -> int:
-        """Broadcast `payload` on the channel. Returns the radio packet id. Raises RuntimeError when not connected."""
+             channel: int | None = None, hop_limit: int | None = None, on_result: ResultCallback | None = None) -> int:
+        """Broadcast `payload` on the channel (None = the radio's resolved private channel). Returns the radio packet id.
+        Raises RuntimeError when not connected or when no safe channel exists."""
 
     def nodes(self) -> list[dict[str, Any]]:
         """Nodes the radio knows. Keys: node, num, short_name, long_name, hw_model, role, last_heard (unix s),

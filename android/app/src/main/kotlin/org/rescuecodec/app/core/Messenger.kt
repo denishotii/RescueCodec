@@ -159,8 +159,7 @@ class Messenger(
     // ------------------------------------------------------------------ sending
 
     /**
-     * Puts [message] (canonical JSON shape as a map) into the send queue. Found, Request, Hazard and
-     * Mayday get an id if they have none. [source] says who asked: "app" or a package name.
+     * Puts [message] (canonical JSON shape as a map) into the send queue. Every message except an Ack gets an id if it has none. [source] says who asked: "app" or a package name.
      */
     suspend fun submit(message: Map<String, Any?>, source: String = "app"): SubmitResult {
         val input = LinkedHashMap(message)
@@ -169,7 +168,9 @@ class Messenger(
         } catch (e: CodecException) {
             return SubmitResult.Rejected(e.code, e.field, e.message ?: e.code)
         }
-        if (RequestTracker.taskType(input) == null && type in TASK_TYPES && (input["id"] as? Number)?.toInt().let { it == null || it == 0 }) {
+        // Every message except an Ack gets an id (spec section 14), so a second "Hilfe" is a new message and not a
+        // repeat of the first. It costs 1 to 2 bytes. An Ack is a repeat by design and carries none.
+        if (type != "ack" && (input["id"] as? Number)?.toInt().let { it == null || it == 0 }) {
             input["id"] = settings.nextMessageId()
         }
         val bytes: ByteArray
@@ -279,7 +280,10 @@ class Messenger(
                 client.packets.collect { p ->
                     try {
                         val self = nodeOf(client).takeIf { it != 0L } ?: settings.lastOwnNode
-                        mutex.withLock { onPacket(p, self) }
+                        // Only our private channel counts. Port 256 is free for any app, and on a radio that also has
+                        // LongFast, other teams' packets arrive there. No safe channel known: drop (never guess).
+                        val wanted = (ChannelChoice.resolve(client.channels.value, settings.channelIndex) as? ChannelChoice.Ready)?.index
+                        mutex.withLock { onPacket(p, self, wanted) }
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
@@ -428,13 +432,13 @@ class Messenger(
             reason is SendFailure.QueueRejected ->
                 requeue(rowId, "The radio queue is full. Trying again in a few seconds.", delayMs = 5_000)
             reason == SendFailure.Disconnected || reason == SendFailure.HandshakeFailed ->
-                if (sawSent && attempts >= LINK_RESENDS) {
+                if (sawSent && linkResendsOf(attempts) >= LINK_RESENDS) {
                     finish(rowId, MessageState.NOT_CONFIRMED, "The link to the radio dropped while sending. It may have gone out.", StatNames.TX_NOT_CONFIRMED)
                 } else if (sawSent) {
                     // A link that dies silently (Bluetooth out of range, Wi-Fi gone) takes the packets of the last
                     // seconds with it. Send once more after the reconnect. If the first one did go out, receivers
                     // drop the copy: they dedupe on (sender, id) or on the payload bytes (spec section 14).
-                    messages.get(rowId)?.let { messages.update(it.copy(attempts = attempts + 1)) }
+                    messages.get(rowId)?.let { messages.update(it.copy(attempts = attempts + LINK_UNIT)) }
                     requeue(rowId, "The link to the radio dropped while sending. Sending it again when it is back.")
                 } else requeue(rowId, "The link to the radio dropped. Waiting.")
             reason == SendFailure.IdCollision -> requeue(rowId, "The radio had an id clash. Trying again.", delayMs = 1_000)
@@ -455,7 +459,7 @@ class Messenger(
     private suspend fun refuse(rowId: Long, attempts: Int) {
         stats.add(StatNames.TX_REFUSED_AIRTIME)
         val row = messages.get(rowId) ?: return
-        val n = attempts + 1
+        val n = refusalsOf(attempts) + 1
         val isMayday = row.type == "mayday"
         if (n > maxRefusalRetries && !isMayday) {
             finish(rowId, MessageState.FAILED, "The radio kept refusing because of the airtime limit. Send it again later.", StatNames.TX_FAILED)
@@ -465,7 +469,7 @@ class Messenger(
         val at = clock() + wait
         messages.update(
             row.copy(
-                state = MessageState.REFUSED_AIRTIME, attempts = n, retryAtMs = at,
+                state = MessageState.REFUSED_AIRTIME, attempts = linkResendsOf(attempts) * LINK_UNIT + n, retryAtMs = at,
                 detail = "The radio refused to send: airtime limit reached. Trying again in ${(wait + 59_999) / 60_000} min.",
             ),
         )
@@ -537,11 +541,15 @@ class Messenger(
 
     // --------------------------------------------------------------- receiving
 
-    private suspend fun onPacket(p: MeshPacket, self: Long) {
+    private suspend fun onPacket(p: MeshPacket, self: Long, wantedChannel: Int?) {
         val d = p.decoded ?: return
         if (d.portnum != PortNum.PRIVATE_APP) return
         val from = p.from.toLong() and 0xFFFFFFFFL
         if (from == self) return
+        if (wantedChannel == null || p.channel != wantedChannel) {
+            stats.add(StatNames.RX_OTHER_CHANNEL)
+            return
+        }
         val bytes = d.payload.toByteArray()
         val now = clock()
         val hops = if (p.hop_start > 0) (p.hop_start - p.hop_limit).coerceAtLeast(0) else null
@@ -698,11 +706,19 @@ class Messenger(
     }
 
     companion object {
-        private val TASK_TYPES = setOf("found", "request", "hazard", "mayday")
         private const val DUTY_CYCLE_LIMIT_RES = 9
 
         /** How often a message that was handed to a link that then dropped is sent again. */
         private const val LINK_RESENDS = 1
+
+        /**
+         * `attempts` of a row holds two counters, so no new column is needed: airtime refusals in the low part
+         * (0..99) and link resends in units of [LINK_UNIT]. A message that was refused for airtime and then loses
+         * its link still gets its one resend.
+         */
+        private const val LINK_UNIT = 100
+        internal fun refusalsOf(attempts: Int) = attempts % LINK_UNIT
+        internal fun linkResendsOf(attempts: Int) = attempts / LINK_UNIT
 
         /** Own moves from spec section 15.1: current own status to allowed next statuses. */
         val ALLOWED_MOVES: Map<String, Set<String>> = mapOf(

@@ -13,7 +13,8 @@ class GatewayConfig:
     serial: str | None = None             # "auto" or a device path
     emulator: bool = False
     emulator_demo: bool = False
-    channel_index: int = 0                # Meshtastic channel used for sending
+    channel_index: int | None = None      # Meshtastic channel used for sending. None = find the channel named channel_name
+    channel_name: str = "RescueCodec"     # name of the private team channel on the radio
     port_num: int = 256                   # PRIVATE_APP
     hop_limit: int | None = None          # None = the radio's own setting
 
@@ -43,6 +44,8 @@ class GatewayConfig:
     http_port: int = 8000
     static_dir: str | None = None
     cors_origins: list[str] = field(default_factory=list)
+    token: str | None = None              # bearer token for REST and WebSocket. Required when host is not loopback
+    tx_per_minute: int = 30               # messages the API may hand to the radio per minute (0 = no limit)
     log_level: str = "INFO"
 
     def validate(self) -> None:
@@ -53,8 +56,22 @@ class GatewayConfig:
             raise ValueError(f"--team is longer than {C.MAX_TEAM_BYTES} bytes")
         if self.text_over_air not in ("off", "out", "in", "both"):
             raise ValueError("--text-over-air must be off, out, in or both")
-        if not 0 <= self.channel_index <= 7:
+        if self.channel_index is not None and not 0 <= self.channel_index <= 7:
             raise ValueError("--channel must be 0..7")
+        if self.tx_per_minute < 0:
+            raise ValueError("--tx-per-minute must be 0 or more")
+        if not is_loopback(self.host) and not self.token:
+            raise ValueError(f"--host {self.host} is reachable from other computers and the API can send on the radio: "
+                             "set --token (or RESCUECODEC_TOKEN), or use --host 127.0.0.1")
+
+
+def is_loopback(host: str) -> bool:
+    """True for localhost, 127.x.x.x and ::1. 0.0.0.0, a LAN address or a name are not loopback."""
+    host = host.strip().strip("[]").lower()
+    if host == "localhost" or host == "::1":
+        return True
+    parts = host.split(".")
+    return len(parts) == 4 and parts[0] == "127" and all(p.isdigit() and int(p) < 256 for p in parts)
 
 
 def split_host_port(value: str, default_port: int) -> tuple[str, int]:

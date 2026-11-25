@@ -44,5 +44,17 @@ class LastRadioStore(private val store: KeyValueStore) {
     fun set(target: RadioTarget) = store.putString(KEY, target.encode())
     fun clear() = store.putString(KEY, null)
 
-    private companion object { const val KEY = "last_radio" }
+    /**
+     * True while the person wants the link up. Set by every connect, cleared only by an explicit Disconnect
+     * (button or notification). The app uses it to bring the link back after the process was killed.
+     * Default true, so an app that already has a last radio keeps the old behaviour.
+     */
+    var wantConnected: Boolean
+        get() = store.getLong(WANT_KEY, 1) == 1L
+        set(v) = store.putLong(WANT_KEY, if (v) 1 else 0)
+
+    private companion object {
+        const val KEY = "last_radio"
+        const val WANT_KEY = "want_connected"
+    }
 }

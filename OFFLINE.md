@@ -24,11 +24,11 @@ Speech models are **not** inside the default APK. See `docs/VOICE.md` for the th
 | Vosk Android library 0.3.75 (Maven, linked into the APK) | 13 MB | https://repo1.maven.org/maven2/com/alphacephei/vosk-android/ | Apache-2.0 |
 | CameraX 1.7.0 and ZXing core 3.5.4 (Maven, QR scanner) | 1.5 MB | Google Maven, Maven Central | Apache-2.0 |
 
-## Map data (assets-offline/map/, bbox 6.85,50.60,7.35,50.80)
+## Map data (assets-offline/map/, bbox 6.80,50.60,7.35,51.00: Koeln, Bonn and the Siebengebirge)
 | Asset | Size | Source | Licence and attribution |
 |---|---|---|---|
-| basemap.pmtiles (vector, Protomaps schema, z0-14, build 20261122) | 14 MB | https://build.protomaps.com/20261122.pmtiles (via `pmtiles extract`) | ODbL. Show "© OpenStreetMap contributors" on the map. |
-| terrain.pmtiles (terrarium webp 512 px, z0-12) | 6 MB | https://download.mapterhorn.com/planet.pmtiles (via `pmtiles extract`) | Mapterhorn, mixed open sources. Show "© Mapterhorn" and link https://mapterhorn.com/attribution |
+| basemap.pmtiles (vector, Protomaps schema, z0-14, build 20261122) | 30 MB | https://build.protomaps.com/20261122.pmtiles (via `pmtiles extract`) | ODbL. Show "© OpenStreetMap contributors" on the map. |
+| terrain.pmtiles (terrarium webp 512 px, z0-12) | 8 MB | https://download.mapterhorn.com/planet.pmtiles (via `pmtiles extract`) | Mapterhorn, mixed open sources. Show "© Mapterhorn" and link https://mapterhorn.com/attribution |
 | terrain-siebengebirge-z14.pmtiles (detail, bbox 7.15,50.635,7.292,50.725, z0-14) | 2 MB | same as above | same as above |
 | glyphs/ (Noto Sans Regular, Medium, Italic, ranges 0-255 and 256-511) | 0.7 MB | https://protomaps.github.io/basemaps-assets/fonts/ | SIL OFL 1.1 (Noto Sans) |
 

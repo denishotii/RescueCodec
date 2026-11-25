@@ -27,6 +27,15 @@ export async function loadConfig(): Promise<RuntimeConfig> {
   return config;
 }
 
+/** The gateway token, if it runs with --token: from ?token=... in the page address, then kept for this tab. */
+export function authToken(): string | null {
+  try {
+    const q = new URLSearchParams(location.search).get("token");
+    if (q) { try { sessionStorage.setItem("rc-token", q); } catch { /* private window */ } return q; }
+    return sessionStorage.getItem("rc-token");
+  } catch { return null; }
+}
+
 export class ApiError extends Error {
   constructor(public status: number, public code: string, message: string, public retryAfter?: number, public field?: string | null) {
     super(message);
@@ -35,10 +44,11 @@ export class ApiError extends Error {
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
+  const token = authToken();
   try {
     res = await fetch(config.apiBase + path, {
       ...init,
-      headers: { Accept: "application/json", ...(init?.body ? { "Content-Type": "application/json" } : {}), ...init?.headers },
+      headers: { Accept: "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(init?.body ? { "Content-Type": "application/json" } : {}), ...init?.headers },
     });
   } catch {
     throw new ApiError(0, "unreachable", "Gateway not reachable");
@@ -61,7 +71,7 @@ export const api = {
   stats: () => call<Stats>("/v2/stats"),
   ack: (key: string, body: { status: AckStatus; eta?: number; team?: string }) =>
     call<{ task: Task; record: MessageRecord }>(`/v2/tasks/${encodeURIComponent(key)}/ack`, { method: "POST", body: JSON.stringify(body) }),
-  geojsonUrl: () => config.apiBase + "/v2/export.geojson",
+  geojsonUrl: () => config.apiBase + "/v2/export.geojson" + (authToken() ? `?token=${encodeURIComponent(authToken()!)}` : ""),
 };
 
 export function wsUrl(sinceSeq: number): string {
@@ -69,5 +79,7 @@ export function wsUrl(sinceSeq: number): string {
   const u = new URL("/v2/stream", base);
   u.protocol = u.protocol === "https:" ? "wss:" : "ws:";
   if (sinceSeq > 0) u.searchParams.set("since_seq", String(sinceSeq));
+  const token = authToken();
+  if (token) u.searchParams.set("token", token);
   return u.toString();
 }

@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import json
 import logging
 import mimetypes
 import os
+import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Literal
@@ -86,9 +88,31 @@ def csv_filter(value: str | None, allowed: tuple[str, ...], name: str) -> list[s
     return items
 
 
+def bearer_token(authorization: str | None, query_token: str | None) -> str | None:
+    """The token a client sent: `Authorization: Bearer ...`, or ?token=... (browsers cannot set headers on a WebSocket)."""
+    if authorization and authorization[:7].lower() == "bearer ":
+        return authorization[7:].strip()
+    return query_token
+
+
+def origin_allowed(origin: str | None, host: str | None, cors_origins: list[str], token_ok: bool) -> bool:
+    """Browsers send an Origin on a WebSocket and CORS does not apply to it, so we check it ourselves.
+    No Origin means a program, not a web page: allowed. A web page must come from localhost, from --cors-origin,
+    or (with a valid token) from this gateway itself."""
+    if not origin:
+        return True
+    if re.match(LOCAL_ORIGIN, origin) or origin in cors_origins:
+        return True
+    return token_ok and bool(host) and origin.split("://", 1)[-1] == host
+
+
 def create_app(service: GatewayService, *, hub: ConnectorHub | None = None, static_dir: str | Path | None = None,
-               cors_origins: list[str] | None = None, start: bool = True) -> FastAPI:
+               cors_origins: list[str] | None = None, start: bool = True, token: str | None = None) -> FastAPI:
     static_root = Path(static_dir) if static_dir else DEFAULT_STATIC_DIR
+    allowed_origins = list(cors_origins or [])
+
+    def token_ok(supplied: str | None) -> bool:
+        return not token or (supplied is not None and hmac.compare_digest(supplied.encode(), token.encode()))
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -107,6 +131,17 @@ def create_app(service: GatewayService, *, hub: ConnectorHub | None = None, stat
     app = FastAPI(title="RescueCodec Gateway", version="2.0.0", docs_url=None, redoc_url=None, openapi_url=None,
                   lifespan=lifespan)
     app.state.service = service
+
+    if token:
+        @app.middleware("http")
+        async def require_token(request: Request, call_next):
+            if request.url.path.startswith("/v2/") and request.method != "OPTIONS":
+                if not token_ok(bearer_token(request.headers.get("authorization"), request.query_params.get("token"))):
+                    response = error_response(ApiError(401, "unauthorized", "this gateway needs its token: send 'Authorization: Bearer <token>'"))
+                    response.headers["WWW-Authenticate"] = "Bearer"
+                    return response
+            return await call_next(request)
+
     app.add_middleware(CORSMiddleware, allow_origin_regex=LOCAL_ORIGIN, allow_origins=cors_origins or [],
                        allow_methods=["GET", "POST"], allow_headers=["*"])
 
@@ -223,7 +258,11 @@ def create_app(service: GatewayService, *, hub: ConnectorHub | None = None, stat
         return error_response(ApiError(400, "bad_request", "this endpoint needs a WebSocket upgrade (ws://host/v2/stream)"))
 
     @app.websocket("/v2/stream")
-    async def stream(ws: WebSocket, since_seq: int | None = Query(None, ge=0)):
+    async def stream(ws: WebSocket, since_seq: int | None = Query(None, ge=0), query_token: str | None = Query(None, alias="token")):
+        valid = token_ok(bearer_token(ws.headers.get("authorization"), query_token))
+        if not valid or not origin_allowed(ws.headers.get("origin"), ws.headers.get("host"), allowed_origins, bool(token)):
+            await ws.close(code=1008)                     # before accept: the client sees HTTP 403
+            return
         await ws.accept()
         loop = asyncio.get_running_loop()
         inbox: asyncio.Queue = asyncio.Queue(maxsize=2000)

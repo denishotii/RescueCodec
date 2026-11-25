@@ -47,7 +47,7 @@ websocat ws://127.0.0.1:8000/v2/stream
 
 Each received record carries the radio facts: `radio.rssi`, `radio.snr` and `radio.hops` (hop start minus hop limit). Simulated and emulated radios have no signal, so those stay `null`.
 
-Sending is asynchronous. A record goes `queued`, then `sent`, then `delivered` or `failed`. Mayday goes first. The airtime budget is 10 percent per hour. When it is used up, you get `429` with `retry_after_s`. A Mayday is never held back.
+Sending is asynchronous. A record goes `queued`, then `sent`, then `delivered` or `failed`. Here `delivered` means "a neighbouring radio repeated it", not "a team received it". The dashboard says "Relayed by a neighbour". Only the Accept from a person proves that someone got it. Mayday goes first. The airtime budget is 10 percent per hour. When it is used up, you get `429` with `retry_after_s`. A Mayday is never held back.
 
 About `failed` with `max_retransmit`: for a broadcast, Meshtastic counts a packet as delivered when it hears a neighbour repeat it. If no radio in range repeats packets, the status ends as `failed` even though the other side got it. The API keeps the status `failed` with error `max_retransmit` (that is the contract). The dashboard words it as "no relay confirmed" and does not count it as a failure. The Accept that comes back is the real proof.
 
@@ -96,4 +96,11 @@ The uid is `RescueCodec.<task key>`, so Accept and Done update the same marker. 
 scripts/e2e-gateway.sh                                   # two gateways on the simulator, MQTT and CoT observed, 3 runs
 ```
 
-The API listens on localhost and has no password. If you open it to a network with `--host 0.0.0.0`, put it behind a reverse proxy with a password.
+## Who may talk to the gateway
+
+- **Localhost only by default.** The gateway refuses to start with `--host 0.0.0.0` (or any non-loopback address) unless you also pass `--token SECRET` (or `RESCUECODEC_TOKEN`).
+- **Token.** With a token, every `/v2` call needs `Authorization: Bearer SECRET`. The WebSocket and the dashboard take `?token=SECRET`, for example `http://192.168.1.20:8000/?token=SECRET`. The dashboard keeps it for the tab.
+- **WebSocket origin.** Browsers do not apply CORS to WebSockets, so the gateway checks the `Origin` itself. A web page may connect only from localhost, from `--cors-origin`, or, with a valid token, from the gateway's own address. Programs that send no `Origin` are fine. Without this check any page you open could read your rescue messages.
+- **Rate limit.** The API queues at most 30 messages per minute (`--tx-per-minute`, 0 = no limit). More gives `429 rate_limited`.
+- **Channel.** The gateway sends and listens only on the private channel: the one named `RescueCodec`, else the only channel with its own key (`--channel-name`, or `--channel N` to force an index). If there is none, or it uses the public default key, sending is refused with 503 and `/v2/health` shows `radio.channel_error`. Port 256 packets from other channels are dropped and counted in `radio.other_channel`. Never plug in a radio whose only channel is LongFast.
+- Anyone who holds the channel key can send as a team member. The key is the trust boundary.

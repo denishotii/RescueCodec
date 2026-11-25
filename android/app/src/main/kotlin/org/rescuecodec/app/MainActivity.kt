@@ -12,7 +12,6 @@ import androidx.activity.enableEdgeToEdge
 import org.rescuecodec.app.radio.LinkState
 import org.rescuecodec.app.radio.RadioTarget
 import org.rescuecodec.app.service.RadioService
-import org.rescuecodec.app.ui.Permissions
 import org.rescuecodec.app.ui.AppViewModelFactory
 import org.rescuecodec.app.ui.ReportViewModel
 import org.rescuecodec.app.ui.RescueRoot
@@ -56,12 +55,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val graph = AppGraph.from(this)
         graph.start()
-        // Reconnect to the last radio when the app opens, unless a Bluetooth permission is missing.
+        // Bring the link back every time the activity is created, also after Android recreated it (process death,
+        // rotation, language change): the person wants a link unless they pressed Disconnect. The service start
+        // itself checks the Bluetooth permission and never throws.
         val last = graph.lastRadio.get()
-        if (savedInstanceState == null && last != null && !RadioService.running &&
-            graph.link.state.value is LinkState.Disconnected &&
-            (last is RadioTarget.Tcp || Permissions.bluetoothGranted(this))
-        ) {
+        val idle = graph.link.state.value.let { it is LinkState.Disconnected || (it is LinkState.Error && it.retryAtMs == null) }
+        if (last != null && graph.link.wantConnected() && !RadioService.running && idle) {
             RadioService.start(this)
         }
         // Debug builds only: connect to a network radio from the command line (screenshots, tests).

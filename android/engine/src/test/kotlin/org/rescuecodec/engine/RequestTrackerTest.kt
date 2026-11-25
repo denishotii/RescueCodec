@@ -71,6 +71,21 @@ class RequestTrackerTest {
     }
 
     @Test
+    fun anAckFloodIsBoundedAndOldAnswersWithoutReportExpire() {
+        tracker.onReceived(other, found(1))
+        for (n in 2..(RequestTracker.MAX_PLACEHOLDERS + 200)) {
+            now += 10
+            tracker.onReceived(team, ack(n, "!a1b2c3d4", "accepted"))
+        }
+        val stubs = tracker.tasks().count { it.message == null }
+        assertTrue(stubs <= RequestTracker.MAX_PLACEHOLDERS, "placeholders: $stubs")
+        assertNotNull(tracker[TaskKey(other, 1)], "a real report is never dropped")
+        now += RequestTracker.PLACEHOLDER_TTL_MS + 1_000
+        tracker.onReceived(other, found(2))
+        assertEquals(0, tracker.tasks().count { it.message == null })
+    }
+
+    @Test
     fun sentTaskBecomesDeliveryUnknownAfterTimeout() {
         tracker.onSent(me, found(7))
         assertTrue(tracker.tick().isEmpty())

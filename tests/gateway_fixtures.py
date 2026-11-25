@@ -45,9 +45,9 @@ class Gateway:
 
 @contextmanager
 def gateway(db: str = ":memory:", static_dir=None, **config):
-    cfg = GatewayConfig(emulator=True, db_path=db, **config)
+    cfg = GatewayConfig(emulator=True, db_path=db, tx_per_minute=config.pop("tx_per_minute", 0), **config)
     radio = EmulatorRadio()
     service = GatewayService(cfg, radio, Store(db))
-    app = create_app(service, static_dir=static_dir)
+    app = create_app(service, static_dir=static_dir, token=cfg.token, cors_origins=cfg.cors_origins)
     with TestClient(app) as client:
         yield Gateway(service, radio, client)

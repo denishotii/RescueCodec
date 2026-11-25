@@ -219,6 +219,30 @@
    }
   },
   {
+   "name": "ack-node-broadcast-number",
+   "note": "Node number 0xffffffff is a valid node field value.",
+   "input": {
+    "ack": {
+     "ref": 7,
+     "node": "!ffffffff",
+     "status": "accepted"
+    }
+   },
+   "hex": "6209080715ffffffff1801",
+   "size": 11,
+   "decoded": {
+    "ack": {
+     "ref": 7,
+     "node": "!ffffffff",
+     "status": "accepted"
+    }
+   },
+   "text": {
+    "en": "Accepted #7: from !ffffffff.",
+    "de": "Angenommen #7: von !ffffffff."
+   }
+  },
+  {
    "name": "found-high-bits",
    "note": "Flags above bit 6 take a 2-byte varint.",
    "input": {
@@ -1574,6 +1598,30 @@
    }
   },
   {
+   "name": "flag-bit-31",
+   "note": "The highest bit of a 32 bit flag field is bit_31.",
+   "hex": "08073206108080808008",
+   "size": 10,
+   "decoded": {
+    "id": 7,
+    "found": {
+     "injuries": [
+      "bit_31"
+     ]
+    }
+   }
+  },
+  {
+   "name": "flag-bit-32-cut",
+   "note": "A flag value wider than 32 bits is cut to 32 bits: bit 32 disappears.",
+   "hex": "08073206108080808010",
+   "size": 10,
+   "decoded": {
+    "id": 7,
+    "found": {}
+   }
+  },
+  {
    "name": "unknown-flag-bit",
    "note": "Unknown injury bit 20 becomes bit_20.",
    "hex": "0807320410808040",
@@ -2210,6 +2258,19 @@
    "field": null
   },
   {
+   "name": "ack-node-zero-string",
+   "note": "Node !00000000 is no node.",
+   "input": {
+    "ack": {
+     "ref": 7,
+     "node": "!00000000",
+     "status": "accepted"
+    }
+   },
+   "error": "missing_field",
+   "field": "ack.node"
+  },
+  {
    "name": "v1-not-encodable",
    "note": "Only v2 can be encoded.",
    "input": {
@@ -2275,6 +2336,20 @@
    "name": "bad-utf8",
    "note": "Text with invalid UTF-8.",
    "hex": "6a030a01ff",
+   "error": "malformed",
+   "field": null
+  },
+  {
+   "name": "bad-utf8-overlong",
+   "note": "Text with an overlong UTF-8 sequence (c0 80).",
+   "hex": "6a040a02c080",
+   "error": "malformed",
+   "field": null
+  },
+  {
+   "name": "varint-truncated-in-body",
+   "note": "Body ends inside a varint.",
+   "hex": "080732021080",
    "error": "malformed",
    "field": null
   },

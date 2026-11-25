@@ -59,7 +59,7 @@ export interface Health {
   status: "ok" | "degraded"; version: string; spec_version: string; uptime_s: number;
   radio: {
     connected: boolean; kind: "serial" | "tcp" | "ble" | "sim" | "none"; node: string | null; port: number;
-    channel?: string | null; region?: string | null; preset?: string | null; firmware?: string | null;
+    channel?: string | null; channel_index?: number | null; channel_error?: string | null; other_channel?: number; region?: string | null; preset?: string | null; firmware?: string | null;
   };
   mqtt: { connected: boolean };
 }

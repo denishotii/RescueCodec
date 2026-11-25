@@ -124,6 +124,9 @@ object StatNames {
     const val RX_DUPLICATES = "rx_duplicates"
     const val RX_INVALID = "rx_invalid"
 
+    /** Port 256 packets that came in on another channel than our private one (other teams, other apps). Dropped. */
+    const val RX_OTHER_CHANNEL = "rx_other_channel"
+
     /** Reports typed or spoken in the app that went into the send queue: bytes of the text, bytes of the coded message. */
     const val REPORT_TEXT_BYTES = "report_text_bytes"
     const val REPORT_CODED_BYTES = "report_coded_bytes"

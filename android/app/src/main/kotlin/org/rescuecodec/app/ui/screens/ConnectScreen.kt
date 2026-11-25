@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package org.rescuecodec.app.ui.screens
 
+import android.content.Context
+import android.content.Intent
+import android.location.LocationManager
+import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.core.location.LocationManagerCompat
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -121,7 +127,18 @@ fun ConnectScreen(vm: ConnectionViewModel, snackbar: SnackbarHostState) {
 
         // Bluetooth
         SectionHeader(stringResource(R.string.connect_bluetooth))
+        Text(stringResource(R.string.close_other_app), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("close_other_app"))
         val scanning = link as? LinkState.Scanning
+        // Android 11 and older: a Bluetooth scan finds nothing while the Location switch is off, without any error.
+        val locationOff = Build.VERSION.SDK_INT <= Build.VERSION_CODES.R && !locationSwitchOn(context)
+        if (locationOff) {
+            Text(stringResource(R.string.location_off_hint), style = MaterialTheme.typography.bodyMedium, color = c.open, modifier = Modifier.testTag("location_off_hint"))
+            BigButton(
+                stringResource(R.string.location_open_settings),
+                { runCatching { context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } },
+                Modifier.fillMaxWidth(), outlined = true,
+            )
+        }
         BigButton(
             stringResource(if (scanning != null) R.string.action_scanning else R.string.action_scan),
             { if (scanning != null) vm.stopScan() else vm.scan() },
@@ -195,6 +212,11 @@ fun ConnectScreen(vm: ConnectionViewModel, snackbar: SnackbarHostState) {
         QrScannerDialog(onResult = { text -> scanner = false; vm.readChannelText(text) }, onClose = { scanner = false })
     }
 }
+
+/** True when the system Location switch is on (or when we cannot tell). */
+private fun locationSwitchOn(context: Context): Boolean = runCatching {
+    LocationManagerCompat.isLocationEnabled(context.getSystemService(Context.LOCATION_SERVICE) as LocationManager)
+}.getOrDefault(true)
 
 @Composable
 private fun fieldColors() = OutlinedTextFieldDefaults.colors(

@@ -101,7 +101,8 @@ class FakeInterface:
         self.nodes = {"!a1b2c3d4": {"num": 1, "user": {"id": "!a1b2c3d4", "shortName": "AAAA"}}}
         self.responder = None
         self.localNode = SimpleNamespace(localConfig=SimpleNamespace(lora=SimpleNamespace(region=3, modem_preset=0)),
-                                         channels=[SimpleNamespace(role=1, settings=SimpleNamespace(name="RescueCodec"))])
+                                         channels=[SimpleNamespace(index=0, role=1, settings=SimpleNamespace(name="LongFast", psk=b"\x01")),
+                                                   SimpleNamespace(index=1, role=2, settings=SimpleNamespace(name="RescueCodec", psk=bytes(range(1, 17))))])
         self.fail = fail
 
     def connect(self):
@@ -192,7 +193,7 @@ class MeshtasticAdapter(unittest.TestCase):
         with mock.patch.object(MeshtasticRadio, "_subscribe"):
             radio.start()
             wait_for(lambda: radio.connected)
-            base = {"fromId": "!a1b2c3d4", "toId": "^all", "id": 1, "decoded": {"portnum": "PRIVATE_APP", "payload": b"\x08\x01"}}
+            base = {"fromId": "!a1b2c3d4", "toId": "^all", "id": 1, "channel": 1, "decoded": {"portnum": "PRIVATE_APP", "payload": b"\x08\x01"}}
             radio._on_receive(base, iface)
             radio._on_receive(base, object())                                              # another interface
             radio._on_receive({**base, "fromId": "!0badc0de"}, iface)                      # our own echo

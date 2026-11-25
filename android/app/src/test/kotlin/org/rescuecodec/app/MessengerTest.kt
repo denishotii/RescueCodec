@@ -450,4 +450,101 @@ class MessengerTest {
         assertEquals(MeshPacket.Priority.BACKGROUND, Messenger.meshPriority("routine"))
         Json.stringify(mapOf("a" to 1)) // keeps the import honest
     }
+
+    // ------------------------------------------------------------ review findings
+
+    @Test
+    fun portTwoFiftySixPacketsFromOtherChannelsAreDroppedAndCounted() = runUnit {
+        val m = messenger()
+        m.start()
+        connectRadio(listOf(publicDefault, teamChannel(1, name = "RescueCodec")))
+        val bytes = RescueCodec.encode(found + ("id" to 21))
+        radio.injectPacket(privateAppPacket(other, 1, bytes, channel = 0))          // public LongFast, another team
+        radio.injectPacket(privateAppPacket(other, 2, bytes, channel = 3))
+        eventually(5_000, "both counted") { stats[StatNames.RX_OTHER_CHANNEL] == 2L }
+        assertTrue(tasks.all.isEmpty() && messages.all.isEmpty(), "nothing from other channels is stored")
+        radio.injectPacket(privateAppPacket(other, 3, bytes, channel = 1))          // ours
+        eventually(5_000, "task from our channel") { tasks.get("0badf00d-21") != null }
+        assertEquals(2L, stats[StatNames.RX_OTHER_CHANNEL])
+    }
+
+    @Test
+    fun theSameTextTwiceIsTwoMessages() = runUnit {
+        val m = messenger()
+        m.start()
+        connectRadio()
+        val a = m.submit(mapOf("text" to mapOf("text" to "Hilfe"))) as SubmitResult.Queued
+        val b = m.submit(mapOf("text" to mapOf("text" to "Hilfe"))) as SubmitResult.Queued
+        assertTrue(a.msgId != 0 && b.msgId != 0 && a.msgId != b.msgId, "every message but an Ack has its own id")
+        eventually(10_000, "both sent") { radio.sentPrivateApp().size == 2 }
+        val sent = radio.sentPrivateApp().map { it.decoded!!.payload.toByteArray().toList() }
+        assertTrue(sent[0] != sent[1], "different bytes, so a receiver does not drop the second one")
+        // and the receiving side keeps both
+        radio.injectPacket(privateAppPacket(other, 1, a.bytes))
+        radio.injectPacket(privateAppPacket(other, 2, b.bytes))
+        eventually(5_000, "two received") { messages.all.count { it.dir == "in" } == 2 }
+        assertEquals(0L, stats[StatNames.RX_DUPLICATES])
+        // An ack stays id-less: sending the same accept twice is a repeat on purpose.
+        assertIs<SubmitResult.Queued>(m.submit(mapOf("ack" to mapOf("ref" to 3, "node" to "!0badf00d", "status" to "accepted"))))
+        assertEquals(0, (messages.all.last { it.type == "ack" }.msgId))
+    }
+
+    private suspend fun dropLinkAndReconnect(): FakeRadioTransport {
+        radio.simulateError(java.io.IOException("link lost"), recoverable = false)
+        clientFlow.value = null
+        connectRadio()
+        return radio
+    }
+
+    @Test
+    fun aMessageHandedToADeadLinkIsSentOnceMoreAfterTheReconnect() = runUnit {
+        val m = messenger()
+        m.start()
+        connectRadio()
+        m.submit(found)
+        eventually(10_000, "sent") { radio.sentPrivateApp().size == 1 && messages.all.single().state == MessageState.SENT }
+        val first = radio.sentPrivateApp().single().decoded!!.payload.toByteArray()
+        val second = dropLinkAndReconnect()
+        eventually(15_000, "the same bytes go out once on the new link") { second.sentPrivateApp().size == 1 }
+        assertContentEquals(first, second.sentPrivateApp().single().decoded!!.payload.toByteArray())
+        assertEquals(1, Messenger.linkResendsOf(messages.all.single().attempts))
+        // A second drop: now it is "not confirmed", no third copy.
+        eventually(10_000, "sent again") { messages.all.single().state == MessageState.SENT }
+        val third = dropLinkAndReconnect()
+        eventually(15_000, "not confirmed") { messages.all.single().state == MessageState.NOT_CONFIRMED }
+        delay(800)
+        assertEquals(0, third.sentPrivateApp().size, "no third send")
+        assertEquals(1L, stats[StatNames.TX_NOT_CONFIRMED])
+    }
+
+    @Test
+    fun aDeliveredMessageIsNeverResentAfterALinkDrop() = runUnit {
+        val m = messenger()
+        m.start()
+        connectRadio()
+        m.submit(found)
+        eventually(10_000, "sent") { radio.sentPrivateApp().size == 1 }
+        radio.injectRoutingAck(requestId = radio.sentPrivateApp().single().id, fromNode = other.toInt())
+        eventually(5_000, "delivered") { messages.all.single().state == MessageState.DELIVERED }
+        val second = dropLinkAndReconnect()
+        delay(1_000)
+        assertEquals(0, second.sentPrivateApp().size)
+        assertEquals(MessageState.DELIVERED, messages.all.single().state)
+    }
+
+    @Test
+    fun anAirtimeRefusalDoesNotUseUpTheLinkResend() = runUnit {
+        val m = messenger(refusalDelays = listOf(200))
+        m.start()
+        connectRadio()
+        m.submit(found)
+        eventually(10_000, "first send") { radio.sentPrivateApp().size == 1 }
+        radio.injectRoutingError(requestId = radio.sentPrivateApp().single().id, error = Routing.Error.DUTY_CYCLE_LIMIT)
+        eventually(10_000, "sent again after the refusal") { radio.sentPrivateApp().size == 2 }
+        eventually(5_000, "row is sent") { messages.all.single().state == MessageState.SENT }
+        assertEquals(1, Messenger.refusalsOf(messages.all.single().attempts))
+        val second = dropLinkAndReconnect()
+        eventually(15_000, "still gets its link resend") { second.sentPrivateApp().size == 1 }
+        assertEquals(1, Messenger.linkResendsOf(messages.all.single().attempts))
+    }
 }

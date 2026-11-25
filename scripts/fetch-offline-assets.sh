@@ -32,7 +32,7 @@ fi
 rm -rf "$T"
 
 # 3. Map extracts (Siebengebirge / Bonn / Koeln)
-BBOX=6.85,50.60,7.35,50.80
+BBOX=6.80,50.60,7.35,51.00   # Koeln (Koelnmesse, Rheinpark) down to the Siebengebirge
 if [ ! -f $A/map/basemap.pmtiles ]; then
   # Protomaps daily build; walk back until one exists
   for d in 2 3 4 5 6 7; do

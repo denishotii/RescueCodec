@@ -406,8 +406,9 @@ class ReportViewModel(app: Application, private val graph: AppGraph) : AndroidVi
         var readable = ""
         withContext(Dispatchers.Default) {
             try {
-                // A placeholder id of 2 bytes (128 and up) gives the real size of almost every report.
-                val probe = if (ReportFields.typeOf(withPos) in ID_TYPES && withPos["id"] == null) withPos + ("id" to 128) else withPos
+                // A placeholder id of 2 bytes (128 and up) gives the real size of almost every message. Every message
+                // except an Ack gets an id when it is sent (spec section 14), also text and track.
+                val probe = if (ReportFields.typeOf(withPos) != "ack" && withPos["id"] == null) withPos + ("id" to 128) else withPos
                 val bytes = RescueCodec.encode(probe)
                 sent = bytes.size
                 readable = RescueCodec.reconstruct(RescueCodec.decodeAny(bytes), lang)
@@ -489,7 +490,6 @@ class ReportViewModel(app: Application, private val graph: AppGraph) : AndroidVi
     }
 
     private companion object {
-        val ID_TYPES = setOf("found", "request", "hazard", "mayday")
     }
 }
 

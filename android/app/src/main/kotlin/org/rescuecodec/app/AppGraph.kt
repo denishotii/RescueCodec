@@ -46,7 +46,10 @@ class AppGraph(
 
     val link: ConnectionManager = ConnectionManager(
         scope = scope,
-        transports = transports ?: DefaultTransportFactory { Permissions.bluetoothGranted(appContext) },
+        transports = transports ?: DefaultTransportFactory(
+            bluetoothReady = { Permissions.bluetoothGranted(appContext) },
+            bluetoothOn = { bluetoothIsOn(appContext) },
+        ),
         scanner = scanner,
         storage = storage ?: defaultStorage(appContext),
         lastRadio = lastRadio,
@@ -87,6 +90,11 @@ class AppGraph(
             val dir = File(context.filesDir, "mesh").apply { mkdirs() }
             return SqlDelightStorageProvider(baseDir = dir.absolutePath)
         }
+
+        /** False only when we know the Bluetooth adapter is off. No permission needed to read this. */
+        private fun bluetoothIsOn(context: Context): Boolean = runCatching {
+            context.getSystemService(android.bluetooth.BluetoothManager::class.java)?.adapter?.isEnabled ?: true
+        }.getOrDefault(true)
 
         fun from(context: Context): AppGraph = (context.applicationContext as RescueApp).graph
     }

@@ -51,6 +51,60 @@ def pick_serial_port(setting: str, globber: Callable[[str], list[str]] | None = 
     return ports[0]
 
 
+#: The public default key of Meshtastic ("AQ==" expands to this). Reports must never go out under it.
+DEFAULT_PSK = bytes([0xd4, 0xf1, 0xbb, 0x3a, 0x20, 0x29, 0x07, 0x59, 0xf0, 0xbc, 0xff, 0xab, 0xcf, 0x4e, 0x69, 0x01])
+DEFAULT_CHANNEL_NAME = "RescueCodec"
+ROLE_DISABLED = 0
+
+
+class ChannelError(RuntimeError):
+    """No safe channel to send on. The text is for people."""
+
+
+def is_default_key(psk: bytes) -> bool:
+    """Empty (no encryption), one byte (the shorthand for the default key) or the expanded default key."""
+    return len(psk) <= 1 or psk == DEFAULT_PSK
+
+
+def resolve_channel(channels: Any, name: str = DEFAULT_CHANNEL_NAME, explicit: int | None = None) -> tuple[int, str]:
+    """(index, name) of the channel for reports. Same rule as the Android app (ChannelChoice):
+    the channel named `name`, else the only enabled channel with its own key. Never a guess, never the public key.
+    `explicit` (--channel) forces an index; it must be enabled but may use any key, because the person chose it."""
+    rows = []
+    for position, channel in enumerate(channels or []):
+        if int(getattr(channel, "role", 0) or 0) == ROLE_DISABLED:
+            continue
+        settings = getattr(channel, "settings", None)
+        psk = bytes(getattr(settings, "psk", b"") or b"")
+        rows.append((int(getattr(channel, "index", position)), str(getattr(settings, "name", "") or ""), not is_default_key(psk)))
+    if not rows:
+        raise ChannelError("the radio has not told us its channels yet")
+    if explicit is not None:
+        for index, label, _ in rows:
+            if index == explicit:
+                return index, label
+        raise ChannelError(f"channel {explicit} is not set up on this radio")
+    named = [r for r in rows if r[1].lower() == name.lower()]
+    if named:
+        index, label, own_key = named[0]
+        if not own_key:
+            raise ChannelError(f'channel "{label}" uses the public default key, give it its own key')
+        return index, label
+    own = [r for r in rows if r[2]]
+    if len(own) == 1:
+        return own[0][0], own[0][1]
+    if not own:
+        raise ChannelError(f'no private channel on this radio, add one named "{name}" with its own key (import the team QR with Replace)')
+    raise ChannelError(f'several private channels on this radio, name the team channel "{name}" or pass --channel')
+
+
+def _int_or_none(value: Any) -> int | None:
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
 def _port_number(value: Any) -> int | None:
     """MessageToDict gives the port as a name ("PRIVATE_APP") or a number."""
     if isinstance(value, int):
@@ -81,12 +135,16 @@ def packet_from_dict(packet: dict[str, Any], via: str) -> RadioPacket | None:
     to = packet.get("toId") or (node_id(packet["to"]) if packet.get("to") else BROADCAST)
     if to == "!ffffffff":
         to = BROADCAST
-    start, limit = packet.get("hopStart"), packet.get("hopLimit", 0)
-    hops = start - limit if isinstance(start, int) and start > 0 and isinstance(limit, int) and start >= limit else None
-    rssi, snr = packet.get("rxRssi"), packet.get("rxSnr")
-    return RadioPacket(sender=sender, to=to, port=port, payload=bytes(payload), packet_id=int(packet.get("id", 0)),
-                       rssi=int(rssi) if rssi else None, snr=float(snr) if snr is not None else None,
-                       hops=hops, channel=int(packet.get("channel", 0)), via=via)
+    # A hop limit of 0 is left out of the dict (proto3 default), so a missing hopLimit next to a hopStart means 0.
+    start, limit = _int_or_none(packet.get("hopStart")), _int_or_none(packet.get("hopLimit", 0))
+    hops = start - limit if start is not None and limit is not None and start > 0 and start >= limit else None
+    rssi, snr = _int_or_none(packet.get("rxRssi")), packet.get("rxSnr")
+    try:
+        snr = float(snr) if snr is not None else None
+    except (TypeError, ValueError):
+        snr = None
+    return RadioPacket(sender=sender, to=to, port=port, payload=bytes(payload), packet_id=_int_or_none(packet.get("id")) or 0,
+                       rssi=rssi, snr=snr, hops=hops, channel=_int_or_none(packet.get("channel")) or 0, via=via)
 
 
 def node_from_dict(raw: dict[str, Any]) -> dict[str, Any] | None:
@@ -116,7 +174,7 @@ class MeshtasticRadio(RadioAdapter):
     """
 
     def __init__(self, kind: str, target: str, *, interface_factory: Callable[[str, str], Any] | None = None,
-                 retry_s: float = 3.0):
+                 retry_s: float = 3.0, channel_name: str = DEFAULT_CHANNEL_NAME, channel_index: int | None = None):
         super().__init__()
         if kind not in ("tcp", "serial"):
             raise ValueError("kind must be tcp or serial")
@@ -132,6 +190,9 @@ class MeshtasticRadio(RadioAdapter):
         self._last_error: str | None = None
         self._device: str | None = None
         self._own_node: str | None = None
+        self.channel_name = channel_name
+        self.channel_index = channel_index          # None = look it up by name on the radio
+        self.other_channel = 0                      # packets dropped because they came in on another channel
 
     # ------------------------------------------------------------ opening
     @staticmethod
@@ -163,36 +224,53 @@ class MeshtasticRadio(RadioAdapter):
     def _run(self) -> None:
         backoff = self._retry_s
         while not self._stop.is_set():
-            iface = None
             try:
-                iface = self._factory(self.kind, self.target)
-                self._device = getattr(iface, "devPath", None) or self.target
-                self._iface = iface
-                self._lost.clear()
-                log.info("connecting to the radio at %s", self._device)
-                iface.connect()
-                iface.waitForConfig()
+                connected = self._connect_once()
             except Exception as exc:                    # radio missing, busy, wrong port, timeout
+                connected = False
                 self._last_error = f"{type(exc).__name__}: {exc}"
                 log.warning("radio not available (%s), retrying in %.0f s", self._last_error, backoff)
-                self._close_iface()
+            if not connected:
+                self._safe(self._close_iface, "closing the radio")
                 if self._stop.wait(backoff):
                     break
                 backoff = min(backoff * 2, 30.0)
                 continue
             backoff = self._retry_s
-            self._last_error = None
-            self._own_node = self._read_own_node()
-            self._set_connected(True)
-            log.info("radio connected: %s", self.info())
-            self._announce_nodes()
-            while not self._stop.is_set() and not self._lost.wait(1.0):
-                pass
-            self._set_connected(False)
-            self._close_iface()
+            try:
+                while not self._stop.is_set() and not self._lost.wait(1.0):
+                    pass
+            finally:
+                self._safe(lambda: self._set_connected(False), "telling the gateway the radio is gone")
+                self._safe(self._close_iface, "closing the radio")
             if not self._stop.is_set():
                 log.warning("radio connection lost, reconnecting")
                 self._stop.wait(self._retry_s)
+
+    def _connect_once(self) -> bool:
+        """Open the radio and announce it. Raises when the radio is not there. Never leaves a half open state:
+        the caller closes the interface on any exception."""
+        iface = self._factory(self.kind, self.target)
+        self._device = getattr(iface, "devPath", None) or self.target
+        self._iface = iface
+        self._lost.clear()
+        log.info("connecting to the radio at %s", self._device)
+        iface.connect()
+        iface.waitForConfig()
+        self._last_error = None
+        self._own_node = self._read_own_node()
+        self._set_connected(True)
+        log.info("radio connected: %s", self.info())
+        self._safe(self._announce_nodes, "announcing the radio's nodes")
+        return True
+
+    @staticmethod
+    def _safe(fn: Callable[[], Any], what: str) -> None:
+        """Run a step whose failure must never end the radio thread."""
+        try:
+            fn()
+        except Exception:
+            log.exception("%s failed", what)
 
     def _read_own_node(self) -> str | None:
         try:
@@ -211,7 +289,10 @@ class MeshtasticRadio(RadioAdapter):
     def _set_connected(self, value: bool) -> None:
         if self._connected != value:
             self._connected = value
-            self.on_connection(value)
+            try:
+                self.on_connection(value)
+            except Exception:
+                log.exception("a connection listener failed")
 
     # ------------------------------------------------------------ pubsub
     def _subscribe(self) -> None:
@@ -239,33 +320,61 @@ class MeshtasticRadio(RadioAdapter):
         return self._iface is not None and interface is self._iface
 
     def _on_receive(self, packet: dict, interface: Any) -> None:
-        if not self._mine(interface):
-            return
-        radio_packet = packet_from_dict(packet, self.kind)
-        if radio_packet is None:
-            return
-        if radio_packet.sender == self._own_node:        # our own packet coming back
-            return
-        self.on_packet(radio_packet)
+        # Runs on the meshtastic reader thread: an exception here must not stop reading.
+        try:
+            if not self._mine(interface):
+                return
+            radio_packet = packet_from_dict(packet, self.kind)
+            if radio_packet is None:
+                return
+            if radio_packet.sender == self._own_node:        # our own packet coming back
+                return
+            if radio_packet.port == PORT_PRIVATE_APP:
+                try:
+                    wanted = self.resolved_channel()[0]
+                except ChannelError:
+                    wanted = None
+                if wanted is None or radio_packet.channel != wanted:   # other teams or apps on port 256, or no safe channel
+                    self.other_channel += 1
+                    log.debug("dropped a port 256 packet from %s on channel %s (ours: %s)", radio_packet.sender,
+                              radio_packet.channel, wanted)
+                    return
+            self.on_packet(radio_packet)
+        except Exception:
+            log.exception("could not handle a received packet")
 
     def _on_lost(self, interface: Any) -> None:
         if self._mine(interface):
             self._lost.set()
 
     def _on_node_updated(self, node: dict, interface: Any) -> None:
-        if self._mine(interface) and self._connected:
-            normalized = node_from_dict(node)
-            if normalized:
-                self.on_node(normalized)
+        try:
+            if self._mine(interface) and self._connected:
+                normalized = node_from_dict(node)
+                if normalized:
+                    self.on_node(normalized)
+        except Exception:
+            log.exception("could not handle a node update")
 
     def _announce_nodes(self) -> None:
         for node in self.nodes():
-            self.on_node(node)
+            try:
+                self.on_node(node)
+            except Exception:
+                log.exception("a node listener failed")
 
     # ------------------------------------------------------------ facts
     @property
     def connected(self) -> bool:
         return self._connected and self._iface is not None
+
+    def resolved_channel(self) -> tuple[int, str]:
+        """(index, name) of the private channel, looked up on the radio each time (the person may edit channels).
+        Raises ChannelError when there is no safe one."""
+        iface = self._iface
+        if iface is None or not self._connected:
+            raise ChannelError("no radio connected")
+        return resolve_channel(getattr(iface.localNode, "channels", None), self.channel_name, self.channel_index)
 
     def info(self) -> RadioInfo:
         iface = self._iface
@@ -281,10 +390,12 @@ class MeshtasticRadio(RadioAdapter):
         except Exception:
             pass
         try:
-            channels = iface.localNode.channels or []
-            info.channel = next((c.settings.name or None for c in channels if c.role == 1), None)  # 1 = PRIMARY
+            info.channel_index, info.channel = self.resolved_channel()
+        except ChannelError as exc:
+            info.channel_error = str(exc)
         except Exception:
-            pass
+            log.debug("could not read the channels", exc_info=True)
+        info.other_channel = self.other_channel
         try:
             info.firmware = (iface.metadata.firmware_version or None) if iface.metadata else None
         except Exception:
@@ -303,10 +414,15 @@ class MeshtasticRadio(RadioAdapter):
 
     # ------------------------------------------------------------ sending
     def send(self, payload: bytes, *, port: int = PORT_PRIVATE_APP, want_ack: bool = False, priority: int | None = None,
-             channel: int = 0, hop_limit: int | None = None, on_result: ResultCallback | None = None) -> int:
+             channel: int | None = None, hop_limit: int | None = None, on_result: ResultCallback | None = None) -> int:
         iface = self._iface
         if iface is None or not self._connected:
             raise RuntimeError("no Meshtastic radio connected")
+        if channel is None:                                    # reports never go out on a guessed or public channel
+            try:
+                channel = self.resolved_channel()[0]
+            except ChannelError as exc:
+                raise RuntimeError(f"no private channel to send on: {exc}") from exc
         kwargs: dict[str, Any] = {"destinationId": BROADCAST, "portNum": port, "wantAck": want_ack,
                                   "channelIndex": channel}
         if hop_limit is not None:

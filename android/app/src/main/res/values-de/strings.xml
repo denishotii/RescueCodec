@@ -10,6 +10,7 @@
     <string name="channel_radio">Funkverbindung</string>
     <string name="channel_radio_desc">Zeigt, dass die App mit deinem Funkgerät verbunden ist. Nötig, um Nachrichten bei ausgeschaltetem Bildschirm zu empfangen.</string>
     <string name="notif_title">RescueCodec Funkverbindung</string>
+    <string name="notif_starting">Funkverbindung wird gestartet</string>
     <string name="notif_disconnect">Trennen</string>
     <string name="notif_disconnected">Nicht verbunden</string>
     <string name="notif_scanning">Suche nach Funkgeräten</string>
@@ -128,7 +129,7 @@
     <string name="ms_queued">Wartet auf Funk</string>
     <string name="ms_held">Zurückgehalten (Sendezeit)</string>
     <string name="ms_sent">Gesendet</string>
-    <string name="ms_delivered">Zugestellt</string>
+    <string name="ms_delivered">Weitergegeben</string>
     <string name="ms_not_confirmed_note">Gesendet, aber kein anderes Funkgerät hat es wiederholt. Es ist vielleicht nicht angekommen.</string>
     <string name="ms_not_confirmed">Nicht bestätigt</string>
     <string name="ms_refused">Funk ausgelastet</string>
@@ -187,8 +188,8 @@
     <string name="stat_bytes_saved_none">Sende eine Meldung im Bereich Melden, dann siehst du, wie viel kleiner sie wird.</string>
     <string name="stat_airtime_saved">Gesparte Sendezeit</string>
     <string name="stat_airtime_saved_note">Berechnet mit der LoRa-Formel für dieselben Meldungen als Text. Nicht auf Funk gemessen.</string>
-    <string name="stat_delivered">Zugestellt von gesendet</string>
-    <string name="stat_delivered_note">Nicht bestätigt %1$d, Funk ausgelastet %2$d, fehlgeschlagen %3$d. Zugestellt heißt: Ein Nachbarfunk hat es wiederholt.</string>
+    <string name="stat_delivered">Von Nachbarn weitergegeben</string>
+    <string name="stat_delivered_note">Nicht bestätigt %1$d, Funk ausgelastet %2$d, fehlgeschlagen %3$d. Weitergegeben heißt: Ein Nachbarfunk hat es wiederholt. Erst ein Accept eines Trupps beweist, dass jemand es erhalten hat.</string>
     <string name="stat_received">Empfangen</string>
     <string name="stat_received_note">Doppelte verworfen %1$d, nicht lesbar %2$d.</string>
     <string name="stat_last_rssi">Letzte Signalstärke</string>
@@ -210,6 +211,9 @@
     <string name="field_host">Adresse</string>
     <string name="field_port">Port</string>
     <string name="scan_hint">Schalte das Funkgerät ein und halte das Handy nah daran. Dann tippe auf Suchen.</string>
+    <string name="close_other_app">Schließe zuerst die Meshtastic-App: tippe dort auf Trennen und erzwinge dann das Beenden. Nur eine App kann mit dem Funkgerät sprechen.</string>
+    <string name="location_off_hint">Schalte den Standort ein, um Funkgeräte zu finden (Android 11 und älter).</string>
+    <string name="location_open_settings">Standorteinstellungen öffnen</string>
     <string name="scan_none">Noch nichts gefunden. Ist das Funkgerät an und nah?</string>
     <string name="radio_unnamed">Funkgerät ohne Namen</string>
     <string name="perm_title">Freigaben nötig</string>

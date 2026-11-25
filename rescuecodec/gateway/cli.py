@@ -28,7 +28,10 @@ def build_parser() -> argparse.ArgumentParser:
     radio.add_argument("--serial", metavar="auto|PATH", default=env("SERIAL"), help="Meshtastic over USB, for example a Heltec V3. 'auto' finds /dev/cu.usbserial-* or /dev/cu.SLAB_USBtoUART* (env SERIAL)")
     radio.add_argument("--emulator", action="store_true", default=env_flag("EMULATOR"), help="in-memory radio, no hardware (env EMULATOR=1)")
     radio.add_argument("--emulator-demo", action="store_true", default=env_flag("EMULATOR_DEMO"), help="with --emulator: a pretend team reports and accepts")
-    radio.add_argument("--channel", type=int, default=int(env("CHANNEL", 0)), help="Meshtastic channel index to send on (default 0)")
+    radio.add_argument("--channel", type=int, default=int(env("CHANNEL")) if env("CHANNEL") is not None else None,
+                       help="Meshtastic channel index to send on. Default: find the channel named RescueCodec, else the only channel with its own key. "
+                       "Never the public default key unless you name the index here")
+    radio.add_argument("--channel-name", default=env("CHANNEL_NAME", "RescueCodec"), help="name of the private team channel (default RescueCodec)")
     radio.add_argument("--hop-limit", type=int, default=env("HOP_LIMIT"), help="hop limit for sent packets (default: the radio's setting)")
     svc = p.add_argument_group("service")
     svc.add_argument("--db", default=env("DB", "rescuecodec-gateway.db"), help="SQLite file (default ./rescuecodec-gateway.db, use :memory: for none)")
@@ -49,8 +52,12 @@ def build_parser() -> argparse.ArgumentParser:
     con.add_argument("--cot-tcp", metavar="HOST:PORT", default=env("COT_TCP"), help="also send CoT to a TAK server over TCP (implies --cot)")
     con.add_argument("--cot-stale-min", type=int, default=int(env("COT_STALE_MIN", 360)), help="minutes a marker stays on the TAK map (default 360)")
     web = p.add_argument_group("web")
-    web.add_argument("--host", default=env("HOST", "127.0.0.1"), help="listen address (default 127.0.0.1; the API has no password)")
+    web.add_argument("--host", default=env("HOST", "127.0.0.1"), help="listen address (default 127.0.0.1). Any other address needs --token")
     web.add_argument("--port", type=int, default=int(env("PORT", 8000)), help="HTTP port (default 8000)")
+    web.add_argument("--token", default=env("TOKEN"), help="bearer token for the REST API and the WebSocket (env TOKEN). Required when --host is not loopback. "
+                     "Send it as 'Authorization: Bearer ...', or as ?token=... on the WebSocket and the dashboard URL")
+    web.add_argument("--tx-per-minute", type=int, default=int(env("TX_PER_MINUTE", 30)),
+                     help="most messages the API may queue for the radio per minute (default 30, 0 = no limit)")
     web.add_argument("--static-dir", default=env("STATIC_DIR"), help="dashboard build folder (default rescuecodec/gateway/static)")
     web.add_argument("--cors-origin", action="append", default=[], help="extra browser origin allowed to call the API (localhost is always allowed)")
     web.add_argument("--log-level", default=env("LOG_LEVEL", "INFO"))
@@ -60,13 +67,14 @@ def build_parser() -> argparse.ArgumentParser:
 def config_from_args(args: argparse.Namespace) -> GatewayConfig:
     cfg = GatewayConfig(
         tcp=args.tcp, serial=args.serial, emulator=args.emulator or args.emulator_demo, emulator_demo=args.emulator_demo,
-        channel_index=args.channel, hop_limit=int(args.hop_limit) if args.hop_limit is not None else None,
+        channel_index=args.channel, channel_name=args.channel_name, hop_limit=int(args.hop_limit) if args.hop_limit is not None else None,
         db_path=args.db, team=args.team, preset=args.preset, ack_timeout_s=args.ack_timeout,
         text_over_air=args.text_over_air, text_lang=args.text_lang,
         mqtt=args.mqtt, mqtt_user=args.mqtt_user, mqtt_password=args.mqtt_password, mqtt_prefix=args.mqtt_prefix,
         cot=args.cot or bool(args.cot_tcp), cot_udp=args.cot_udp, cot_iface=args.cot_iface, cot_tcp=args.cot_tcp,
         cot_stale_min=args.cot_stale_min, host=args.host, http_port=args.port, static_dir=args.static_dir,
-        cors_origins=list(args.cors_origin), log_level=args.log_level)
+        cors_origins=list(args.cors_origin), token=args.token or None, tx_per_minute=args.tx_per_minute,
+        log_level=args.log_level)
     cfg.validate()
     return cfg
 
@@ -76,8 +84,8 @@ def build_radio(cfg: GatewayConfig):
     if cfg.emulator:
         return EmulatorRadio(demo=cfg.emulator_demo)
     if cfg.tcp:
-        return MeshtasticRadio("tcp", cfg.tcp)
-    return MeshtasticRadio("serial", cfg.serial or "auto")
+        return MeshtasticRadio("tcp", cfg.tcp, channel_name=cfg.channel_name, channel_index=cfg.channel_index)
+    return MeshtasticRadio("serial", cfg.serial or "auto", channel_name=cfg.channel_name, channel_index=cfg.channel_index)
 
 
 def build_app(cfg: GatewayConfig):
@@ -103,7 +111,7 @@ def build_app(cfg: GatewayConfig):
             sinks.append(TcpSink(host, tcp_port))
         cot = CotConnector(sinks, stale_min=cfg.cot_stale_min, fallback_pos=service.node_position)
         hub.add(cot.handle, stop=cot.close)
-    return create_app(service, hub=hub, static_dir=cfg.static_dir, cors_origins=cfg.cors_origins)
+    return create_app(service, hub=hub, static_dir=cfg.static_dir, cors_origins=cfg.cors_origins, token=cfg.token)
 
 
 def main(argv: list[str] | None = None) -> int:

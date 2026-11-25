@@ -10,6 +10,7 @@
     <string name="channel_radio">Radio link</string>
     <string name="channel_radio_desc">Shows that the app is connected to your radio. Needed to receive messages with the screen off.</string>
     <string name="notif_title">RescueCodec radio link</string>
+    <string name="notif_starting">Starting the radio link</string>
     <string name="notif_disconnect">Disconnect</string>
     <string name="notif_disconnected">Not connected</string>
     <string name="notif_scanning">Looking for radios</string>
@@ -128,7 +129,7 @@
     <string name="ms_queued">Waiting for radio</string>
     <string name="ms_held">Held for airtime</string>
     <string name="ms_sent">Sent</string>
-    <string name="ms_delivered">Delivered</string>
+    <string name="ms_delivered">Relayed</string>
     <string name="ms_not_confirmed_note">Sent, but no other radio repeated it. It may not have arrived.</string>
     <string name="ms_not_confirmed">Not confirmed</string>
     <string name="ms_refused">Radio busy</string>
@@ -187,8 +188,8 @@
     <string name="stat_bytes_saved_none">Send a report from the Report screen to see how much smaller it gets.</string>
     <string name="stat_airtime_saved">Airtime saved</string>
     <string name="stat_airtime_saved_note">Calculated with the LoRa formula for the same reports sent as text. Not measured on air.</string>
-    <string name="stat_delivered">Delivered of sent</string>
-    <string name="stat_delivered_note">Not confirmed %1$d, radio busy %2$d, failed %3$d. Delivered means a neighbour radio repeated it.</string>
+    <string name="stat_delivered">Relayed by a neighbour</string>
+    <string name="stat_delivered_note">Not confirmed %1$d, radio busy %2$d, failed %3$d. Relayed means a neighbour radio repeated it. Only an Accept from a team proves that someone received it.</string>
     <string name="stat_received">Received</string>
     <string name="stat_received_note">Duplicates dropped %1$d, unreadable %2$d.</string>
     <string name="stat_last_rssi">Last signal strength</string>
@@ -210,6 +211,9 @@
     <string name="field_host">Address</string>
     <string name="field_port">Port</string>
     <string name="scan_hint">Switch the radio on and hold the phone close to it. Then tap search.</string>
+    <string name="close_other_app">Close the Meshtastic app first: in it, tap Disconnect, then force stop it. Only one app can talk to the radio.</string>
+    <string name="location_off_hint">Turn on Location to find radios (Android 11 and older).</string>
+    <string name="location_open_settings">Open Location settings</string>
     <string name="scan_none">Nothing found yet. Is the radio on and close?</string>
     <string name="radio_unnamed">Unnamed radio</string>
     <string name="perm_title">Permissions needed</string>
