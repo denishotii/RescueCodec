@@ -1,6 +1,6 @@
 {
- "spec_version": "2.0.0",
- "about": "RescueCodec v2 conformance vectors. See spec/SPEC.md, section 'Conformance'. valid: encode(input) must give hex exactly; decode(hex) must give decoded. text: Level 2, render(decoded) must give these strings. decode_only: decode(hex) must give decoded. invalid_encode / invalid_decode: must be rejected; error codes should match. v1: decode_any(hex) must give decoded. packed_text: unpack(deflate, dict) must give text, decode(hex) must give decoded, and decode(encode(decoded)) must give decoded (compressors may make other bytes). text_dicts: SHA-256 of each text dictionary file.",
+ "spec_version": "2.1.0",
+ "about": "RescueCodec v2 conformance vectors. See spec/SPEC.md, section 'Conformance'. valid: encode(input) must give hex exactly; decode(hex) must give decoded. text: Level 2, render(decoded) must give these strings. decode_only: decode(hex) must give decoded. invalid_encode / invalid_decode: must be rejected; error codes should match. v1: decode_any(hex) must give decoded. packed_text: unpack(deflate, dict) must give text, decode(hex) must give decoded, and decode(encode(decoded)) must give decoded (compressors may make other bytes). text_dicts: SHA-256 of each text dictionary file. compact_text: encode(input) must give hex exactly, decode(hex) must give decoded, decode_words(words, 1) must give text and encode_words(text, 1) must give words exactly. word_streams: encode_words(text) must give words, decode_words(words) must give text. word_streams_invalid: decode_words(words, 1) must be rejected with error. word_dicts: SHA-256 and entry count of each word dictionary file.",
  "valid": [
   {
    "name": "found-minimal",
@@ -1723,6 +1723,31 @@
     "id": 7,
     "unknown": {}
    }
+  },
+  {
+   "name": "words-unknown-dict",
+   "note": "Word dictionary 2 is unknown: decode as unknown with the number, shown as \"dictionary this app does not have\", never as words.",
+   "hex": "08076a082204001000112802",
+   "size": 12,
+   "decoded": {
+    "id": 7,
+    "unknown": {
+     "words": 2
+    }
+   }
+  },
+  {
+   "name": "words-by-hand",
+   "note": "A stream built by hand: [is] [safe] [.] decodes like the encoder's own.",
+   "hex": "08076a0a22060017035d00002801",
+   "size": 14,
+   "decoded": {
+    "id": 7,
+    "text": {
+     "text": "is safe.",
+     "words": 1
+    }
+   }
   }
  ],
  "invalid_encode": [
@@ -2389,6 +2414,55 @@
    },
    "error": "missing_field",
    "field": "text.text"
+  },
+  {
+   "name": "text-words-empty",
+   "note": "A compact text must not be empty.",
+   "input": {
+    "text": {
+     "text": "",
+     "words": 1
+    }
+   },
+   "error": "missing_field",
+   "field": "text.text"
+  },
+  {
+   "name": "text-words-and-dict",
+   "note": "Give dict or words, not both.",
+   "input": {
+    "text": {
+     "text": "Hallo",
+     "dict": 1,
+     "words": 1
+    }
+   },
+   "error": "invalid_value",
+   "field": "text.words"
+  },
+  {
+   "name": "text-words-unknown",
+   "note": "Word dictionary 2 does not exist yet.",
+   "input": {
+    "text": {
+     "text": "Hallo",
+     "words": 2
+    }
+   },
+   "error": "invalid_value",
+   "field": "text.words"
+  },
+  {
+   "name": "text-words-1025",
+   "note": "A compact text is at most 1024 bytes.",
+   "input": {
+    "text": {
+     "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+     "words": 1
+    }
+   },
+   "error": "invalid_value",
+   "field": "text.text"
   }
  ],
  "invalid_decode": [
@@ -2608,6 +2682,62 @@
    "hex": "08076a06120203001801",
    "error": "missing_field",
    "field": "text.text"
+  },
+  {
+   "name": "wire-words-no-dict",
+   "note": "Word tokens need their dictionary number.",
+   "hex": "08076a042202035d",
+   "error": "missing_field",
+   "field": "text.words_dict"
+  },
+  {
+   "name": "wire-words-dict-alone",
+   "note": "A word dictionary number without word tokens.",
+   "hex": "08076a090a0548616c6c6f2801",
+   "error": "invalid_value",
+   "field": "text.words_dict"
+  },
+  {
+   "name": "wire-words-and-text",
+   "note": "A text has words or word tokens, not both.",
+   "hex": "08076a0d0a0548616c6c6f2202035d2801",
+   "error": "invalid_value",
+   "field": "text.words"
+  },
+  {
+   "name": "wire-words-truncated",
+   "note": "The packet is cut inside a literal: the token stream ends early.",
+   "hex": "08076a10220c004f00f7f80c2041796c696e2801",
+   "error": "malformed",
+   "field": "text.words"
+  },
+  {
+   "name": "wire-words-half-token",
+   "note": "The token stream ends after one byte of a token.",
+   "hex": "08076a072203035d002801",
+   "error": "malformed",
+   "field": "text.words"
+  },
+  {
+   "name": "wire-words-unknown-control",
+   "note": "A reserved control code.",
+   "hex": "08076a082204f7ff035d2801",
+   "error": "malformed",
+   "field": "text.words"
+  },
+  {
+   "name": "wire-words-past-end",
+   "note": "A token past the end of the dictionary.",
+   "hex": "08076a062202efff2801",
+   "error": "malformed",
+   "field": "text.words"
+  },
+  {
+   "name": "wire-words-oversized-literal",
+   "note": "A literal length larger than the rest of the packet.",
+   "hex": "08076a0b2207f8c841796c696e2801",
+   "error": "malformed",
+   "field": "text.words"
   }
  ],
  "v1": [
@@ -2793,6 +2923,522 @@
    "file": "vocab/text-dict-v1.txt",
    "sha256": "f1cc69167232438d0440ec8f2be9fa4270c4dd04c502dae13aa2d91bd31c6ec9",
    "size": 15835
+  }
+ },
+ "compact_text": [
+  {
+   "name": "words-conversation",
+   "note": "Ordinary conversation.",
+   "input": {
+    "id": 21,
+    "text": {
+     "text": "Hi, are you still at the station? I will be there in ten minutes.",
+     "words": 1
+    }
+   },
+   "text": "Hi, are you still at the station? I will be there in ten minutes.",
+   "words": "0d9800010648007c01bc02e200050016024400410014075b02fe0000",
+   "hex": "08156a20221c0d9800010648007c01bc02e200050016024400410014075b02fe00002801",
+   "size": 36,
+   "text_size": 65,
+   "decoded": {
+    "id": 21,
+    "text": {
+     "text": "Hi, are you still at the station? I will be there in ten minutes.",
+     "words": 1
+    }
+   },
+   "render": {
+    "en": "Message: Hi, are you still at the station? I will be there in ten minutes.",
+    "de": "Nachricht: Hi, are you still at the station? I will be there in ten minutes."
+   }
+  },
+  {
+   "name": "words-rescue-update",
+   "note": "Rescue update with a place name and coordinates typed as text.",
+   "input": {
+    "id": 22,
+    "text": {
+     "text": "Team 3 reached Löwenburg hut. Missing hiker found at 50.6921, 7.2134, conscious, needs a stretcher.",
+     "words": 1
+    }
+   },
+   "text": "Team 3 reached Löwenburg hut. Missing hiker found at 50.6921, 7.2134, conscious, needs a stretcher.",
+   "words": "154d056c040ef80f204cc3b677656e62757267206875740000f00103681e5600f7003c082bf80d2e363932312c20372e3231333400011e21000100d400181e440000",
+   "hex": "08166a462242154d056c040ef80f204cc3b677656e62757267206875740000f00103681e5600f7003c082bf80d2e363932312c20372e3231333400011e21000100d400181e4400002801",
+   "size": 74,
+   "text_size": 100,
+   "decoded": {
+    "id": 22,
+    "text": {
+     "text": "Team 3 reached Löwenburg hut. Missing hiker found at 50.6921, 7.2134, conscious, needs a stretcher.",
+     "words": 1
+    }
+   },
+   "render": {
+    "en": "Message: Team 3 reached Löwenburg hut. Missing hiker found at 50.6921, 7.2134, conscious, needs a stretcher.",
+    "de": "Nachricht: Team 3 reached Löwenburg hut. Missing hiker found at 50.6921, 7.2134, conscious, needs a stretcher."
+   }
+  },
+  {
+   "name": "words-name",
+   "note": "A name is a literal that owns its leading space: [We] [found] [literal \" Aylin Demir\"].",
+   "input": {
+    "id": 23,
+    "text": {
+     "text": "We found Aylin Demir",
+     "words": 1
+    }
+   },
+   "text": "We found Aylin Demir",
+   "words": "004f00f7f80c2041796c696e2044656d6972",
+   "hex": "08176a162212004f00f7f80c2041796c696e2044656d69722801",
+   "size": 26,
+   "text_size": 20,
+   "decoded": {
+    "id": 23,
+    "text": {
+     "text": "We found Aylin Demir",
+     "words": 1
+    }
+   },
+   "render": {
+    "en": "Message: We found Aylin Demir.",
+    "de": "Nachricht: We found Aylin Demir."
+   }
+  },
+  {
+   "name": "words-name-first",
+   "note": "Token after a literal: no implied space, the space travels in the literal \"Aylin Demir \".",
+   "input": {
+    "id": 24,
+    "text": {
+     "text": "Aylin Demir is safe",
+     "words": 1
+    }
+   },
+   "text": "Aylin Demir is safe",
+   "words": "f80c41796c696e2044656d6972200017035d",
+   "hex": "08186a162212f80c41796c696e2044656d6972200017035d2801",
+   "size": 26,
+   "text_size": 19,
+   "decoded": {
+    "id": 24,
+    "text": {
+     "text": "Aylin Demir is safe",
+     "words": 1
+    }
+   },
+   "render": {
+    "en": "Message: Aylin Demir is safe.",
+    "de": "Nachricht: Aylin Demir is safe."
+   }
+  },
+  {
+   "name": "words-coordinates-prose",
+   "note": "Coordinates typed as prose keep the minus sign, comma and trailing zeroes.",
+   "input": {
+    "id": 25,
+    "text": {
+     "text": "Meet at 50.6900, -1.2500",
+     "words": 1
+    }
+   },
+   "text": "Meet at 50.6900, -1.2500",
+   "words": "f001037b003c082bf80e2e363930302c202d312e32353030",
+   "hex": "08196a1c2218f001037b003c082bf80e2e363930302c202d312e323530302801",
+   "size": 32,
+   "text_size": 24,
+   "decoded": {
+    "id": 25,
+    "text": {
+     "text": "Meet at 50.6900, -1.2500",
+     "words": 1
+    }
+   },
+   "render": {
+    "en": "Message: Meet at 50.6900, -1.2500.",
+    "de": "Nachricht: Meet at 50.6900, -1.2500."
+   }
+  },
+  {
+   "name": "words-gps-field",
+   "note": "GPS from the report flow stays in Envelope.pos; the words carry no coordinates.",
+   "input": {
+    "id": 26,
+    "priority": "urgent",
+    "pos": {
+     "lat": 50.69212,
+     "lon": 7.21345
+    },
+    "text": {
+     "text": "Found him, conscious, needs a stretcher",
+     "words": 1
+    }
+   },
+   "text": "Found him, conscious, needs a stretcher",
+   "words": "f00100f7006b00011e21000100d400181e44",
+   "hex": "081a10031a0908b8e6ea04108287586a162212f00100f7006b00011e21000100d400181e442801",
+   "size": 39,
+   "text_size": 39,
+   "decoded": {
+    "id": 26,
+    "priority": "urgent",
+    "pos": {
+     "lat": 50.69212,
+     "lon": 7.21345
+    },
+    "text": {
+     "text": "Found him, conscious, needs a stretcher",
+     "words": 1
+    }
+   },
+   "render": {
+    "en": "[URGENT] Message: Found him, conscious, needs a stretcher. Position 50.69212, 7.21345.",
+    "de": "[DRINGEND] Nachricht: Found him, conscious, needs a stretcher. Position 50.69212, 7.21345."
+   }
+  },
+  {
+   "name": "words-poem",
+   "note": "A poem with intentional line breaks and repeated spaces.",
+   "input": {
+    "id": 27,
+    "text": {
+     "text": "The river runs\n  under the bridge,\n\nand we wait   for morning.\n",
+     "words": 1
+    }
+   },
+   "text": "The river runs\n  under the bridge,\n\nand we wait   for morning.\n",
+   "words": "001e02a3113ef8030a202009ab06d5f8032c0a0a0d63030cf803202020001a00ddf8022e0a",
+   "hex": "081b6a292225001e02a3113ef8030a202009ab06d5f8032c0a0a0d63030cf803202020001a00ddf8022e0a2801",
+   "size": 45,
+   "text_size": 63,
+   "decoded": {
+    "id": 27,
+    "text": {
+     "text": "The river runs\n  under the bridge,\n\nand we wait   for morning.\n",
+     "words": 1
+    }
+   },
+   "render": {
+    "en": "Message: The river runs\n  under the bridge,\n\nand we wait   for morning.\n.",
+    "de": "Nachricht: The river runs\n  under the bridge,\n\nand we wait   for morning.\n."
+   }
+  },
+  {
+   "name": "words-unfamiliar",
+   "note": "Unfamiliar words go as one literal, never a near match.",
+   "input": {
+    "id": 28,
+    "text": {
+     "text": "Zyxomorph flibberjab quantimeter",
+     "words": 1
+    }
+   },
+   "text": "Zyxomorph flibberjab quantimeter",
+   "words": "f8205a79786f6d6f72706820666c69626265726a6162207175616e74696d65746572",
+   "hex": "081c6a262222f8205a79786f6d6f72706820666c69626265726a6162207175616e74696d657465722801",
+   "size": 42,
+   "text_size": 32,
+   "decoded": {
+    "id": 28,
+    "text": {
+     "text": "Zyxomorph flibberjab quantimeter",
+     "words": 1
+    }
+   },
+   "render": {
+    "en": "Message: Zyxomorph flibberjab quantimeter.",
+    "de": "Nachricht: Zyxomorph flibberjab quantimeter."
+   }
+  },
+  {
+   "name": "words-mixed-de-en",
+   "note": "Mixed German and English.",
+   "input": {
+    "id": 29,
+    "text": {
+     "text": "Wir sind am Parkplatz, the road is blocked, bitte langsam fahren.",
+     "words": 1
+    }
+   },
+   "text": "Wir sind am Parkplatz, the road is blocked, bitte langsam fahren.",
+   "words": "f0011fe71f8d00dbf80a205061726b706c61747a0001113c0017095a00011e9bf810206c616e6773616d2066616872656e2e",
+   "hex": "081d6a362232f0011fe71f8d00dbf80a205061726b706c61747a0001113c0017095a00011e9bf810206c616e6773616d2066616872656e2e2801",
+   "size": 58,
+   "text_size": 65,
+   "decoded": {
+    "id": 29,
+    "text": {
+     "text": "Wir sind am Parkplatz, the road is blocked, bitte langsam fahren.",
+     "words": 1
+    }
+   },
+   "render": {
+    "en": "Message: Wir sind am Parkplatz, the road is blocked, bitte langsam fahren.",
+    "de": "Nachricht: Wir sind am Parkplatz, the road is blocked, bitte langsam fahren."
+   }
+  },
+  {
+   "name": "words-punctuation",
+   "note": "Punctuation, brackets and quotes.",
+   "input": {
+    "id": 30,
+    "text": {
+     "text": "Wait... what?! (Really) [yes] {ok}; done: \"fine\" - right?",
+     "words": 1
+    }
+   },
+   "text": "Wait... what?! (Really) [yes] {ok}; done: \"fine\" - right?",
+   "words": "1b360000000000000039000500040006f001006300070008143c0009000a1c6a000b0002011bf8033a20220757f003000c01ac00cf0005",
+   "hex": "081e6a3b22371b360000000000000039000500040006f001006300070008143c0009000a1c6a000b0002011bf8033a20220757f003000c01ac00cf00052801",
+   "size": 63,
+   "text_size": 57,
+   "decoded": {
+    "id": 30,
+    "text": {
+     "text": "Wait... what?! (Really) [yes] {ok}; done: \"fine\" - right?",
+     "words": 1
+    }
+   },
+   "render": {
+    "en": "Message: Wait... what?! (Really) [yes] {ok}; done: \"fine\" - right?",
+    "de": "Nachricht: Wait... what?! (Really) [yes] {ok}; done: \"fine\" - right?"
+   }
+  },
+  {
+   "name": "words-emoji",
+   "note": "Emoji and other non-Latin characters.",
+   "input": {
+    "id": 31,
+    "text": {
+     "text": "All safe 🙂👍 see you soon ❤️ Дякую",
+     "words": 1
+    }
+   },
+   "text": "All safe 🙂👍 see you soon ❤️ Дякую",
+   "words": "03c3035df80a20f09f9982f09f918d2000c700150257f81220e29da4efb88f20d094d18fd0bad183d18e",
+   "hex": "081f6a2e222a03c3035df80a20f09f9982f09f918d2000c700150257f81220e29da4efb88f20d094d18fd0bad183d18e2801",
+   "size": 50,
+   "text_size": 48,
+   "decoded": {
+    "id": 31,
+    "text": {
+     "text": "All safe 🙂👍 see you soon ❤️ Дякую",
+     "words": 1
+    }
+   },
+   "render": {
+    "en": "Message: All safe 🙂👍 see you soon ❤️ Дякую.",
+    "de": "Nachricht: All safe 🙂👍 see you soon ❤️ Дякую."
+   }
+  },
+  {
+   "name": "words-call-sign",
+   "note": "Apartment number, call sign and capitals.",
+   "input": {
+    "id": 32,
+    "text": {
+     "text": "Apt 4B, call sign DL1ABC. NEED WATER NOW",
+     "words": 1
+    }
+   },
+   "text": "Apt 4B, call sign DL1ABC. NEED WATER NOW",
+   "words": "f80641707420344200010192086ef80720444c31414243000004fc0e8a144a",
+   "hex": "08206a23221ff80641707420344200010192086ef80720444c31414243000004fc0e8a144a2801",
+   "size": 39,
+   "text_size": 40,
+   "decoded": {
+    "id": 32,
+    "text": {
+     "text": "Apt 4B, call sign DL1ABC. NEED WATER NOW",
+     "words": 1
+    }
+   },
+   "render": {
+    "en": "Message: Apt 4B, call sign DL1ABC. NEED WATER NOW.",
+    "de": "Nachricht: Apt 4B, call sign DL1ABC. NEED WATER NOW."
+   }
+  },
+  {
+   "name": "words-whitespace",
+   "note": "Leading and trailing spaces, tab and CR LF.",
+   "input": {
+    "id": 33,
+    "text": {
+     "text": "  line one\r\nline two\tend  ",
+     "words": 1
+    }
+   },
+   "text": "  line one\r\nline two\tend  ",
+   "words": "f802202006f9005df8020d0a06f900d2f80609656e642020",
+   "hex": "08216a1c2218f802202006f9005df8020d0a06f900d2f80609656e6420202801",
+   "size": 32,
+   "text_size": 26,
+   "decoded": {
+    "id": 33,
+    "text": {
+     "text": "  line one\r\nline two\tend  ",
+     "words": 1
+    }
+   },
+   "render": {
+    "en": "Message:   line one\r\nline two\tend  .",
+    "de": "Nachricht:   line one\r\nline two\tend  ."
+   }
+  },
+  {
+   "name": "words-near-limit",
+   "note": "385 bytes of text in a 198-byte packet, near the 200-byte encoder limit (too long as a plain text).",
+   "input": {
+    "id": 300,
+    "text": {
+     "text": "Update from team 3 at 14:20. We searched the whole north side of the valley along the river and the old mill. No trace of the missing hiker so far. The path near the bridge is flooded, please use the forest road instead. Two of us are tired but fine. We need more batteries for the radios, water and a dry blanket. Next report in one hour. Wind from the west, light rain, ridge in fog.",
+     "words": 1
+    }
+   },
+   "text": "Update from team 3 at 14:20. We searched the whole north side of the valley along the river and the old mill. No trace of the missing hiker so far. The path near the bridge is flooded, please use the forest road instead. Two of us are tired but fine. We need more batteries for the radios, water and a dry blanket. Next report in one hour. Wind from the west, light rain, ridge in fog.",
+   "words": "f001174600240221056c003c09b5f8013a05c30000004f14e210a7038c055100540f2f0f0e02a301c401fbf810206d696c6c2e204e6f20747261636520005403681e5600af032b0000001e0d790d2e06d5001705fd0001005a01ef000e043c026a07bb00000b010e03001f035500600757000004a4004c09870130f80720726164696f730001002f051308600f6a00001bdb02c00014005d04b70000f00105f501ee097100010384015bf80f2c20726964676520696e20666f672e",
+   "hex": "08ac026ac00122bb01f001174600240221056c003c09b5f8013a05c30000004f14e210a7038c055100540f2f0f0e02a301c401fbf810206d696c6c2e204e6f20747261636520005403681e5600af032b0000001e0d790d2e06d5001705fd0001005a01ef000e043c026a07bb00000b010e03001f035500600757000004a4004c09870130f80720726164696f730001002f051308600f6a00001bdb02c00014005d04b70000f00105f501ee097100010384015bf80f2c20726964676520696e20666f672e2801",
+   "size": 198,
+   "text_size": 385,
+   "decoded": {
+    "id": 300,
+    "text": {
+     "text": "Update from team 3 at 14:20. We searched the whole north side of the valley along the river and the old mill. No trace of the missing hiker so far. The path near the bridge is flooded, please use the forest road instead. Two of us are tired but fine. We need more batteries for the radios, water and a dry blanket. Next report in one hour. Wind from the west, light rain, ridge in fog.",
+     "words": 1
+    }
+   },
+   "render": {
+    "en": "Message: Update from team 3 at 14:20. We searched the whole north side of the valley along the river and the old mill. No trace of the missing hiker so far. The path near the bridge is flooded, please use the forest road instead. Two of us are tired but fine. We need more batteries for the radios, water and a dry blanket. Next report in one hour. Wind from the west, light rain, ridge in fog.",
+    "de": "Nachricht: Update from team 3 at 14:20. We searched the whole north side of the valley along the river and the old mill. No trace of the missing hiker so far. The path near the bridge is flooded, please use the forest road instead. Two of us are tired but fine. We need more batteries for the radios, water and a dry blanket. Next report in one hour. Wind from the west, light rain, ridge in fog."
+   }
+  }
+ ],
+ "word_streams": [
+  {
+   "name": "stream-literal-127",
+   "note": "A literal of 127 bytes.",
+   "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "words": "f87f78787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878"
+  },
+  {
+   "name": "stream-literal-128",
+   "note": "A literal of 128 bytes.",
+   "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "words": "f8807878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878"
+  },
+  {
+   "name": "stream-literal-255",
+   "note": "A literal of 255 bytes.",
+   "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "words": "f8ff787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878"
+  },
+  {
+   "name": "stream-literal-256",
+   "note": "A literal of 256 bytes.",
+   "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "words": "f90078787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878"
+  },
+  {
+   "name": "stream-literal-utf8",
+   "note": "A literal counts bytes, not characters: 4 x 4-byte emoji = 16 bytes.",
+   "text": "🙂🙂🙂🙂",
+   "words": "f810f09f9982f09f9982f09f9982f09f9982"
+  },
+  {
+   "name": "stream-only-spaces",
+   "note": "Only whitespace: one literal.",
+   "text": "   ",
+   "words": "f803202020"
+  },
+  {
+   "name": "stream-glue",
+   "note": "Two dictionary words without a space between them need GLUE.",
+   "text": "safe(water)",
+   "words": "035df80128002f0007"
+  },
+  {
+   "name": "stream-caps",
+   "note": "Capitalised and all-caps words use CAP and UPPER.",
+   "text": "Water WATER water",
+   "words": "08070e8a002f"
+  }
+ ],
+ "word_streams_invalid": [
+  {
+   "name": "stream-empty",
+   "note": "An empty stream.",
+   "words": "",
+   "error": "malformed"
+  },
+  {
+   "name": "stream-half-token",
+   "note": "One byte of a token.",
+   "words": "00",
+   "error": "malformed"
+  },
+  {
+   "name": "stream-literal-cut",
+   "note": "A literal header promising 5 bytes, 4 present.",
+   "words": "f80541796c69",
+   "error": "malformed"
+  },
+  {
+   "name": "stream-literal-zero",
+   "note": "A literal of 0 bytes.",
+   "words": "f800",
+   "error": "malformed"
+  },
+  {
+   "name": "stream-unknown-control",
+   "note": "Control 0xF004 is reserved.",
+   "words": "f0040010",
+   "error": "malformed"
+  },
+  {
+   "name": "stream-token-past-end",
+   "note": "Token 0xEFFF is past the end of a 8192-entry dictionary.",
+   "words": "efff",
+   "error": "malformed"
+  },
+  {
+   "name": "stream-control-at-end",
+   "note": "CAP with no token after it.",
+   "words": "0010f001",
+   "error": "malformed"
+  },
+  {
+   "name": "stream-control-before-literal",
+   "note": "CAP before a literal.",
+   "words": "f001f80178",
+   "error": "malformed"
+  },
+  {
+   "name": "stream-two-case-controls",
+   "note": "CAP and UPPER before one token.",
+   "words": "f001f0020010",
+   "error": "malformed"
+  },
+  {
+   "name": "stream-bad-utf8",
+   "note": "A literal that is not UTF-8.",
+   "words": "f802c328",
+   "error": "malformed"
+  },
+  {
+   "name": "stream-too-large",
+   "note": "Decodes to more than 1024 bytes.",
+   "words": "fbe878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878f81978787878787878787878787878787878787878787878787878",
+   "error": "too_large"
+  }
+ ],
+ "word_dicts": {
+  "1": {
+   "file": "vocab/words-dict-v1.txt",
+   "sha256": "ffe93afb4623fcd364479169281ca745cc263317a4f83ce27f77d8d37b26a0d8",
+   "entries": 8192,
+   "size": 66607
   }
  }
 }

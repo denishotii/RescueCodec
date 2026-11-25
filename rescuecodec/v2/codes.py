@@ -5,7 +5,7 @@ tests/test_v2_spec.py checks that all three agree.
 """
 from __future__ import annotations
 
-SPEC_VERSION = "2.0.0"
+SPEC_VERSION = "2.1.0"
 
 # Limits (spec/SPEC.md, section "Limits").
 MAX_ENCODE_BYTES = 200   # encoders never produce more
@@ -13,6 +13,7 @@ MAX_DECODE_BYTES = 233   # Meshtastic DATA_PAYLOAD_LEN; decoders accept up to th
 MAX_ID = 16383           # fits in a 2-byte varint
 MAX_TRACK_POINTS = 16
 MAX_TEXT_BYTES = 180
+MAX_PACKED_TEXT_BYTES = 400  # typed text a chat that packs (DEFLATE or word tokens) accepts; the packet stays <= 200
 MAX_TEAM_BYTES = 12
 MAX_COUNT = 255
 MAX_RADIUS_M = 100_000

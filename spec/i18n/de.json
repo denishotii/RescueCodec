@@ -24,7 +24,8 @@
     "ack.done": "Erledigt #{ref}",
     "ack.other": "Antwort auf #{ref}",
     "text": "Nachricht",
-    "unknown": "Nachricht eines neueren Typs, bitte App aktualisieren"
+    "unknown": "Nachricht eines neueren Typs, bitte App aktualisieren",
+    "unknown_dict": "Nachricht mit einem Wörterbuch, das diese App nicht hat (Wörterbuch {n}), bitte App aktualisieren"
   },
   "part": {
     "found.needs": "braucht {list}",

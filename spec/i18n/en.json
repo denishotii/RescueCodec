@@ -24,7 +24,8 @@
     "ack.done": "Done #{ref}",
     "ack.other": "Answer to #{ref}",
     "text": "Message",
-    "unknown": "Message of a newer type, please update the app"
+    "unknown": "Message of a newer type, please update the app",
+    "unknown_dict": "Message encoded with a dictionary this app does not have (word dictionary {n}), please update the app"
   },
   "part": {
     "found.needs": "needs {list}",

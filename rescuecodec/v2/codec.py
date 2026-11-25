@@ -17,7 +17,7 @@ from google.protobuf.message import DecodeError
 
 from rescuecodec.v2 import codes as C
 from rescuecodec.v2 import rescuecodec_pb2 as pb
-from rescuecodec.v2 import textpack
+from rescuecodec.v2 import textpack, textwords
 
 
 class CodecError(ValueError):
@@ -288,11 +288,30 @@ def _build_ack(env: pb.Envelope, body: Any) -> None:
 
 
 def _build_text(env: pb.Envelope, body: Any) -> None:
-    b = _check_keys(body, {"text", "dict"}, "text")
+    b = _check_keys(body, {"text", "dict", "words"}, "text")
     t = env.text
     t.SetInParent()
     if "dict" in b and _int(b["dict"], "text.dict", 1, 0xFFFFFFFF) not in textpack.DICTS:
         raise _err("invalid_value", f"unknown dictionary, known: {sorted(textpack.DICTS)}", "text.dict")
+    if "words" in b:
+        if "dict" in b:
+            raise _err("invalid_value", "give dict or words, not both", "text.words")
+        version = _int(b["words"], "text.words", 1, 0xFFFFFFFF)
+        if version not in textwords.DICTS or not textwords.available(version):
+            raise _err("invalid_value", f"unknown word dictionary, known: {sorted(textwords.DICTS)}", "text.words")
+        if "text" in b:
+            if not isinstance(b["text"], str):
+                raise _err("invalid_value", "must be a string", "text.text")
+            try:
+                raw = b["text"].encode("utf-8")
+            except UnicodeEncodeError as exc:
+                raise _err("invalid_value", "must be valid Unicode", "text.text") from exc
+            if raw:
+                if len(raw) > textwords.MAX_TEXT_BYTES:
+                    raise _err("invalid_value", f"a compact text is at most {textwords.MAX_TEXT_BYTES} bytes", "text.text")
+                t.words = textwords.encode_words(b["text"], version)
+                t.words_dict = version
+        return
     if "text" in b:
         if not isinstance(b["text"], str):
             raise _err("invalid_value", "must be a string", "text.text")
@@ -321,11 +340,23 @@ def body_type(env: pb.Envelope) -> str:
     kind = env.WhichOneof("body") or "unknown"
     if kind == "text" and env.text.deflate and env.text.dict and env.text.dict not in textpack.DICTS:
         return "unknown"
+    if kind == "text" and _words_unknown(env.text):
+        return "unknown"
     return kind
 
 
+def _words_unknown(t: pb.Text) -> bool:
+    """A compact text whose word dictionary this library does not have (or whose copy fails its SHA-256 check)."""
+    return bool(t.words) and t.words_dict != 0 and not t.text and not t.deflate and not textwords.available(t.words_dict)
+
+
 def unpacked_text(t: pb.Text) -> str:
-    """The words of a Text body: `text`, or `deflate` unpacked. Raises CodecError."""
+    """The words of a Text body: `text`, `deflate` unpacked or `words` decoded. Raises CodecError."""
+    if t.words:
+        try:
+            return textwords.decode_words(t.words, t.words_dict)
+        except textwords.WordsError as exc:
+            raise _err(exc.code, str(exc), "text.words") from exc
     if not t.deflate:
         return t.text
     try:
@@ -407,6 +438,18 @@ def validate(env: pb.Envelope) -> None:
             raise _err("invalid_value", f"team label is at most {C.MAX_TEAM_BYTES} bytes", "ack.team")
     elif kind == "text":
         t = env.text
+        if t.words:
+            if t.text or t.deflate:
+                raise _err("invalid_value", "give one of text, deflate and words", "text.words")
+            if t.dict:
+                raise _err("invalid_value", "dict is only allowed with deflate", "text.dict")
+            if t.words_dict == 0:
+                raise _err("missing_field", "a compact text needs its word dictionary number", "text.words_dict")
+            if not unpacked_text(t):
+                raise _err("missing_field", "text must not be empty", "text.text")
+            return
+        if t.words_dict:
+            raise _err("invalid_value", "words_dict is only allowed with words", "text.words_dict")
         if t.deflate:
             if t.text:
                 raise _err("invalid_value", "give text or deflate, not both", "text.deflate")
@@ -509,7 +552,15 @@ def from_proto(env: pb.Envelope) -> dict:
             b["team"] = a.team
         out["ack"] = b
     elif kind == "text":
-        out["text"] = {"text": unpacked_text(env.text), "dict": env.text.dict} if env.text.deflate else {"text": env.text.text}
+        t = env.text
+        if t.words:
+            out["text"] = {"text": unpacked_text(t), "words": t.words_dict}
+        elif t.deflate:
+            out["text"] = {"text": unpacked_text(t), "dict": t.dict}
+        else:
+            out["text"] = {"text": t.text}
+    elif env.WhichOneof("body") == "text" and _words_unknown(env.text):
+        out["unknown"] = {"words": env.text.words_dict}     # shown as "dictionary this app does not have"
     else:
         out["unknown"] = {}
     return out
