@@ -1,11 +1,12 @@
 import { useMemo } from "react";
 import { MapPin } from "lucide-react";
 import type { MeshNode, Task } from "../api/types";
-import { useData, useNow, useT } from "../state/hooks";
+import { useChannels, useData, useNow, useT } from "../state/hooks";
 import { focusOn, useUi } from "../state/ui";
 import { isActiveMayday, nodeLabel, relTime, sortTasks, typeName } from "../lib/format";
 import { utmLabel } from "../lib/geo";
-import { Panel, PriorityChip, StateChip, TypeTile } from "./bits";
+import { matchesChannel } from "../lib/channels";
+import { ChannelChip, Panel, PriorityChip, StateChip, TypeTile } from "./bits";
 import { AckControl } from "./AckControl";
 
 function lastAck(task: Task, status: "accepted" | "done" | "declined") {
@@ -17,7 +18,8 @@ function who(a: { by: string; team?: string | null }, nodes: Record<string, Mesh
   return a.team || nodeLabel(a.by, nodes);
 }
 
-export function TaskCard({ task }: { task: Task }) {
+/** `chips`: show the channel (the parent knows whether more than one channel is in use). */
+export function TaskCard({ task, chips = false }: { task: Task; chips?: boolean }) {
   const { nodes } = useData();
   const { lang } = useUi();
   const t = useT();
@@ -35,6 +37,7 @@ export function TaskCard({ task }: { task: Task }) {
         <div className="task-id">
           <span className="task-type">{typeName(lang, task.type)}</span>
           <PriorityChip priority={task.priority} />
+          {chips && <ChannelChip channel={task.channel} />}
         </div>
         <span className="task-age num" title={task.created}>{relTime(task.created, now, lang)}</span>
       </div>
@@ -70,17 +73,18 @@ export function TaskCard({ task }: { task: Task }) {
 
 export function ActionsBoard() {
   const { tasks } = useData();
+  const { pick, chips } = useChannels();
   const t = useT();
 
   const groups = useMemo(() => {
     // an active Mayday lives in the red banner, so it is not listed twice
-    const all = Object.values(tasks).filter((x) => !isActiveMayday(x));
+    const all = Object.values(tasks).filter((x) => !isActiveMayday(x) && matchesChannel(pick, x.channel?.name));
     return {
       open: all.filter((x) => x.state === "open" || x.state === "declined").sort(sortTasks),
       accepted: all.filter((x) => x.state === "accepted").sort(sortTasks),
       done: all.filter((x) => x.state === "done").sort((a, b) => b.updated.localeCompare(a.updated)),
     };
-  }, [tasks]);
+  }, [tasks, pick]);
 
   const jump = (id: string) => document.getElementById(`lane-${id}`)?.scrollIntoView({ block: "start", behavior: "smooth" });
   const lanes = [
@@ -105,7 +109,7 @@ export function ActionsBoard() {
           <section key={l.id} id={`lane-${l.id}`} className={`lane lane-${l.id} ${l.items.length ? "" : "lane-empty"}`} aria-label={l.label}>
             <h3 className={`lane-h state-${l.id}`}><span>{l.label}</span><span className="num">{l.items.length}</span></h3>
             {l.items.length
-              ? <ul className="task-list lane-body">{l.items.map((x) => <TaskCard key={x.key} task={x} />)}</ul>
+              ? <ul className="task-list lane-body">{l.items.map((x) => <TaskCard key={x.key} task={x} chips={chips} />)}</ul>
               : <p className="empty">{l.empty}</p>}
           </section>
         ))}

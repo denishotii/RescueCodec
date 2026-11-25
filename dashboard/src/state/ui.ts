@@ -7,6 +7,8 @@ export interface Layers { finds: boolean; tracks: boolean; sectors: boolean; haz
 
 export interface UiState {
   lang: Lang; theme: Theme; room: boolean; filter: Filter; layers: Layers; view3d: boolean;
+  /** "all" or a channel name: which channel the feed and the actions show. A Mayday always shows. */
+  channel: string;
   team: string; eta: number;
   /** Message seq or task key the operator picked; the map flies there. */
   focus: { seq: number; key: string | null; at: number } | null;
@@ -30,6 +32,7 @@ function defaults(): UiState {
     theme: qTheme === "dark" || qTheme === "light" ? qTheme : saved.theme ?? (prefersDark ? "dark" : "light"),
     room: q.get("room") === "1" ? true : saved.room ?? false,
     filter: "all",
+    channel: "all",
     layers: { finds: true, tracks: true, sectors: true, hazards: true, nodes: true, ...(saved.layers ?? {}) },
     view3d: q.get("view") === "3d",
     team: typeof saved.team === "string" ? saved.team : "Leitstelle",

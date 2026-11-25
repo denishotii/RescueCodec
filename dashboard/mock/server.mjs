@@ -16,6 +16,9 @@ const PORT = Number(opt("port", process.env.MOCK_PORT ?? 8787));
 const STATIC = path.resolve(opt("static", path.join(here, "../../rescuecodec/gateway/static")));
 const MAPDIR = path.resolve(opt("map", path.join(here, "../../assets-offline/map")));
 const GATEWAY = "!0badc0de";
+// Channels the mock gateway listens on (a channel is known by its name). RescueCodec is the default for sending.
+const CHANNELS = { RescueCodec: { index: 1, name: "RescueCodec", public: false }, "draeger-srs": { index: 2, name: "draeger-srs", public: false } };
+const DEFAULT_CHANNEL = "RescueCodec";
 
 // ---------------------------------------------------------------- airtime (same formula as the dashboard)
 function airtime(payload) {
@@ -109,8 +112,11 @@ function typeOf(m) { return Object.keys(m).find((k) => ["found", "track", "secto
 const DEFAULT_PRIO = { mayday: "critical", found: "urgent", hazard: "urgent", ack: "urgent", request: "normal", text: "normal", sector: "routine", track: "routine" };
 const SIZES = { found: 23, mayday: 15, request: 17, hazard: 19, sector: 11, ack: 12, track: 38 };
 
-function addRecord({ from, message, direction = "in", at = Date.now(), rssi = null, snr = null, hops = 0, status, size }) {
+function addRecord({ from, message, direction = "in", at = Date.now(), rssi = null, snr = null, hops = 0, status, size, channel, to = null }) {
   const type = typeOf(message);
+  // an answer goes out (and usually comes in) on the channel of the report it answers
+  const answered = type === "ack" ? state.tasks.get(`${message.ack.node.slice(1)}-${message.ack.ref}`) : null;
+  const ch = CHANNELS[channel] ?? answered?.channel ?? CHANNELS[DEFAULT_CHANNEL];
   const hex = from.slice(1);
   const needsId = ["found", "request", "hazard", "mayday"].includes(type);
   if (needsId && message.id == null) { const n = (state.counters.get(from) ?? 0) + 1; state.counters.set(from, n); message = { id: n, ...message }; }
@@ -121,14 +127,14 @@ function addRecord({ from, message, direction = "in", at = Date.now(), rssi = nu
     seq: ++state.seq, key, direction, from, type, priority: message.priority ?? DEFAULT_PRIO[type] ?? "normal",
     status: status ?? (direction === "in" ? "received" : "queued"), error: null, time: iso(at), event_time: null,
     codec: { version: 2, size: sz, hex: "08" + (message.id ?? 0).toString(16).padStart(2, "0") + "1a".repeat(Math.max(0, sz - 2)).slice(0, (sz - 2) * 2) },
-    radio: direction === "in" ? { packet_id: 3141592000 + state.seq, rssi, snr, hops, channel: 1, via: "sim" } : null,
-    message, text: render(message, nodeName), task_key: taskKey,
+    radio: direction === "in" ? { packet_id: 3141592000 + state.seq, rssi, snr, hops, channel: ch.index, via: "sim" } : null,
+    channel: ch, to, message, text: render(message, nodeName), task_key: taskKey,
   };
   state.messages.push(rec);
   if (needsId) {
     const task = {
       key, from, id: message.id, type, priority: rec.priority, state: "open", created: rec.time, updated: rec.time,
-      pos: message.pos ?? null, text: rec.text, message_seq: rec.seq, acks: [],
+      pos: message.pos ?? null, text: rec.text, message_seq: rec.seq, channel: ch, acks: [],
     };
     state.tasks.set(key, task);
   } else if (type === "ack") {
@@ -168,7 +174,9 @@ function seed() {
   addRecord({ from: T3, message: { ack: { ref: f1.message.id, node: T3, status: "done", team: "Trupp 3" } }, at: ago(48), rssi: -112, snr: -1, hops: 1 });
   addRecord({ from: T3, message: { ack: { ref: f2.message.id, node: T1, status: "accepted", eta: 15, team: "Trupp 3" } }, at: ago(31), rssi: -111, snr: -0.5, hops: 1 });
   addRecord({ from: T1, message: { pos: { lat: 50.6708, lon: 7.2168 }, request: { resource: "stretcher", count: 2, urgency: "now" } }, at: ago(25), rssi: -97, snr: 6.0 });
-  addRecord({ from: DOG, message: { pos: { lat: 50.6821, lon: 7.2402 }, found: { age: "adult", consciousness: "confused", injuries: ["hypothermia", "exhaustion"], needs: ["warmth"] } }, at: ago(18), rssi: -101, snr: 4.5 });
+  addRecord({ from: DOG, message: { pos: { lat: 50.6821, lon: 7.2402 }, found: { age: "adult", consciousness: "confused", injuries: ["hypothermia", "exhaustion"], needs: ["warmth"] } }, at: ago(18), rssi: -101, snr: 4.5, channel: "draeger-srs" });
+  addRecord({ from: DOG, message: { text: { text: "Dräger SRS: Atemschutz bereit am Gasthaus" } }, at: ago(16), rssi: -101, snr: 4.5, channel: "draeger-srs" });
+  addRecord({ from: T2, message: { text: { text: "Akku schwach, melde mich in 20 min" } }, at: ago(10), rssi: -108, snr: 3, hops: 1, to: GATEWAY });
   addRecord({ from: T2, message: { text: { text: "Treffpunkt jetzt am Gasthaus, nicht am Parkplatz" } }, at: ago(12), rssi: -108, snr: 3, hops: 1 });
   addRecord({ from: T2, message: { pos: { lat: 50.6779, lon: 7.2318 }, request: { resource: "searchers", count: 10, urgency: "soon" } }, at: ago(4), rssi: -107, snr: 2.75, hops: 1 });
   // our own outgoing: ELZ sent a text and accepted nothing yet
@@ -191,8 +199,8 @@ if (!flag("empty")) seed();
 // ---------------------------------------------------------------- derived
 function health() {
   return { status: state.control.radio ? "ok" : "degraded", version: "2.0.0-mock", spec_version: "2.0.0", uptime_s: Math.round((Date.now() - state.started) / 1000) + 3605,
-    radio: state.control.radio ? { connected: true, kind: "sim", node: GATEWAY, port: 256, channel: "RescueCodec", region: "EU_868", preset: "LONG_FAST", firmware: "2.7.26" }
-      : { connected: false, kind: "none", node: null, port: 256, channel: null, region: null, preset: null, firmware: null },
+    radio: state.control.radio ? { connected: true, kind: "sim", node: GATEWAY, port: 256, channel: DEFAULT_CHANNEL, channel_index: CHANNELS[DEFAULT_CHANNEL].index, channels: Object.values(CHANNELS), region: "EU_868", preset: "LONG_FAST", firmware: "2.7.26" }
+      : { connected: false, kind: "none", node: null, port: 256, channel: null, channels: [], region: null, preset: null, firmware: null },
     mqtt: { connected: false } };
 }
 function stats() {
@@ -218,7 +226,7 @@ function geojson() {
   const features = [];
   for (const m of state.messages) {
     const p = m.message.pos;
-    const props = (extra) => ({ seq: m.seq, key: m.key, type: m.type, from: m.from, priority: m.priority, state: (m.task_key && state.tasks.get(m.task_key)?.state) || null, acc: p?.acc ?? "gps", time: m.event_time ?? m.time, text_en: m.text.en, text_de: m.text.de, ...extra });
+    const props = (extra) => ({ seq: m.seq, key: m.key, type: m.type, from: m.from, priority: m.priority, state: (m.task_key && state.tasks.get(m.task_key)?.state) || null, acc: p?.acc ?? "gps", channel: m.channel.name, to: m.to, time: m.event_time ?? m.time, text_en: m.text.en, text_de: m.text.de, ...extra });
     if (m.type === "track") {
       const c = m.message.track.points.map((q) => [q.lon, q.lat]);
       features.push({ type: "Feature", geometry: c.length > 1 ? { type: "LineString", coordinates: c } : { type: "Point", coordinates: c[0] }, properties: props({}) });
@@ -237,7 +245,7 @@ function doAck(key, body) {
   if (state.control.fail === "429") return [429, { error: { code: "airtime_limit", message: "airtime budget used, send again in 4 min", field: null, retry_after_s: 240 } }];
   if (t.state !== body.status && !MOVES[t.state].includes(body.status)) return [409, { error: { code: "invalid_transition", message: `task is ${t.state}; cannot change to ${body.status}`, field: "status" } }];
   const msg = { ack: { ref: t.id, node: t.from, status: body.status, ...(body.eta ? { eta: body.eta } : {}), team: (body.team ?? "ELZ").slice(0, 12) } };
-  const rec = addRecord({ from: GATEWAY, direction: "out", message: msg });
+  const rec = addRecord({ from: GATEWAY, direction: "out", message: msg, channel: t.channel.name });
   bcast("message", rec); bcast("task", state.tasks.get(key));
   const step = (status, ms) => setTimeout(() => { rec.status = status; bcast("message_status", { seq: rec.seq, status, error: null, updated: iso(Date.now()) }); }, ms);
   step("sent", 700); step("delivered", 1900);
@@ -278,7 +286,8 @@ const server = http.createServer(async (req, res) => {
   if (p === "/v2/export.geojson") return json(res, 200, geojson(), { "Content-Type": "application/geo+json", "Content-Disposition": "attachment; filename=rescuecodec.geojson" });
   if (p === "/v2/tasks" && req.method === "GET") {
     const states = url.searchParams.get("state")?.split(",");
-    const items = [...state.tasks.values()].filter((t) => !states || states.includes(t.state));
+    const chans = url.searchParams.get("channel")?.toLowerCase().split(",");
+    const items = [...state.tasks.values()].filter((t) => (!states || states.includes(t.state)) && (!chans || chans.includes(t.channel.name.toLowerCase())));
     const rank = { critical: 3, urgent: 2, normal: 1, routine: 0 };
     items.sort((a, b) => rank[b.priority] - rank[a.priority] || a.created.localeCompare(b.created));
     return json(res, 200, { items });
@@ -292,13 +301,16 @@ const server = http.createServer(async (req, res) => {
   if (p === "/v2/messages" && req.method === "GET") {
     const since = Number(url.searchParams.get("since_seq") ?? 0); const limit = Math.min(1000, Number(url.searchParams.get("limit") ?? 100));
     const types = url.searchParams.get("type")?.split(","); const dir = url.searchParams.get("direction");
-    const items = state.messages.filter((r) => r.seq > since && (!types || types.includes(r.type)) && (!dir || r.direction === dir)).slice(0, limit);
+    const chans = url.searchParams.get("channel")?.toLowerCase().split(",");
+    const items = state.messages.filter((r) => r.seq > since && (!types || types.includes(r.type)) && (!dir || r.direction === dir)
+      && (!chans || chans.includes(r.channel.name.toLowerCase()))).slice(0, limit);
     return json(res, 200, { items, next_since_seq: items.length ? items.at(-1).seq : since });
   }
   if (p === "/v2/messages" && req.method === "POST") {
     const b = await body(req); if (!b?.message) return json(res, 400, { error: { code: "bad_request", message: "message missing", field: "message" } });
     if (!state.control.radio) return json(res, 503, { error: { code: "radio_unavailable", message: "no Meshtastic radio connected", field: null } });
-    const rec = addRecord({ from: GATEWAY, direction: "out", message: b.message }); emitRecord(rec);
+    if (b.channel != null && !CHANNELS[b.channel]) return json(res, 400, { error: { code: "invalid_value", message: `no channel "${b.channel}" to send on`, field: "channel" } });
+    const rec = addRecord({ from: GATEWAY, direction: "out", message: b.message, channel: b.channel, to: b.to ?? null }); emitRecord(rec);
     setTimeout(() => { rec.status = "sent"; bcast("message_status", { seq: rec.seq, status: "sent", error: null, updated: iso(Date.now()) }); }, 600);
     return json(res, 202, rec);
   }

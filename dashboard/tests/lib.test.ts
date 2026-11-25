@@ -10,6 +10,7 @@ import { buildMapModel } from "../src/map/data";
 const rec = (seq: number, over: Partial<MessageRecord> = {}): MessageRecord => ({
   seq, key: null, direction: "in", from: "!a1b2c3d4", type: "text", priority: "normal", status: "received", error: null,
   time: "2026-11-25T14:32:05Z", event_time: null, codec: { version: 2, size: 10, hex: "" }, radio: null,
+  channel: { index: 1, name: "RescueCodec", public: false }, to: null,
   message: { text: { text: "x" } }, text: { en: "x", de: "x" }, task_key: null, ...over,
 });
 

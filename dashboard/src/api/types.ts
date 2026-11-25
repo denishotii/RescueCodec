@@ -26,6 +26,8 @@ export interface Message {
   unknown?: Record<string, never>;
 }
 export interface Text2 { en: string; de: string }
+/** A Meshtastic channel, known by its name. public = no key or the default key (anyone can read it). */
+export interface Channel { index: number; name: string; public: boolean }
 export interface RadioFacts {
   packet_id: number; rssi: number | null; snr: number | null; hops: number | null; channel: number;
   via: "serial" | "tcp" | "ble" | "sim";
@@ -37,12 +39,18 @@ export interface MessageRecord {
   /** version 0: a normal Meshtastic text (port 1), not a RescueCodec packet; hex is the UTF-8 text (SPEC 2.1). */
   codec: { version: 0 | 1 | 2; size: number; hex: string };
   radio: RadioFacts | null;
+  /** The channel it came in or went out on. */
+  channel: Channel;
+  /** Direct messages only: the peer we sent to (out) or our own node (in). Null for a channel broadcast. */
+  to: string | null;
   message: Message; text: Text2; task_key: string | null;
 }
 export interface TaskAck { by: string; status: AckStatus; eta?: number | null; team?: string | null; time: string; seq: number }
 export interface Task {
   key: string; from: string; id: number; type: TaskType; priority: Priority; state: TaskState;
-  created: string; updated: string; pos: Position | null; text: Text2; message_seq: number; acks: TaskAck[];
+  created: string; updated: string; pos: Position | null; text: Text2; message_seq: number;
+  /** Channel of the report. Answers go out on it. */
+  channel: Channel; acks: TaskAck[];
 }
 export interface Stats {
   since: string;
@@ -60,7 +68,7 @@ export interface Health {
   status: "ok" | "degraded"; version: string; spec_version: string; uptime_s: number;
   radio: {
     connected: boolean; kind: "serial" | "tcp" | "ble" | "sim" | "none"; node: string | null; port: number;
-    channel?: string | null; channel_index?: number | null; channel_error?: string | null; other_channel?: number; region?: string | null; preset?: string | null; firmware?: string | null;
+    channel?: string | null; channel_index?: number | null; channels?: Channel[]; channel_error?: string | null; other_channel?: number; region?: string | null; preset?: string | null; firmware?: string | null;
   };
   mqtt: { connected: boolean };
 }

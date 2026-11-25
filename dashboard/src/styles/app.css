@@ -26,6 +26,8 @@
 .seg button + button { border-left: 1px solid var(--line-strong); }
 .seg button.on { background: var(--ink); color: var(--surface); }
 .seg button:not(.on):hover { background: var(--surface-3); }
+.seg-channels { max-width: 100%; overflow-x: auto; }
+.seg-channels button { white-space: nowrap; }
 .icon-btn { width: 2.4rem; height: 2.4rem; display: inline-grid; place-items: center; border: 1px solid var(--line-strong); background: var(--surface-2); border-radius: var(--r-ctl); color: var(--ink-2); }
 .icon-btn:hover { background: var(--surface-3); color: var(--ink); }
 .icon-btn[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
@@ -92,6 +94,7 @@
 .state-declined.chip { background: var(--declined-soft); color: var(--declined); }
 .status-failed.chip { background: var(--mayday-soft); color: var(--mayday); }
 .chip-gw { background: var(--ink); color: var(--surface); }
+.chip-channel { font-weight: 600; max-width: 12rem; overflow: hidden; text-overflow: ellipsis; }
 .out-chip { background: var(--accepted-soft); color: var(--accepted); }
 .out-chip.status-failed { background: var(--mayday-soft); color: var(--mayday); }
 .out-chip.status-delivered { background: var(--done-soft); color: var(--done); }
@@ -317,7 +320,7 @@ html[data-room="on"] .report-radio, html[data-room="on"] .node-sub, html[data-ro
 @media (max-width: 1199px) {
   .topbar { flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); }
   .status-row { order: 3; flex-basis: 100%; gap: var(--sp-3); }
-  .controls { margin-left: auto; }
+  .controls { margin-left: auto; flex-wrap: wrap; justify-content: flex-end; min-width: 0; }
   .board { display: block; padding: var(--sp-2); position: relative; }
   .slot { display: none; height: 100%; }
   .app[data-tab="actions"] .slot-actions, .app[data-tab="feed"] .slot-feed, .app[data-tab="map"] .slot-map,
