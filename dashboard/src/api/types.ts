@@ -83,4 +83,21 @@ export type StreamEvent =
   | { event: "health"; data: Health }
   | { event: "pong"; data: Record<string, never> };
 
+/** POST /v2/extract: what a typed sentence would send. Nothing is sent. */
+export interface ExtractField { field: string; code: string | number; text: Text2 }
+export interface ExtractResult {
+  type: "found" | "sector" | "request" | "hazard" | "mayday" | "text";
+  /** Canonical message without an id; post it to /v2/messages. A text when no report fits. */
+  message: Message;
+  unsupported: boolean; reason: string | null; lang: "en" | "de" | "unknown";
+  fields: ExtractField[]; text: Text2;
+  /** Bytes on air for `message` (id counted). */
+  coded_bytes: number;
+  /** Bytes on air for the same words as a plain text. */
+  text_bytes: number;
+}
+/** Body of POST /v2/messages and POST /v2/text: `channel` (a name) or `to` (a node, direct message). */
+export interface SendMessageBody { message: Message; channel?: string; to?: string }
+export interface SendTextBody { text: string; channel?: string; to?: string }
+
 export interface ApiErrorBody { error: { code: string; message: string; field: string | null; retry_after_s?: number } }

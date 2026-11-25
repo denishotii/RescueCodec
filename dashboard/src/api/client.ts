@@ -1,6 +1,6 @@
 // REST client. Every path here must exist in spec/api/openapi.yaml (tests/contract.test.ts checks that).
 import type {
-  AckStatus, ApiErrorBody, Health, MeshNode, MessageRecord, Stats, Task,
+  AckStatus, ApiErrorBody, ExtractResult, Health, MeshNode, MessageRecord, SendMessageBody, SendTextBody, Stats, Task,
 } from "./types";
 
 export interface RuntimeConfig {
@@ -77,6 +77,11 @@ export const api = {
   stats: () => call<Stats>("/v2/stats"),
   ack: (key: string, body: { status: AckStatus; eta?: number; team?: string }) =>
     call<{ task: Task; record: MessageRecord }>(`/v2/tasks/${encodeURIComponent(key)}/ack`, { method: "POST", body: JSON.stringify(body) }),
+  /** Live preview of the composer: what this sentence would send. Sends nothing. */
+  extract: (text: string, signal?: AbortSignal) =>
+    call<ExtractResult>("/v2/extract", { method: "POST", body: JSON.stringify({ text }), signal }),
+  sendMessage: (body: SendMessageBody) => call<MessageRecord>("/v2/messages", { method: "POST", body: JSON.stringify(body) }),
+  sendText: (body: SendTextBody) => call<MessageRecord>("/v2/text", { method: "POST", body: JSON.stringify(body) }),
   geojsonUrl: () => config.apiBase + "/v2/export.geojson" + (authToken() ? `?token=${encodeURIComponent(authToken()!)}` : ""),
 };
 

@@ -314,6 +314,22 @@ const server = http.createServer(async (req, res) => {
     setTimeout(() => { rec.status = "sent"; bcast("message_status", { seq: rec.seq, status: "sent", error: null, updated: iso(Date.now()) }); }, 600);
     return json(res, 202, rec);
   }
+  if (p === "/v2/text" && req.method === "POST") {
+    const b = await body(req); if (!b?.text) return json(res, 400, { error: { code: "bad_request", message: "the body needs a text", field: "text" } });
+    if (!state.control.radio) return json(res, 503, { error: { code: "radio_unavailable", message: "no Meshtastic radio connected", field: null } });
+    if (b.channel != null && !CHANNELS[b.channel]) return json(res, 400, { error: { code: "invalid_value", message: `no channel "${b.channel}" to send on`, field: "channel" } });
+    const rec = addRecord({ from: GATEWAY, direction: "out", message: { text: { text: b.text } }, channel: b.channel, to: b.to ?? null }); emitRecord(rec);
+    setTimeout(() => { rec.status = "sent"; bcast("message_status", { seq: rec.seq, status: "sent", error: null, updated: iso(Date.now()) }); }, 600);
+    return json(res, 202, rec);
+  }
+  if (p === "/v2/extract" && req.method === "POST") {
+    // The mock has no extractor: every sentence is a text (the real gateway finds reports).
+    const b = await body(req); const text = typeof b?.text === "string" ? b.text.trim().replace(/\s+/g, " ") : "";
+    if (!text) return json(res, 400, { error: { code: "bad_request", message: "the body needs a text (one sentence)", field: "text" } });
+    const size = Buffer.byteLength(text, "utf8");
+    return json(res, 200, { type: "text", message: { text: { text } }, unsupported: true, reason: "no_supported_type", lang: "unknown",
+      fields: [], text: { en: `Message: ${text}`, de: `Nachricht: ${text}` }, coded_bytes: size, text_bytes: size });
+  }
   if ((m = /^\/v2\/messages\/(\d+)$/.exec(p))) { const r = state.messages.find((x) => x.seq === Number(m[1])); return r ? json(res, 200, r) : json(res, 404, { error: { code: "not_found", message: "no such record", field: null } }); }
 
   // mock controls
