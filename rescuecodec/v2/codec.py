@@ -149,8 +149,9 @@ def to_proto(msg: Mapping) -> pb.Envelope:
         pos = _check_keys(msg["pos"], {"lat", "lon", "acc"}, "pos")
         if "lat" not in pos or "lon" not in pos:
             raise _err("missing_field", "pos needs lat and lon", "pos")
-        env.pos.lat = deg_to_e5(pos["lat"], "pos.lat")
-        env.pos.lon = deg_to_e5(pos["lon"], "pos.lon")
+        lat, lon = deg_to_e5(pos["lat"], "pos.lat"), deg_to_e5(pos["lon"], "pos.lon")
+        _check_lat_lon(lat, lon, "pos")
+        env.pos.lat, env.pos.lon = lat, lon
         if "acc" in pos:
             env.pos.acc = _enum_to_wire(pos["acc"], C.ACCURACY, "pos.acc")
         env.pos.SetInParent()
@@ -545,6 +546,24 @@ def message_type(msg: Mapping) -> str:
 def effective_priority(msg: Mapping) -> str:
     """Priority on the wire, or the default for the message type."""
     return msg.get("priority") or C.DEFAULT_PRIORITY[message_type(msg)]
+
+
+def resolve_time(hhmm: str, now: "datetime") -> "datetime":
+    """Turn a message time "HH:MM" (UTC) into a full UTC datetime.
+
+    Rule (spec/SPEC.md, "Time"): the most recent matching minute that is at most
+    10 minutes after `now` (the receiver's clock, timezone-aware UTC).
+    """
+    from datetime import timedelta, timezone
+
+    m = _TIME_RE.match(hhmm)
+    if not m:
+        raise _err("invalid_value", 'must be "HH:MM" (UTC)', "time")
+    now = now.astimezone(timezone.utc)
+    candidate = now.replace(hour=int(m.group(1)), minute=int(m.group(2)), second=0, microsecond=0)
+    if candidate > now + timedelta(minutes=10):
+        candidate -= timedelta(days=1)
+    return candidate
 
 
 def canonical(msg: Mapping) -> dict:

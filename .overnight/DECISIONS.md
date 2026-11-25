@@ -13,3 +13,11 @@
 - Wed 00:55, setup-sim: venv pins: meshtastic 2.7.11, protobuf 7.36.2, fastapi 0.165.0 + starlette 1.10.0, pydantic 2.14.4 (old FastAPI/Starlette mismatch gone, 17 tests pass).
 - Wed 01:55, setup-android: Gradle 9.8.0 + AGP 9.4.1 + Kotlin 2.4.10 (not Gradle 8), compileSdk 37.1, targetSdk 35, why: Meshtastic SDK 0.2.0 is built with Kotlin 2.4/AGP 9 and its AAR needs compileSdk 37; Compose 1.13 needs 37.1.
 - Wed 01:55, setup-android: Meshtastic SDK 0.2.0 is GPL-3.0-or-later, so the app module is GPL when it links it; :codec and :engine stay Apache-2.0 and must never depend on the SDK.
+- Wed 02:02, spec: v2 packet = one protobuf Envelope, no version byte; first byte 0x01 = v1, 0x00/0x02-0x07 reserved for future versions, 0x08+ = v2, because protobuf field 0 does not exist so a v2 packet can never start below 0x08 and this costs 0 bytes.
+- Wed 02:02, spec: Found packs consciousness/breathing/mobility/age into one `state` varint (2+2+2+3 bits) and uses bit flags for injuries/needs, because separate enums cost 5 more bytes; typical found with GPS is 23 B (limit 25).
+- Wed 02:02, spec: Position.acc default 0 = GPS (most common, 0 bytes); "if unsure send estimated". Time = optional minute of the UTC day (3 B), date implied (receiver picks the latest match at most 10 min ahead).
+- Wed 02:02, spec: id = per-sender counter 1..16383 (max 2-byte varint), required for found/request/hazard/mayday; Ack carries ref + fixed32 node of the original sender, because acks are broadcast and ids are only unique per sender.
+- Wed 02:02, spec: one canonical JSON shape (proto field names, enum names lowercase, flags as name lists in bit order, lat/lon degrees, time "HH:MM", node "!hex") is shared by vectors, REST API and MQTT; unknown values travel as unknown_<n>/bit_<n> so gateways can relay newer messages.
+- Wed 02:02, spec: readable text is a fixed algorithm + per-language word files (spec/i18n), so all libraries render identical lines (Level 2 conformance); uk/tr/ar are marked machine-draft.
+- Wed 02:02, spec: error codes are a small stable set (empty, too_large, unsupported_version, malformed, no_body, multiple_bodies, unknown_key, invalid_value, missing_field) with a field path; vectors check both.
+- Wed 02:02, spec: note the setup commit a818c2c swept in early, unfinished spec files; the spec commit carries the finished versions.

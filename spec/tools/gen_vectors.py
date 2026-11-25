@@ -218,7 +218,7 @@ INVALID_DECODE = [
     ("bad-utf8", "Text with invalid UTF-8.", "6a030a01ff", "malformed", None),
     ("id-only", "No body at all.", "0807", "no_body", None),
     ("found-id-zero", "found without id.", "3200", "missing_field", "id"),
-    ("id-too-big", "id 16384.", "08808001" + "3200", "invalid_value", "id"),
+    ("wire-id-too-big", "id 16384.", "08808001" + "3200", "invalid_value", "id"),
     ("lat-out-of-range", "Latitude 90.00001.", "0801" + "1a05" + "0882d1ca08" + "3200", "invalid_value", "pos.lat"),
     ("time-1440", "Minute 1440 does not exist.", "0801" + "20a00b" + "3200", "invalid_value", "time"),
     ("track-length-mismatch", "Two latitudes, one longitude.", "3a07" + "0a020202" + "12010a",
@@ -226,8 +226,8 @@ INVALID_DECODE = [
     ("track-dt-without-time", "Times without Envelope.time.", "3a06" + "0802" + "1004" + "1800", "missing_field", "time"),
     ("ack-status-zero", "Ack without status.", "6207" + "0807" + "15d4c3b2a1", "missing_field", "ack.status"),
     ("ack-node-zero", "Ack without node.", "6204" + "0807" + "1801", "missing_field", "ack.node"),
-    ("text-181", "Text of 181 bytes.", "6ab801" + "0ab501" + "41" * 181, "invalid_value", "text.text"),
-    ("too-large", "234 bytes is above the Meshtastic payload limit.", "6ae701" + "0ae401" + "41" * 228, "too_large", None),
+    ("wire-text-181", "Text of 181 bytes.", "6ab801" + "0ab501" + "41" * 181, "invalid_value", "text.text"),
+    ("wire-too-large", "234 bytes is above the Meshtastic payload limit.", "6ae701" + "0ae401" + "41" * 228, "too_large", None),
 ]
 
 
@@ -272,6 +272,8 @@ def main() -> None:
         assert decoded == expected, (name, decoded)
         out["decode_only"].append({"name": name, "note": note, "hex": hexstr, "size": len(hexstr) // 2,
                                    "decoded": decoded})
+    all_names = [c[0] for c in VALID + DECODE_ONLY + INVALID_ENCODE + INVALID_DECODE] + [c[0] for c in v1_cases()]
+    assert len(all_names) == len(set(all_names)), "case names must be unique"
     for name, note, msg, code, field in INVALID_ENCODE:
         try:
             encode(msg)
