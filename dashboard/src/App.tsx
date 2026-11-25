@@ -42,7 +42,8 @@ function Shell() {
       <main className="board">
         <div className="slot slot-actions"><ActionsBoard /></div>
         <div className="slot slot-map"><MapPanel /></div>
-        <div className="slot slot-feed"><Feed /><Nodes collapsible /><SendPanel /></div>
+        <div className="slot slot-feed"><Feed /><SendPanel /></div>
+        {/* phones and tablets get these as tabs; on a wide screen they open from the header (Details) */}
         <div className="slot slot-nodes"><Nodes /></div>
         <div className="slot slot-stats"><StatsBand /></div>
       </main>
