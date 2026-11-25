@@ -62,7 +62,7 @@ What we got (verified **in software only**, through the real gateway code; not y
 
 A second text with a name, a German place and coordinates, `Team 3 at Löwenburg hut. We found Aylin Demir, conscious, ankle hurt.\nMeet at 50.6900, -1.2500 in 20 min 🙂` (110 bytes): it has many names, numbers and an emoji, so DEFLATE (83 bytes) is still the smallest and the gateway sends DEFLATE; the text comes back exactly. That is the strictly-smallest rule working.
 
-On a phone: two phones with the new APK, the same private channel (a chat that packs), the setting on in the sender. The composer's byte line shows the form, for example "Compact words · 48 B (as text 136 B)". The sent message carries the tag "compact · 48 B"; Details say "Compact frame (no envelope), word dictionary 2". If the phone attaches its GPS position to texts, the text goes as word tokens in the envelope (about 11 bytes more), because the compact frame carries no position.
+On a phone: two phones with the new APK, the same private channel (a chat that packs), the setting on in the sender. The composer's byte line shows the form, for example "Compact words · 48 B (as text 136 B)". The sent message carries the tag "compact · 48 B"; Details say "Compact frame (no envelope), word dictionary 2". With the setting on, the app no longer attaches the phone's GPS fix to free texts (reports keep it), so texts can go as compact frames. A text that carries a position (for example from another app through the intent API) goes as word tokens in the envelope (about 11 bytes more).
 
 ## Older apps
 
@@ -153,7 +153,7 @@ With spec 2.1 and dictionary 1, 13.2 % of the conversational texts stayed normal
 **Honest limits.**
 - Measured in software (the real codec and gateway code, an in-memory radio). Not yet verified over physical radios.
 - Tatoeba sentences are short and tidy, and the test sentences come from the same collection as the training ones (split by hash), so 98.5 % found words is optimistic; real chat has more typos and slang. The disaster set (93.8 %) is the harder, more realistic case.
-- The compact frame carries no GPS position. A phone that attaches its position to texts sends word tokens in the envelope (about 11 bytes more than the frame).
+- The compact frame carries no GPS position. With the setting on, free texts from the app go without the automatic GPS fix (reports keep it); a text that does carry a position goes as word tokens in the envelope (about 11 bytes more than the frame).
 - Dictionary 2 adds about 277 KB to the APK.
 - The disaster messages are mostly English translations (many from Haitian Creole) and news sentences, not German volunteer radio talk.
 - For context only (not compared directly): an earlier analysis on 2,926 train / 421 held-out Haiti requests found 5.21 UTF-8 bytes per word and 92.0 % held-out word coverage with 2,048 entries. Our 2048-entry run reaches 72 % on the disaster validation set (all genres, ours counts every non-punctuation piece including numbers).
