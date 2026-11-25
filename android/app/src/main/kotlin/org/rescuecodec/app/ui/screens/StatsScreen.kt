@@ -39,15 +39,13 @@ import org.rescuecodec.app.ui.theme.Rc
  * Estimated means calculated from the LoRa airtime formula.
  */
 @Composable
-fun StatsScreen(vm: StatsViewModel, lang: String) {
-    val s by vm.stats.collectAsStateWithLifecycle()
+fun StatsLedger(s: Stats) {
     val now by rememberNow()
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).testTag("stats_screen"),
+        Modifier.fillMaxWidth().testTag("stats_ledger"),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Spacer(Modifier.height(4.dp))
-        SectionHeader(stringResource(R.string.stats_savings))
+        SectionHeader(stringResource(R.string.stats_savings), plain = true)
         Row3(
             stringResource(R.string.stat_bytes_saved), signed(s.bytesSaved) + " B", measured = true,
             note = if (s.reports > 0) stringResource(R.string.stat_bytes_saved_note, s.reportTextBytes, s.reportCodedBytes, s.reports) else stringResource(R.string.stat_bytes_saved_none),
@@ -58,7 +56,7 @@ fun StatsScreen(vm: StatsViewModel, lang: String) {
             note = stringResource(R.string.stat_airtime_saved_note), tag = "stat_airtime_saved",
         )
 
-        SectionHeader(stringResource(R.string.stats_delivery))
+        SectionHeader(stringResource(R.string.stats_delivery), plain = true)
         Row3(
             stringResource(R.string.stat_delivered), "${s.delivered} / ${s.sent}", measured = true,
             note = stringResource(R.string.stat_delivered_note, s.notConfirmed, s.refusedAirtime, s.failed), tag = "stat_delivered",
@@ -68,7 +66,7 @@ fun StatsScreen(vm: StatsViewModel, lang: String) {
             note = stringResource(R.string.stat_received_note, s.duplicates, s.invalid), tag = "stat_received",
         )
 
-        SectionHeader(stringResource(R.string.stats_signal))
+        SectionHeader(stringResource(R.string.stats_signal), plain = true)
         val rssi = s.lastRssi
         Row3(
             stringResource(R.string.stat_last_rssi), if (rssi != null) "$rssi dBm" else "-", measured = true,
@@ -80,7 +78,7 @@ fun StatsScreen(vm: StatsViewModel, lang: String) {
             note = stringResource(R.string.stat_snr_note), tag = "stat_snr",
         )
 
-        SectionHeader(stringResource(R.string.stats_airtime))
+        SectionHeader(stringResource(R.string.stats_airtime), plain = true)
         val a = s.airtime
         Row3(
             stringResource(R.string.stat_airtime_hour), "%.1f / %.0f s".format(a.usedMs / 1000.0, a.limitMs / 1000.0), measured = false,
@@ -93,7 +91,6 @@ fun StatsScreen(vm: StatsViewModel, lang: String) {
             stringResource(R.string.stat_bytes_traffic), "${s.bytesSent} / ${s.bytesReceived} B", measured = true,
             note = stringResource(R.string.stat_bytes_traffic_note), tag = "stat_traffic",
         )
-        Spacer(Modifier.height(16.dp))
     }
 }
 
@@ -107,7 +104,7 @@ private fun Row3(label: String, value: String, measured: Boolean, note: String, 
                 Text(label, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
                 SourceTag(measured)
             }
-            Text(value, style = MaterialTheme.typography.displaySmall.copy(fontFamily = BarlowCondensed), color = MaterialTheme.colorScheme.onSurface)
+            Text(value, style = MaterialTheme.typography.headlineMedium.copy(fontFamily = BarlowCondensed), color = MaterialTheme.colorScheme.onSurface)
         }
         extra?.invoke()
         Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

@@ -52,6 +52,9 @@ import org.rescuecodec.app.voice.ModelStatus
 import org.rescuecodec.app.voice.VoskModels
 import org.rescuecodec.engine.Airtime
 
+/** The day/night choice is off while the app is light only. */
+private const val SHOW_THEME = false
+
 /** Settings: language, day/night, team, radio and region info, speech models, other apps, licences. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -89,6 +92,8 @@ fun SettingsScreen(vm: SettingsViewModel, connection: ConnectionViewModel, lang:
         }
         Text(stringResource(R.string.set_language_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
+        // Day / night: hidden for now, the app is light only (RescueRoot forces Day). The setting and night palette stay.
+        if (SHOW_THEME) {
         SectionHeader(stringResource(R.string.set_theme))
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
             listOf("auto" to R.string.theme_auto, "day" to R.string.theme_day, "night" to R.string.theme_night).forEachIndexed { i, (code, label) ->
@@ -99,6 +104,7 @@ fun SettingsScreen(vm: SettingsViewModel, connection: ConnectionViewModel, lang:
                     colors = segColors(),
                 ) { Text(stringResource(label), style = MaterialTheme.typography.labelLarge) }
             }
+        }
         }
 
         SectionHeader(stringResource(R.string.set_sounds))
