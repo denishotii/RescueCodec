@@ -61,7 +61,7 @@ Three pieces, written first in Python and ported line by line to Kotlin:
 - **Send queue and airtime budget.** EU 868 MHz allows 10 percent airtime per hour (360 s). The queue computes LoRa airtime per packet, sends Mayday first, then Found, Request and Ack, then Hazard, Sector, Track and Text. Each type has its own ceiling (a Mayday and an Ack are never held, tracks stop at 70 percent). A held message stays queued and goes out when the window frees up.
 - **Task tracker.** Every Found, Request, Hazard and Mayday is a task with the key `<sender node>-<id>`. Its state comes from the newest Ack of each team: done from anyone is final, else accepted while any team has it accepted, else declined if a team declined, else open. Duplicates are dropped by (sender, id) for 24 hours.
 
-The Python engine, the Kotlin engine and the vectors agree: 70 of 70 extraction cases in both, and the same rules for the queue and tracker (SPEC section 15.1).
+The Python engine, the Kotlin engine and the vectors agree: 73 of 73 extraction cases in both, and the same rules for the queue and tracker (SPEC section 15.1).
 
 ### Gateway
 
