@@ -35,15 +35,25 @@ info:
     **Numbers in `/v2/stats`** carry `source: measured` (counted bytes, radio readings) or
     `source: estimated` (airtime calculated with the LoRa formula and Meshtastic's overhead).
 
+    **Channels and direct messages.** The gateway listens on every private channel of its radio (`--channels all`,
+    the default, or `--channels NAME,NAME`) and keeps every direct message to its own node. Public channels (no key
+    or the default key, for example LongFast) are ignored unless the gateway runs with `--show-public`. A channel is
+    known by its **name**; an empty primary name shows as the modem preset's name ("LongFast"). Every record has
+    `channel: {index, name, public}` and `to` (the peer of a direct message, else null). You send on the default
+    channel (`--channel-name`, default RescueCodec) unless you name one with `channel`; `to` sends a direct message
+    (a plain text, port 1). Answers (`POST /v2/tasks/{key}/ack`) always go out on the channel of the report they
+    answer. `GET /v2/health` lists the channels in `radio.channels`.
+
     **Plain Meshtastic texts** (SPEC section 2.1). The gateway also shows normal Meshtastic texts (port 1,
-    TEXT_MESSAGE_APP), for example from the official app: a broadcast on the team channel, or a direct message to
-    the gateway's radio. Texts on other channels (the public LongFast chat) are never shown. Such a record is a
+    TEXT_MESSAGE_APP), for example from the official app: a broadcast on a channel it listens on, or a direct message
+    to the gateway's radio. Texts on public channels (the LongFast chat) are not shown without `--show-public`. Such a record is a
     normal `text` record with `codec.version: 0`; `codec.hex` holds the UTF-8 bytes of the text. A message with only
     a text that you send goes out the same way (`--text-as-meshtastic on`, the default), so stock apps and radio
     screens show it.
 
     **Other connectors** (not part of this HTTP API, same JSON): MQTT topic `rescuecodec/v2/messages`
-    carries `MessageRecord` objects and `rescuecodec/v2/tasks` carries `Task` objects. The TAK
+    carries `MessageRecord` objects, `rescuecodec/v2/channels/<channel name>` the same records per channel, and
+    `rescuecodec/v2/tasks` carries `Task` objects. The TAK
     connector sends CoT markers. The readable-text connector (`--text-over-air`) posts `text.en` on the
     Meshtastic text port, with `[RC] ` in front so RescueCodec receivers skip the copy.
 servers:
@@ -90,7 +100,7 @@ paths:
                     version: 2.0.0
                     spec_version: 2.0.0
                     uptime_s: 12
-                    radio: { connected: false, kind: none, node: null, port: 256, channel: null, region: null, preset: null, firmware: null }
+                    radio: { connected: false, kind: none, node: null, port: 256, channel: null, channels: [], region: null, preset: null, firmware: null }
                     mqtt: { connected: false }
 
   /v2/messages:
@@ -110,6 +120,9 @@ paths:
         queue, priority, airtime budget and `want_ack`. The record then has `codec.version: 0` and no `key`.
         With `--text-as-meshtastic off` it goes out as a RescueCodec text on port 256.
         With `dry_run: true` nothing is sent; you get the record as it would be queued.
+        `channel` picks a channel by name (one of `GET /v2/health` -> `radio.channels`); without it the message goes
+        out on the default channel. Reports never go out on a public channel. `to` makes a text a direct message to
+        that node: it always goes out as a plain Meshtastic text (port 1).
       requestBody:
         required: true
         content:
@@ -135,6 +148,16 @@ paths:
               request:
                 value:
                   message: { pos: { lat: 50.69212, lon: 7.21345 }, request: { resource: searchers, count: 10, urgency: now } }
+              channel:
+                summary: A text on another channel
+                value:
+                  message: { text: { text: "Trage kommt in 10 min" } }
+                  channel: draeger-srs
+              direct:
+                summary: A direct message to one radio
+                value:
+                  message: { text: { text: "Bitte melden" } }
+                  to: "!a1b2c3d4"
       responses:
         "202":
           description: Queued. Follow the status on the WebSocket or with GET /v2/messages/{seq}.
@@ -162,6 +185,10 @@ paths:
         - name: direction
           in: query
           schema: { type: string, enum: [in, out] }
+        - name: channel
+          in: query
+          description: Only these channels, by name. Comma separated, compared without case.
+          schema: { type: string, example: "RescueCodec,draeger-srs" }
         - name: limit
           in: query
           schema: { type: integer, minimum: 1, maximum: 1000, default: 100 }
@@ -181,7 +208,7 @@ paths:
               examples:
                 one:
                   value:
-                    items: [ {"seq": 42, "key": "a1b2c3d4-7", "direction": "in", "from": "!a1b2c3d4", "type": "found", "priority": "urgent", "status": "received", "error": null, "time": "2026-11-25T14:32:05Z", "event_time": null, "codec": {"version": 2, "size": 23, "hex": "08071a0908b8e6ea041082875832080841100518012802"}, "radio": {"packet_id": 3141592653, "rssi": -97, "snr": 6.25, "hops": 0, "channel": 1, "via": "serial"}, "message": {"id": 7, "pos": {"lat": 50.69212, "lon": 7.21345}, "found": {"consciousness": "conscious", "age": "child", "injuries": ["hypothermia", "fracture"], "needs": ["stretcher"], "responders": 2}}, "text": {"en": "Person found: child, conscious, hypothermia, fracture, needs stretcher, 2 more helpers needed. Position 50.69212, 7.21345.", "de": "Person gefunden: Kind, ansprechbar, Unterkühlung, Knochenbruch, braucht Trage, 2 weitere Helfer benötigt. Position 50.69212, 7.21345."}, "task_key": "a1b2c3d4-7"} ]
+                    items: [ {"seq": 42, "key": "a1b2c3d4-7", "direction": "in", "from": "!a1b2c3d4", "type": "found", "priority": "urgent", "status": "received", "error": null, "time": "2026-11-25T14:32:05Z", "event_time": null, "codec": {"version": 2, "size": 23, "hex": "08071a0908b8e6ea041082875832080841100518012802"}, "radio": {"packet_id": 3141592653, "rssi": -97, "snr": 6.25, "hops": 0, "channel": 1, "via": "serial"}, "channel": {"index": 1, "name": "RescueCodec", "public": false}, "to": null, "message": {"id": 7, "pos": {"lat": 50.69212, "lon": 7.21345}, "found": {"consciousness": "conscious", "age": "child", "injuries": ["hypothermia", "fracture"], "needs": ["stretcher"], "responders": 2}}, "text": {"en": "Person found: child, conscious, hypothermia, fracture, needs stretcher, 2 more helpers needed. Position 50.69212, 7.21345.", "de": "Person gefunden: Kind, ansprechbar, Unterkühlung, Knochenbruch, braucht Trage, 2 weitere Helfer benötigt. Position 50.69212, 7.21345."}, "task_key": "a1b2c3d4-7"} ]
                     next_since_seq: 42
 
   /v2/messages/{seq}:
@@ -224,6 +251,8 @@ paths:
                 text: { type: string, minLength: 1, description: "1..180 bytes of UTF-8." }
                 priority: { $ref: "#/components/schemas/Priority" }
                 also_plain: { type: boolean, default: false }
+                channel: { type: string, description: "Channel name to send on. Default: the default channel." }
+                to: { type: string, pattern: "^![0-9a-f]{8}$", description: "Send as a direct message to this node (always a plain text)." }
             example: { text: "Treffpunkt jetzt am Gasthaus, nicht am Parkplatz" }
       responses:
         "202":
@@ -249,6 +278,10 @@ paths:
         - name: type
           in: query
           schema: { type: string, example: "found,mayday" }
+        - name: channel
+          in: query
+          description: Only these channels, by name. Comma separated, compared without case.
+          schema: { type: string, example: "RescueCodec,draeger-srs" }
       responses:
         "200":
           description: Tasks.
@@ -264,7 +297,7 @@ paths:
               examples:
                 one:
                   value:
-                    items: [ {"key": "a1b2c3d4-7", "from": "!a1b2c3d4", "id": 7, "type": "found", "priority": "urgent", "state": "accepted", "created": "2026-11-25T14:32:05Z", "updated": "2026-11-25T14:33:10Z", "pos": {"lat": 50.69212, "lon": 7.21345}, "text": {"en": "Person found: child, conscious, hypothermia, fracture, needs stretcher, 2 more helpers needed. Position 50.69212, 7.21345.", "de": "Person gefunden: Kind, ansprechbar, Unterkühlung, Knochenbruch, braucht Trage, 2 weitere Helfer benötigt. Position 50.69212, 7.21345."}, "message_seq": 42, "acks": [{"by": "!0badc0de", "status": "accepted", "eta": 15, "team": "Trupp 3", "time": "2026-11-25T14:33:10Z", "seq": 45}]} ]
+                    items: [ {"key": "a1b2c3d4-7", "from": "!a1b2c3d4", "id": 7, "type": "found", "priority": "urgent", "state": "accepted", "created": "2026-11-25T14:32:05Z", "updated": "2026-11-25T14:33:10Z", "pos": {"lat": 50.69212, "lon": 7.21345}, "text": {"en": "Person found: child, conscious, hypothermia, fracture, needs stretcher, 2 more helpers needed. Position 50.69212, 7.21345.", "de": "Person gefunden: Kind, ansprechbar, Unterkühlung, Knochenbruch, braucht Trage, 2 weitere Helfer benötigt. Position 50.69212, 7.21345."}, "message_seq": 42, "channel": {"index": 1, "name": "RescueCodec", "public": false}, "acks": [{"by": "!0badc0de", "status": "accepted", "eta": 15, "team": "Trupp 3", "time": "2026-11-25T14:33:10Z", "seq": 45}]} ]
 
   /v2/tasks/{key}:
     get:
@@ -290,7 +323,8 @@ paths:
       summary: Accept, decline or finish a task. Sends an Ack over the mesh.
       description: |
         Sends `{"ack": {"ref": <id>, "node": <sender>, "status": ..., "eta": ..., "team": ...}}` as a
-        broadcast on the channel, so the sender and everyone else sees who took the task. The task state
+        broadcast on the task's channel (the channel the report came in on, `task.channel`), so the sender and
+        everyone else there sees who took the task. The task state
         changes right away; the returned `record` shows the radio status. Your Ack counts as one more team's
         answer (SPEC section 15): when another team still has the task accepted, your decline leaves it accepted.
         Allowed moves: open -> accepted | declined; accepted -> done | declined; declined -> accepted.
@@ -390,6 +424,10 @@ paths:
         - name: type
           in: query
           schema: { type: string, example: "found,hazard,track" }
+        - name: channel
+          in: query
+          description: Only these channels, by name. Comma separated, compared without case.
+          schema: { type: string, example: "RescueCodec,draeger-srs" }
       responses:
         "200":
           description: A FeatureCollection.
@@ -409,6 +447,8 @@ paths:
                       priority: urgent
                       state: accepted
                       acc: gps
+                      channel: RescueCodec
+                      to: null
                       time: "2026-11-25T14:32:05Z"
                       text_en: "Person found: child, conscious, hypothermia, fracture, needs stretcher, 2 more helpers needed. Position 50.69212, 7.21345."
                       text_de: "Person gefunden: Kind, ansprechbar, Unterkühlung, Knochenbruch, braucht Trage, 2 weitere Helfer benötigt. Position 50.69212, 7.21345."
@@ -507,10 +547,10 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/StreamEvent" }
               examples:
-                hello: { value: { event: hello, data: { last_seq: 42, health: { status: ok, version: 2.0.0, spec_version: 2.0.0, uptime_s: 3605, radio: { connected: true, kind: serial, node: "!a1b2c3d4", port: 256, channel: RescueCodec, region: EU_868, preset: LONG_FAST, firmware: 2.7.26 }, mqtt: { connected: false } } } } }
-                message: { value: { event: message, data: {"seq": 42, "key": "a1b2c3d4-7", "direction": "in", "from": "!a1b2c3d4", "type": "found", "priority": "urgent", "status": "received", "error": null, "time": "2026-11-25T14:32:05Z", "event_time": null, "codec": {"version": 2, "size": 23, "hex": "08071a0908b8e6ea041082875832080841100518012802"}, "radio": {"packet_id": 3141592653, "rssi": -97, "snr": 6.25, "hops": 0, "channel": 1, "via": "serial"}, "message": {"id": 7, "pos": {"lat": 50.69212, "lon": 7.21345}, "found": {"consciousness": "conscious", "age": "child", "injuries": ["hypothermia", "fracture"], "needs": ["stretcher"], "responders": 2}}, "text": {"en": "Person found: child, conscious, hypothermia, fracture, needs stretcher, 2 more helpers needed. Position 50.69212, 7.21345.", "de": "Person gefunden: Kind, ansprechbar, Unterkühlung, Knochenbruch, braucht Trage, 2 weitere Helfer benötigt. Position 50.69212, 7.21345."}, "task_key": "a1b2c3d4-7"} } }
+                hello: { value: { event: hello, data: { last_seq: 42, health: { status: ok, version: 2.0.0, spec_version: 2.0.0, uptime_s: 3605, radio: { connected: true, kind: serial, node: "!a1b2c3d4", port: 256, channel: RescueCodec, channel_index: 1, channels: [ { index: 1, name: RescueCodec, public: false } ], region: EU_868, preset: LONG_FAST, firmware: 2.7.26 }, mqtt: { connected: false } } } } }
+                message: { value: { event: message, data: {"seq": 42, "key": "a1b2c3d4-7", "direction": "in", "from": "!a1b2c3d4", "type": "found", "priority": "urgent", "status": "received", "error": null, "time": "2026-11-25T14:32:05Z", "event_time": null, "codec": {"version": 2, "size": 23, "hex": "08071a0908b8e6ea041082875832080841100518012802"}, "radio": {"packet_id": 3141592653, "rssi": -97, "snr": 6.25, "hops": 0, "channel": 1, "via": "serial"}, "channel": {"index": 1, "name": "RescueCodec", "public": false}, "to": null, "message": {"id": 7, "pos": {"lat": 50.69212, "lon": 7.21345}, "found": {"consciousness": "conscious", "age": "child", "injuries": ["hypothermia", "fracture"], "needs": ["stretcher"], "responders": 2}}, "text": {"en": "Person found: child, conscious, hypothermia, fracture, needs stretcher, 2 more helpers needed. Position 50.69212, 7.21345.", "de": "Person gefunden: Kind, ansprechbar, Unterkühlung, Knochenbruch, braucht Trage, 2 weitere Helfer benötigt. Position 50.69212, 7.21345."}, "task_key": "a1b2c3d4-7"} } }
                 message_status: { value: { event: message_status, data: { seq: 44, status: delivered, error: null, updated: "2026-11-25T14:33:01Z" } } }
-                task: { value: { event: task, data: {"key": "a1b2c3d4-7", "from": "!a1b2c3d4", "id": 7, "type": "found", "priority": "urgent", "state": "accepted", "created": "2026-11-25T14:32:05Z", "updated": "2026-11-25T14:33:10Z", "pos": {"lat": 50.69212, "lon": 7.21345}, "text": {"en": "Person found: child, conscious, hypothermia, fracture, needs stretcher, 2 more helpers needed. Position 50.69212, 7.21345.", "de": "Person gefunden: Kind, ansprechbar, Unterkühlung, Knochenbruch, braucht Trage, 2 weitere Helfer benötigt. Position 50.69212, 7.21345."}, "message_seq": 42, "acks": [{"by": "!0badc0de", "status": "accepted", "eta": 15, "team": "Trupp 3", "time": "2026-11-25T14:33:10Z", "seq": 45}]} } }
+                task: { value: { event: task, data: {"key": "a1b2c3d4-7", "from": "!a1b2c3d4", "id": 7, "type": "found", "priority": "urgent", "state": "accepted", "created": "2026-11-25T14:32:05Z", "updated": "2026-11-25T14:33:10Z", "pos": {"lat": 50.69212, "lon": 7.21345}, "text": {"en": "Person found: child, conscious, hypothermia, fracture, needs stretcher, 2 more helpers needed. Position 50.69212, 7.21345.", "de": "Person gefunden: Kind, ansprechbar, Unterkühlung, Knochenbruch, braucht Trage, 2 weitere Helfer benötigt. Position 50.69212, 7.21345."}, "message_seq": 42, "channel": {"index": 1, "name": "RescueCodec", "public": false}, "acks": [{"by": "!0badc0de", "status": "accepted", "eta": 15, "team": "Trupp 3", "time": "2026-11-25T14:33:10Z", "seq": 45}]} } }
         "400":
           description: Not a WebSocket upgrade request.
 
@@ -716,6 +756,24 @@ components:
           type: boolean
           default: false
           description: Validate and return the record without sending. `seq` is 0 and status `dry_run`.
+        channel:
+          type: string
+          description: "Channel name to send on (see `GET /v2/health` -> `radio.channels`). Default: the default channel (`--channel-name`). Reports never go out on a public channel."
+          example: draeger-srs
+        to:
+          type: string
+          pattern: "^![0-9a-f]{8}$"
+          description: "Send a text as a direct message to this node. It always goes out as a plain Meshtastic text (port 1). Leave it out for the whole channel."
+    Channel:
+      type: object
+      description: |
+        A Meshtastic channel. Known by its `name` (the index can differ between radios). An empty primary name shows
+        as the modem preset's name, for example "LongFast". `public` = no key or the default key: anyone can read it.
+      required: [index, name, public]
+      properties:
+        index: { type: integer, minimum: 0, maximum: 7, description: Index on the gateway's radio. }
+        name: { type: string, example: RescueCodec }
+        public: { type: boolean }
     AckRequest:
       type: object
       additionalProperties: false
@@ -727,7 +785,7 @@ components:
     MessageRecord:
       type: object
       description: One message the gateway received or sent.
-      required: [seq, key, direction, from, type, priority, status, time, event_time, codec, radio, message, text, task_key]
+      required: [seq, key, direction, from, type, priority, status, time, event_time, codec, radio, channel, to, message, text, task_key]
       properties:
         seq: { type: integer, minimum: 0, description: "Gateway-local number, increases by one per record. 0 only for dry runs." }
         key: { type: [string, "null"], description: "`<node hex>-<id>` if the message has an id, else null." }
@@ -762,12 +820,19 @@ components:
             hops: { type: [integer, "null"], description: "hop_start - hop_limit, if the firmware reports both." }
             channel: { type: integer, description: Channel index. }
             via: { type: string, enum: [serial, tcp, ble, sim] }
+        channel:
+          $ref: "#/components/schemas/Channel"
+          description: "The channel it came in on or went out on. For a direct message: the channel the radio used for it."
+        to:
+          type: [string, "null"]
+          pattern: "^![0-9a-f]{8}$"
+          description: "Direct messages only: the peer we sent to (out), or our own node (in). Null for a broadcast on the channel."
         message: { $ref: "#/components/schemas/Message" }
         text: { $ref: "#/components/schemas/Text2" }
         task_key: { type: [string, "null"], description: "The task this record belongs to: its own key for found/request/hazard/mayday, the answered task for an ack, else null." }
     Task:
       type: object
-      required: [key, from, id, type, priority, state, created, updated, pos, text, message_seq, acks]
+      required: [key, from, id, type, priority, state, created, updated, pos, text, message_seq, channel, acks]
       properties:
         key: { type: string, example: a1b2c3d4-7 }
         from: { type: string, pattern: "^![0-9a-f]{8}$" }
@@ -783,6 +848,9 @@ components:
         pos: { oneOf: [ { $ref: "#/components/schemas/Position" }, { type: "null" } ] }
         text: { $ref: "#/components/schemas/Text2" }
         message_seq: { type: integer, description: Record that created the task. }
+        channel:
+          $ref: "#/components/schemas/Channel"
+          description: The channel of the report. Answers to this task go out on it.
         acks:
           type: array
           description: Every ack seen for this task, oldest first (ours and other teams').
@@ -861,10 +929,14 @@ components:
             kind: { type: string, enum: [serial, tcp, ble, sim, none] }
             node: { type: [string, "null"] }
             port: { type: integer, description: Meshtastic port number used, 256 = PRIVATE_APP. }
-            channel: { type: [string, "null"], description: Name of the channel we send and listen on. }
-            channel_index: { type: [integer, "null"], description: Meshtastic index of that channel. Reports are sent only there, and port 256 packets from other channels are dropped. }
-            channel_error: { type: [string, "null"], description: "Why there is no safe channel (none named RescueCodec, only the public key). Sending is refused while this is set." }
-            other_channel: { type: integer, description: Port 256 packets dropped because they came in on another channel. }
+            channel: { type: [string, "null"], description: Name of the default channel for sending (used when a request names no channel). }
+            channel_index: { type: [integer, "null"], description: Meshtastic index of that channel. }
+            channels:
+              type: array
+              description: "Every channel the gateway listens on (all private ones or the ones in --channels, public ones only with --show-public), the default one included. Direct messages to our node are kept on any channel."
+              items: { $ref: "#/components/schemas/Channel" }
+            channel_error: { type: [string, "null"], description: "Why there is no safe default channel (none named RescueCodec, only the public key). Sending without a `channel` is refused while this is set." }
+            other_channel: { type: integer, description: Port 256 packets dropped because they came in on a channel we do not listen on. }
             region: { type: [string, "null"] }
             preset: { type: [string, "null"] }
             firmware: { type: [string, "null"] }
@@ -942,6 +1014,8 @@ components:
                   priority: { type: string }
                   state: { type: [string, "null"], description: Task state, null for non-tasks. }
                   acc: { type: string, enum: [gps, gps_poor, estimated, area] }
+                  channel: { type: [string, "null"], description: Channel name. }
+                  to: { type: [string, "null"], description: Peer of a direct message, else null. }
                   time: { type: string, format: date-time, description: "event_time if known, else time." }
                   text_en: { type: string }
                   text_de: { type: string }
@@ -978,6 +1052,8 @@ components:
         event_time: null
         codec: { version: 2, size: 23, hex: 08071a0908b8e6ea041082875832080841100518012802 }
         radio: { packet_id: 3141592653, rssi: -97, snr: 6.25, hops: 0, channel: 1, via: serial }
+        channel: { index: 1, name: RescueCodec, public: false }
+        to: null
         message: { id: 7, pos: { lat: 50.69212, lon: 7.21345 }, found: { consciousness: conscious, age: child, injuries: [hypothermia, fracture], needs: [stretcher], responders: 2 } }
         text:
           en: "Person found: child, conscious, hypothermia, fracture, needs stretcher, 2 more helpers needed. Position 50.69212, 7.21345."
@@ -997,6 +1073,8 @@ components:
         event_time: null
         codec: { version: 2, size: 23, hex: 080c1a0908b8e6ea041082875832080841100518012802 }
         radio: null
+        channel: { index: 1, name: RescueCodec, public: false }
+        to: null
         message: { id: 12, pos: { lat: 50.69212, lon: 7.21345 }, found: { consciousness: conscious, age: child, injuries: [hypothermia, fracture], needs: [stretcher], responders: 2 } }
         text:
           en: "Person found: child, conscious, hypothermia, fracture, needs stretcher, 2 more helpers needed. Position 50.69212, 7.21345."
@@ -1017,6 +1095,7 @@ components:
           en: "Person found: child, conscious, hypothermia, fracture, needs stretcher, 2 more helpers needed. Position 50.69212, 7.21345."
           de: "Person gefunden: Kind, ansprechbar, Unterkühlung, Knochenbruch, braucht Trage, 2 weitere Helfer benötigt. Position 50.69212, 7.21345."
         message_seq: 42
+        channel: { index: 1, name: RescueCodec, public: false }
         acks:
           - { by: "!0badc0de", status: accepted, eta: 15, team: "Trupp 3", time: "2026-11-25T14:33:10Z", seq: 45 }
     Stats:

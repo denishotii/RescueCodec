@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 import threading
 import time
 from collections import deque
@@ -24,7 +25,8 @@ from rescuecodec.gateway import __version__
 from rescuecodec.gateway.config import GatewayConfig
 from rescuecodec.gateway.connectors.geojson import feature_collection
 from rescuecodec.gateway.events import EventBus
-from rescuecodec.gateway.radio.base import BROADCAST, PORT_TEXT_MESSAGE, TEXT_COPY_PREFIX, RadioAdapter, RadioPacket
+from rescuecodec.gateway.radio.base import (BROADCAST, PORT_TEXT_MESSAGE, TEXT_COPY_PREFIX, Channel, RadioAdapter,
+                                            RadioPacket)
 from rescuecodec.gateway.store import Store
 from rescuecodec.v2 import codes as C
 from rescuecodec.v2.codec import (CodecError, decode, effective_priority, encode, message_type, node_from_json,
@@ -40,6 +42,7 @@ PRIORITY_LEVEL = {"routine": 1, "normal": 2, "urgent": 3, "critical": 4}
 #: holds the UTF-8 bytes of the text (SPEC section 2.1).
 PLAIN_TEXT_VERSION = 0
 PLAIN_DEDUPE_S = 24 * 3600          # a plain text is a repeat when (sender, packet id) came in during the last 24 h
+NODE_ID = re.compile(r"^![0-9a-f]{8}$")
 
 
 class ApiError(Exception):
@@ -108,6 +111,8 @@ class _Out:
     record_seq: int
     want_ack: bool
     port: int
+    channel: int                # Meshtastic channel index to send on
+    to: str | None = None       # direct message to this node, None = broadcast
 
 
 class GatewayService:
@@ -126,7 +131,8 @@ class GatewayService:
         self._task_seq: dict[str, int] = {}            # task key -> seq of the record that created it
         self._queued: dict[int, _Out] = {}             # send queue item seq -> record
         self._awaiting: dict[int, float] = {}          # record seq -> deadline (monotonic) for the Meshtastic answer
-        self._plain: deque[str] = deque(maxlen=50)     # readable copies waiting for the text port (--text-over-air)
+        self._plain: deque[tuple[str, int]] = deque(maxlen=50)   # (readable copy, channel index) for the text port
+        self._task_channel: dict[str, dict[str, Any]] = {}   # task key -> channel of the record that created it
         self._texts_seen: dict[tuple[str, Any], float] = {}  # plain texts heard: (sender, packet id) -> unix time
         self._heard: dict[str, dict[str, Any]] = {}    # node -> last rssi / snr / hops / time heard
         self._counters = {"in": 0, "out": 0, "bytes_in": 0, "bytes_out": 0, "text_bytes": 0, "airtime_s": 0.0,
@@ -165,6 +171,9 @@ class GatewayService:
 
     def _replay(self) -> None:
         """Rebuild tasks, the dedupe memory and the id counter from the database after a restart."""
+        changed = self.store.backfill_channels(self.config.channel_name, self.config.channel_index)
+        if changed:
+            log.info("gave %d stored records from before channels the channel %s", changed, self.config.channel_name)
         seq = 0
         while True:
             rows = self.store.list(since_seq=seq, limit=500)
@@ -207,7 +216,8 @@ class GatewayService:
         self.bus.publish(event, data)
 
     def _build_record(self, direction: str, sender: str, message: dict[str, Any], payload: bytes, now: datetime,
-                      status: str, radio: dict[str, Any] | None) -> dict[str, Any]:
+                      status: str, radio: dict[str, Any] | None, channel: dict[str, Any],
+                      to: str | None = None) -> dict[str, Any]:
         """A MessageRecord without `seq`."""
         kind = message_type(message)
         public = public_message(message)
@@ -233,10 +243,12 @@ class GatewayService:
         return {"key": key, "direction": direction, "from": sender, "type": kind, "priority": priority, "status": status,
                 "error": None, "time": iso(now), "event_time": event_time,
                 "codec": {"version": 1 if message.get("v") == 1 else 2, "size": len(payload), "hex": payload.hex()},
-                "radio": radio, "message": public, "text": readable(message), "task_key": tkey}
+                "radio": radio, "channel": channel, "to": to, "message": public, "text": readable(message),
+                "task_key": tkey}
 
     def _plain_record(self, direction: str, sender: str, text: str, payload: bytes, now: datetime, status: str,
-                      radio: dict[str, Any] | None, priority: str | None = None) -> dict[str, Any]:
+                      radio: dict[str, Any] | None, channel: dict[str, Any], to: str | None = None,
+                      priority: str | None = None) -> dict[str, Any]:
         """A MessageRecord without `seq` for a plain Meshtastic text: type text, codec.version 0, no id, no task."""
         message: dict[str, Any] = {"text": {"text": text}}
         if priority in PRIORITY_LEVEL and priority != "normal":
@@ -245,7 +257,8 @@ class GatewayService:
                 "priority": priority if priority in PRIORITY_LEVEL else "normal", "status": status, "error": None,
                 "time": iso(now), "event_time": None,
                 "codec": {"version": PLAIN_TEXT_VERSION, "size": len(payload), "hex": payload.hex()},
-                "radio": radio, "message": message, "text": readable(message), "task_key": None}
+                "radio": radio, "channel": channel, "to": to, "message": message, "text": readable(message),
+                "task_key": None}
 
     def _copy_line(self, record: dict[str, Any]) -> str:
         """The readable copy of a RescueCodec record for stock apps, marked so RescueCodec receivers skip it."""
@@ -276,6 +289,8 @@ class GatewayService:
             task.acks[-1]["seq"] = record["seq"]
         else:
             self._task_seq.setdefault(task.key, record["seq"])
+            if record.get("channel"):
+                self._task_channel.setdefault(task.key, record["channel"])
         return task if task.type else None
 
     def _count(self, record: dict[str, Any]) -> None:
@@ -288,6 +303,55 @@ class GatewayService:
         slot["count"] += 1
         slot["bytes"] += record["codec"]["size"]
 
+    # ------------------------------------------------------------------ channels
+    def _channel_json(self, index: int) -> dict[str, Any]:
+        channel = self.radio.channel_by_index(index)
+        return channel.as_json() if channel else {"index": index, "name": f"Channel {index}", "public": False}
+
+    def _default_channel_json(self) -> dict[str, Any]:
+        """The default channel for sending, or what the settings say while the radio has not told us yet."""
+        channel = self.radio.default_channel()
+        if channel is not None:
+            return channel.as_json()
+        return {"index": self.config.channel_index or 0, "name": self.config.channel_name, "public": False}
+
+    def _addressing(self, packet: RadioPacket) -> tuple[dict[str, Any], str | None] | None:
+        """(channel, to) of a received packet, or None when it is not for us: a direct message to another node, or a
+        broadcast on a public channel without --show-public. Direct messages to our node are always kept."""
+        if packet.to != BROADCAST:
+            own = self.own_node
+            if packet.to != own:
+                return None
+            return self._channel_json(packet.channel), own
+        channel = self._channel_json(packet.channel)
+        if channel["public"] and not self.config.show_public:
+            return None
+        return channel, None
+
+    def _send_channel(self, name: Any, *, dry_run: bool, answer: bool) -> Channel | dict[str, Any]:
+        """The channel to send on: the one named, else the default one. An answer may use any channel of the radio (it
+        goes where the report came from); anything else only a channel we listen on. Raises ApiError."""
+        if name is not None and (not isinstance(name, str) or not name.strip()):
+            raise ApiError(400, "invalid_value", "channel must be a channel name", "channel")
+        if dry_run and not self.radio.connected:
+            return {"index": self.config.channel_index or 0, "name": name or self.config.channel_name, "public": False}
+        if not self.radio.connected:
+            raise ApiError(503, "radio_unavailable", "no Meshtastic radio connected")
+        if name is None:
+            channel_error = self.radio.info().channel_error
+            default = None if channel_error else self.radio.default_channel()
+            if default is None:
+                raise ApiError(503, "radio_unavailable", f"no private channel to send on: {channel_error or 'none found'}")
+            return default
+        pool = self.radio.channels() if answer else self.radio.listen_channels()
+        found = next((c for c in pool if c.name.lower() == name.strip().lower()), None)
+        if found is None:
+            if answer:
+                raise ApiError(503, "radio_unavailable", f'the channel "{name}" of this task is not on the radio any more')
+            names = ", ".join(c.name for c in pool) or "none"
+            raise ApiError(400, "invalid_value", f'no channel "{name}" to send on (channels: {names})', "channel")
+        return found
+
     # ------------------------------------------------------------------ receiving
     def _on_packet(self, packet: RadioPacket) -> None:
         if packet.port == PORT_TEXT_MESSAGE:
@@ -295,6 +359,12 @@ class GatewayService:
             return
         if packet.port != self.config.port_num:
             return
+        addressing = self._addressing(packet)
+        if addressing is None:
+            log.debug("ignored a port %d packet from %s on channel %s to %s", packet.port, packet.sender, packet.channel,
+                      packet.to)
+            return
+        channel, to = addressing
         try:
             message = decode_any(packet.payload)
         except CodecError as exc:
@@ -309,7 +379,8 @@ class GatewayService:
                 return
             radio = {"packet_id": packet.packet_id, "rssi": packet.rssi, "snr": packet.snr, "hops": packet.hops,
                      "channel": packet.channel, "via": packet.via}
-            record = self.store.insert(self._build_record("in", packet.sender, message, packet.payload, now, "received", radio))
+            record = self.store.insert(self._build_record("in", packet.sender, message, packet.payload, now, "received", radio,
+                                                          channel, to))
             self._count(record)
             self._heard[packet.sender] = {"rssi": packet.rssi, "snr": packet.snr, "hops": packet.hops, "time": now}
             if packet.rssi is not None:
@@ -321,17 +392,18 @@ class GatewayService:
             if task:
                 self._publish("task", self._task_json(task))
             if self.config.text_over_air in ("in", "both"):
-                self._plain.append(self._copy_line(record))
+                self._plain.append((self._copy_line(record), channel["index"]))
                 self._wake.set()
-        log.info("received %s from %s (%d bytes, rssi %s, snr %s, hops %s)", record["type"], packet.sender,
-                 record["codec"]["size"], packet.rssi, packet.snr, packet.hops)
+        log.info("received %s from %s on %s (%d bytes, rssi %s, snr %s, hops %s)", record["type"], packet.sender,
+                 "a direct message" if to else channel["name"], record["codec"]["size"], packet.rssi, packet.snr, packet.hops)
 
     def _on_text(self, packet: RadioPacket) -> None:
         """A plain Meshtastic text (port 1), for example from the official app. The radio adapter passes only texts on
-        the team channel and direct messages to us. Stored as a normal `text` record with codec.version 0."""
-        own = self.own_node
-        if packet.to != BROADCAST and packet.to != own:        # a direct message to another node: not ours
+        the channels we listen on and direct messages to us. Stored as a normal `text` record with codec.version 0."""
+        addressing = self._addressing(packet)
+        if addressing is None:                  # a direct message to another node, or public chat: not ours
             return
+        channel, to = addressing
         try:
             text = packet.payload.decode("utf-8")
         except UnicodeDecodeError:
@@ -353,7 +425,8 @@ class GatewayService:
                 return
             radio = {"packet_id": packet.packet_id, "rssi": packet.rssi, "snr": packet.snr, "hops": packet.hops,
                      "channel": packet.channel, "via": packet.via}
-            record = self.store.insert(self._plain_record("in", packet.sender, text, packet.payload, now, "received", radio))
+            record = self.store.insert(self._plain_record("in", packet.sender, text, packet.payload, now, "received", radio,
+                                                          channel, to))
             self._count(record)
             self._heard[packet.sender] = {"rssi": packet.rssi, "snr": packet.snr, "hops": packet.hops, "time": now}
             if packet.rssi is not None:
@@ -362,7 +435,7 @@ class GatewayService:
                 self._last_snr = packet.snr
             self._publish("message", record)
         log.info("received a Meshtastic text from %s (%d bytes, %s, rssi %s, snr %s, hops %s)", packet.sender,
-                 len(packet.payload), "direct" if packet.to != BROADCAST else f"channel {packet.channel}",
+                 len(packet.payload), "direct" if to else f"channel {channel['name']}",
                  packet.rssi, packet.snr, packet.hops)
 
     def _on_connection(self, connected: bool) -> None:
@@ -407,8 +480,11 @@ class GatewayService:
             raise ApiError(429, "rate_limited", f"more than {limit} messages in one minute, send again in {retry} s", None, retry)
         self._tx_times.append(now)
 
-    def _queue_message(self, message: dict[str, Any], *, want_ack: bool, dry_run: bool = False) -> dict[str, Any]:
-        """Validate, assign an id, queue and record an outgoing message. Raises ApiError."""
+    def _queue_message(self, message: dict[str, Any], *, want_ack: bool, dry_run: bool = False, channel: Any = None,
+                       to: Any = None, answer: bool = False) -> dict[str, Any]:
+        """Validate, assign an id, queue and record an outgoing message. `channel` is a channel name (None = the
+        default channel), `to` a node for a direct message. `answer` = an Ack for a task: it may use any channel of the
+        radio, because it goes out where the report came from. Raises ApiError."""
         if not isinstance(message, dict):
             raise ApiError(400, "bad_request", "message must be a JSON object", "message")
         message = {k: v for k, v in message.items() if k != "v"}
@@ -416,9 +492,16 @@ class GatewayService:
             kind = message_type(message)
         except CodecError as exc:
             raise codec_error(exc) from exc
+        if to is not None:
+            if not isinstance(to, str) or not NODE_ID.match(to.lower()) or to.lower() == "!ffffffff":
+                raise ApiError(400, "invalid_value", "to must be a node id like !a1b2c3d4 (leave it out for the whole channel)", "to")
+            if kind != "text":
+                raise ApiError(400, "invalid_value", "a direct message can only be a text", "to")
+            to = to.lower()
         # A message with only a text goes out as a plain Meshtastic text (port 1) when --text-as-meshtastic is on, so
-        # the official app and radio screens show it. Only the words go out (SPEC section 2.1).
-        plain = kind == "text" and self.config.text_as_meshtastic
+        # the official app and radio screens show it. Only the words go out (SPEC section 2.1). A direct message is
+        # always a plain text.
+        plain = kind == "text" and (self.config.text_as_meshtastic or to is not None)
         with self.lock:
             assigned = None
             # Every message except an Ack gets an id, so a second "Hilfe" is not dropped as a repeat of the first
@@ -433,6 +516,10 @@ class GatewayService:
                 canonical = decode(payload)
             except CodecError as exc:
                 raise codec_error(exc) from exc
+            target = self._send_channel(channel, dry_run=dry_run, answer=answer)
+            target_json = target.as_json() if isinstance(target, Channel) else target
+            if target_json["public"] and kind not in ("text", "ack"):
+                raise ApiError(400, "invalid_value", f'reports never go out on the public channel "{target_json["name"]}"', "channel")
             now = datetime.now(timezone.utc)
             sender = self.own_node or NO_NODE
             port = self.config.port_num
@@ -445,18 +532,13 @@ class GatewayService:
 
             def build(status: str) -> dict[str, Any]:
                 if plain:
-                    return self._plain_record("out", sender, words, payload, now, status, None,
+                    return self._plain_record("out", sender, words, payload, now, status, None, target_json, to,
                                               effective_priority(canonical))
-                return self._build_record("out", sender, canonical, payload, now, status, None)
+                return self._build_record("out", sender, canonical, payload, now, status, None, target_json, to)
 
             if dry_run:
                 return {"seq": 0, **build("dry_run")}
-            if not self.radio.connected:
-                raise ApiError(503, "radio_unavailable", "no Meshtastic radio connected")
-            channel_error = self.radio.info().channel_error
-            if channel_error:
-                raise ApiError(503, "radio_unavailable", f"no private channel to send on: {channel_error}")
-            pending = self.store.find_pending_hex(payload.hex())
+            pending = self.store.find_pending_hex(payload.hex(), target_json["name"], to)
             if pending is not None:                       # the same bytes already wait in the queue
                 return pending
             self._check_tx_rate(time.monotonic())
@@ -466,11 +548,11 @@ class GatewayService:
                 retry = self._retry_after_s(kind, airtime, clock)
                 minutes = max(1, math.ceil(retry / 60))
                 raise ApiError(429, "airtime_limit", f"airtime budget used, send again in {minutes} min", None, retry)
-            item = self.queue.put(canonical, payload=payload)
+            item = self.queue.put(canonical, payload=payload, target=(target_json["index"], to))
             if item is None:                              # cannot happen after the check above
                 raise ApiError(409, "bad_request", "the same message is already queued")
             record = self.store.insert(build("queued"))
-            self._queued[item.seq] = _Out(record["seq"], want_ack, port)
+            self._queued[item.seq] = _Out(record["seq"], want_ack, port, target_json["index"], to)
             if assigned:
                 self.store.commit_message_id(assigned)
             self._count(record)
@@ -479,23 +561,25 @@ class GatewayService:
             if task:
                 self._publish("task", self._task_json(task))
             if self.config.text_over_air in ("out", "both") and not plain:     # a plain text needs no copy
-                self._plain.append(self._copy_line(record))
+                self._plain.append((self._copy_line(record), target_json["index"]))
             self._wake.set()
             return record
 
-    def send_message(self, message: Any, want_ack: bool = True, dry_run: bool = False) -> dict[str, Any]:
-        return self._queue_message(message, want_ack=want_ack, dry_run=dry_run)
+    def send_message(self, message: Any, want_ack: bool = True, dry_run: bool = False, channel: Any = None,
+                     to: Any = None) -> dict[str, Any]:
+        return self._queue_message(message, want_ack=want_ack, dry_run=dry_run, channel=channel, to=to)
 
-    def send_text(self, text: Any, priority: str | None = None, also_plain: bool = False) -> dict[str, Any]:
+    def send_text(self, text: Any, priority: str | None = None, also_plain: bool = False, channel: Any = None,
+                  to: Any = None) -> dict[str, Any]:
         if not isinstance(text, str):
             raise ApiError(400, "bad_request", "text must be a string", "text")
         message: dict[str, Any] = {"text": {"text": text}}
         if priority is not None:
             message["priority"] = priority
-        record = self._queue_message(message, want_ack=True)
+        record = self._queue_message(message, want_ack=True, channel=channel, to=to)
         if also_plain and not is_plain(record):          # sent as a plain text already: no second copy
             with self.lock:
-                self._plain.append(TEXT_COPY_PREFIX + text)
+                self._plain.append((TEXT_COPY_PREFIX + text, record["channel"]["index"]))
                 self._wake.set()
         return record
 
@@ -518,8 +602,11 @@ class GatewayService:
                 ack = self.board.transition(key, status, eta=eta or 0, team=team if team is not None else self.config.team)
             except InvalidTransition as exc:
                 raise ApiError(409, "invalid_transition", str(exc), "status") from exc
+            # The answer goes out on the channel of the report it answers, so the reporting team hears it.
+            channel = self._task_channel.get(key)
             try:
-                record = self._queue_message(ack, want_ack=True)
+                record = self._queue_message(ack, want_ack=True, channel=channel["name"] if channel else None,
+                                             answer=channel is not None)
             except Exception:
                 task.state, task.updated = old_state, old_updated
                 raise
@@ -542,22 +629,22 @@ class GatewayService:
                 if item is None and plain is None:
                     break
                 try:
-                    airtime = self._transmit(item) if item else self._transmit_plain(plain)
+                    airtime = self._transmit(item) if item else self._transmit_plain(*plain)
                 except Exception:
                     log.exception("sending failed")
                     continue
                 next_ok = time.monotonic() + min(max(airtime, 0.2), 3.0)
 
-    def _pop_plain(self) -> str | None:
+    def _pop_plain(self) -> tuple[str, int] | None:
         if not self._plain:
             return None
-        air = message_airtime_seconds(len(fit_plain(self._plain[0]).encode("utf-8")), self.queue.preset)
+        air = message_airtime_seconds(len(fit_plain(self._plain[0][0]).encode("utf-8")), self.queue.preset)
         now = time.monotonic()
         if not self.queue.budget.allows("text", air, now):
             return None
-        text = fit_plain(self._plain.popleft())
+        text, channel = self._plain.popleft()
         self.queue.budget.record(now, air)
-        return text
+        return fit_plain(text), channel
 
     def _transmit(self, item) -> float:
         with self.lock:
@@ -574,16 +661,16 @@ class GatewayService:
         callback = (lambda ok, reason: self._on_delivery(record_seq, ok, reason)) if out.want_ack else None
         try:
             self.radio.send(item.payload, port=out.port, want_ack=out.want_ack,
-                            priority=item.meshtastic_priority, channel=self.config.channel_index,
-                            hop_limit=self.config.hop_limit, on_result=callback)
+                            priority=item.meshtastic_priority, channel=out.channel,
+                            hop_limit=self.config.hop_limit, on_result=callback, to=out.to)
         except Exception as exc:
             self._awaiting.pop(record_seq, None)
             self._finish(record_seq, "failed", "radio_error")
             log.warning("radio refused the packet: %s", exc)
         return item.airtime_s
 
-    def _transmit_plain(self, text: str) -> float:
-        self.radio.send(text.encode("utf-8"), port=PORT_TEXT_MESSAGE, want_ack=False, channel=self.config.channel_index,
+    def _transmit_plain(self, text: str, channel: int) -> float:
+        self.radio.send(text.encode("utf-8"), port=PORT_TEXT_MESSAGE, want_ack=False, channel=channel,
                         hop_limit=self.config.hop_limit)
         airtime = message_airtime_seconds(len(text.encode("utf-8")), self.queue.preset)
         with self.lock:
@@ -624,13 +711,16 @@ class GatewayService:
         return {"key": task.key, "from": task.sender, "id": task.id, "type": task.type, "priority": task.priority,
                 "state": task.state, "created": iso(task.created), "updated": iso(task.updated),
                 "pos": message.get("pos"), "text": readable(message), "message_seq": self._task_seq.get(task.key, 0),
-                "acks": acks}
+                "channel": self._task_channel.get(task.key) or self._default_channel_json(), "acks": acks}
 
-    def list_tasks(self, states: set[str] | None = None, types: set[str] | None = None) -> list[dict[str, Any]]:
+    def list_tasks(self, states: set[str] | None = None, types: set[str] | None = None,
+                   channels: list[str] | None = None) -> list[dict[str, Any]]:
+        names = {n.lower() for n in channels or []}
         with self.lock:
             rows = [t for t in self.board.list(states or None) if t.type and (not types or t.type in types)]
             rows.sort(key=lambda t: (-PRIORITY_LEVEL.get(t.priority or "normal", 2), t.created))
-            return [self._task_json(t) for t in rows]
+            tasks = [self._task_json(t) for t in rows]
+        return [t for t in tasks if not names or t["channel"]["name"].lower() in names]
 
     def get_task(self, key: str) -> dict[str, Any]:
         with self.lock:
@@ -640,8 +730,8 @@ class GatewayService:
             return self._task_json(task)
 
     def list_messages(self, since_seq: int = 0, types: list[str] | None = None, direction: str | None = None,
-                      limit: int = 100) -> dict[str, Any]:
-        items = self.store.list(since_seq, types, direction, limit)
+                      limit: int = 100, channels: list[str] | None = None) -> dict[str, Any]:
+        items = self.store.list(since_seq, types, direction, limit, channels)
         return {"items": items, "next_since_seq": items[-1]["seq"] if items else since_seq}
 
     def get_message(self, seq: int) -> dict[str, Any]:
@@ -708,11 +798,11 @@ class GatewayService:
                 return known["pos"]
         return None
 
-    def geojson(self, since_seq: int = 0, types: list[str] | None = None) -> dict[str, Any]:
+    def geojson(self, since_seq: int = 0, types: list[str] | None = None, channels: list[str] | None = None) -> dict[str, Any]:
         records: list[dict[str, Any]] = []
         seq = since_seq
         while True:
-            rows = self.store.list(seq, types, None, 1000)
+            rows = self.store.list(seq, types, None, 1000, channels)
             if not rows:
                 break
             records += rows
