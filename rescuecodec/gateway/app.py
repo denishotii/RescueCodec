@@ -20,6 +20,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from rescuecodec.gateway import extract_api
 from rescuecodec.gateway.hub import ConnectorHub
 from rescuecodec.gateway.service import ApiError, GatewayService
 
@@ -254,6 +255,14 @@ def create_app(service: GatewayService, *, hub: ConnectorHub | None = None, stat
         if "message" not in body:
             raise ApiError(400, "bad_request", "the body needs a message", "message")
         return service.encode_preview(body["message"])
+
+    @app.post("/v2/extract")
+    def extract_message(body: Any = Body(...)):
+        try:
+            return extract_api.preview(body, next_id=service.store.peek_message_id,
+                                       text_as_meshtastic=service.config.text_as_meshtastic)
+        except extract_api.ExtractError as exc:
+            raise ApiError(400, "bad_request", exc.message, exc.field) from None
 
     @app.post("/v2/decode")
     def decode_message(body: dict[str, Any] = Body(...)):

@@ -45,6 +45,22 @@ curl -s -X POST localhost:8000/v2/tasks/a1b2c3d4-7/ack -H 'content-type: applica
 websocat ws://127.0.0.1:8000/v2/stream
 ```
 
+## Preview a typed sentence (`POST /v2/extract`)
+
+The dashboard's Send panel calls this while you type. It reads one German or English sentence with the rule-based extractor and shows the report it would send. Nothing is sent.
+
+```bash
+curl -s -X POST localhost:8000/v2/extract -H 'content-type: application/json' \
+  -d '{"text":"Kind gefunden, ansprechbar, unterkühlt. Wir brauchen eine Trage."}'
+# -> {"type":"found","message":{"found":{"age":"child",...}},"fields":[{"field":"found.age","code":"child","text":{"en":"child","de":"Kind"}},...],
+#     "coded_bytes":10,"text_bytes":65,...}
+```
+
+- `message` is ready for `POST /v2/messages` (the gateway adds the id). When no report fits, it is a `text` with your words.
+- `coded_bytes` is the size on air of that message, `text_bytes` the size of the same words as a plain text.
+- `fields` are the facts as short labels in English and German (the chips in the dashboard).
+- Optional `lang` (`en` or `de`). At most 1000 characters. It needs the token like every `/v2` call, and it does not count toward `--tx-per-minute`.
+
 ## Channels and direct messages
 
 The gateway listens on **every private channel** of its radio, on port 256 (reports) and port 1 (texts). It also keeps every direct message to its own node. Public channels (no key or the default key, like LongFast) are ignored unless you start it with `--show-public`.
@@ -134,6 +150,7 @@ The uid is `RescueCodec.<task key>`, so Accept and Done update the same marker. 
 |---|---|
 | `app.py` | FastAPI app: the API of `openapi.yaml`, API docs, dashboard |
 | `service.py` | the core: receive, store, tasks, send queue, delivery status, stats |
+| `extract_api.py` | `POST /v2/extract`: a typed sentence -> the report it would send (preview, sends nothing) |
 | `store.py` | SQLite (default `./rescuecodec-gateway.db`) |
 | `radio/` | adapters: `meshtastic_radio.py` (TCP and USB serial), `emulator.py` |
 | `connectors/` | `mqtt.py`, `cot.py`, `geojson.py` |
