@@ -39,9 +39,9 @@ const WHITESPACE = " \t\n\r";
 /** Characters that are a piece on their own. */
 const SPLIT = '.,;:!?()[]{}"…';
 /** An entry starting with one of these gets no space before it. */
-const LEFT_ATTACH = ".,;:!?)]}…";
+export const LEFT_ATTACH = ".,;:!?)]}…";
 /** An entry ending with one of these gets no space after it. */
-const RIGHT_ATTACH = "([{";
+export const RIGHT_ATTACH = "([{";
 
 /** Why a token stream was rejected: `malformed` or `too_large` (codec error codes). */
 export class WordsError extends Error {
@@ -160,7 +160,7 @@ function asciiLower(s: string): string {
   return s.replace(/[A-Z]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 32));
 }
 
-function asciiUpper(s: string): string {
+export function asciiUpper(s: string): string {
   return s.replace(/[a-z]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 32));
 }
 
@@ -186,7 +186,7 @@ export function matchWord(s: string, d: WordDict): [number, number] | null {
 const utf8 = new TextEncoder();
 const len8 = (s: string) => utf8.encode(s).length;
 
-function hasLoneSurrogate(s: string): boolean {
+export function hasLoneSurrogate(s: string): boolean {
   for (let i = 0; i < s.length; i++) {
     const c = s.charCodeAt(i);
     if (c >= 0xd800 && c <= 0xdbff) {

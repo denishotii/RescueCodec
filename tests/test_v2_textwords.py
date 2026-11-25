@@ -255,7 +255,7 @@ class SendRule(unittest.TestCase):
             off = choose_form(msg, True, "rescuecodec_only")
             on = choose_form(msg, True, "rescuecodec_only", compact=True)
             self.assertLessEqual(len(on.payload), len(off.payload))
-            sizes = [s for s in (on.lean_size, on.words_size, on.packed_size) if s is not None]
+            sizes = [s for s in (on.lean_size, on.words_size, on.packed_size, on.domain_size) if s is not None]
             if on.form == "plain":
                 self.assertTrue(all(len(on.payload) <= s for s in sizes), text)       # ties keep the normal text
             else:

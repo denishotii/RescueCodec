@@ -930,6 +930,104 @@ class MessengerTest {
         assertEquals(MessageState.INVALID, messages.all[3].state)
     }
 
+    private val medical = "Patient is conscious, bleeding from the leg, apply a tourniquet."
+
+    @Test
+    fun teamVocabularySettingDefaultsToAuto() {
+        val s = AppSettings(MemoryKeyValueStore())
+        assertEquals("auto", s.teamVocabulary)
+        s.teamVocabulary = "sar"
+        assertEquals("sar", s.teamVocabulary)
+        s.teamVocabulary = "SAR" // not a setting: back to the default
+        assertEquals("auto", s.teamVocabulary)
+        s.teamVocabulary = "general"
+        assertEquals("general", s.teamVocabulary)
+        assertFalse(s.compactText, "other settings keep their defaults")
+    }
+
+    @Test
+    fun withCompactOnAMedicalTextGoesAsADomainFrame() = runUnit {
+        settings.compactText = true
+        val m = messenger()
+        m.start()
+        connectTeamRadio()
+        m.routes.heardRescueCodec(other, "RescueCodec")
+        val form = m.textForm(mapOf("text" to mapOf("text" to medical)), null, null)
+        assertEquals(Triple("domain", "medical", 19), Triple(form.form, form.vocab, form.payload.size))
+        assertEquals(38, form.leanSize)
+        val r = m.submit(mapOf("text" to mapOf("text" to medical))) as SubmitResult.Queued
+        assertEquals(19, r.bytes.size)
+        assertEquals(0, r.msgId, "a domain frame has no id")
+        eventually(10_000, "sent") { radio.sentPrivateApp().size == 1 }
+        val payload = radio.sentPrivateApp().single().decoded!!.payload.toByteArray()
+        assertEquals(listOf(3, 5), payload.take(2).map { it.toInt() })
+        assertEquals(mapOf("text" to medical, "vocab" to 5), wordsOf(radio.sentPrivateApp().single()))
+        val row = messages.all.single()
+        assertTrue(MeshText.isDomainFrame(row))
+        assertFalse(MeshText.isCompactFrame(row))
+        assertEquals(5, MeshText.domainVocab(row))
+        assertEquals("Medical", MeshText.vocabOf(row)!!.short)
+        assertEquals(MeshText.TAG_COMPACT, MeshText.tagOf(row))
+        assertEquals("Message: $medical", Readable.of(row.json, "en"))
+    }
+
+    @Test
+    fun aPinnedVocabularyIsTriedAloneAndGeneralTurnsDomainFramesOff() = runUnit {
+        settings.compactText = true
+        val m = messenger()
+        m.start()
+        connectTeamRadio()
+        m.routes.heardRescueCodec(other, "RescueCodec")
+        settings.teamVocabulary = "sar"
+        val sar = m.textForm(mapOf("text" to mapOf("text" to medical)), null, null)
+        assertEquals("lean", sar.form, "the S&R frame (38 B) does not beat the 0x02 frame")
+        assertEquals(mapOf("sar" to 38), sar.domainSizes)
+        settings.teamVocabulary = "medical"
+        assertEquals("domain" to "medical", m.textForm(mapOf("text" to mapOf("text" to medical)), null, null).let { it.form to it.vocab })
+        settings.teamVocabulary = "general"
+        val general = m.textForm(mapOf("text" to mapOf("text" to medical)), null, null)
+        assertEquals("lean", general.form)
+        assertNull(general.domainSizes)
+        // Compact off: the setting does nothing.
+        settings.compactText = false
+        settings.teamVocabulary = "medical"
+        assertEquals("deflate", m.textForm(mapOf("text" to mapOf("text" to medical)), null, null).form)
+    }
+
+    @Test
+    fun aReceivedDomainFrameIsShownWhateverTheSettingAndRepeatsGoByPacketId() = runUnit {
+        settings.teamVocabulary = "general" // receiving reads every vocabulary anyway
+        val m = messenger()
+        m.start()
+        connectTeamRadio()
+        val text = "Sector 4 searched, nothing found. Returning to base."
+        val bytes = RescueCodec.encodeDomain(text, "sar")
+        radio.injectPacket(privateAppPacket(other, 31, bytes, channel = 1))
+        radio.injectPacket(privateAppPacket(other, 31, bytes, channel = 1)) // the mesh delivered it twice
+        radio.injectPacket(privateAppPacket(other, 32, bytes, channel = 1)) // the same words sent again
+        eventually(5_000, "stored") { messages.all.size == 2 }
+        delay(300)
+        assertEquals(2, messages.all.size)
+        val row = messages.all.first()
+        assertEquals("text", row.type)
+        assertEquals(text, (Json.parseObject(row.json!!)["text"] as Map<*, *>)["text"])
+        assertTrue(MeshText.isDomainFrame(row))
+        assertEquals("S&R", MeshText.vocabOf(row)!!.short)
+        assertEquals(MeshText.TAG_COMPACT, MeshText.tagOf(row))
+        // An unknown vocabulary is named, never guessed; a malformed frame (reserved code) is invalid.
+        radio.injectPacket(privateAppPacket(other, 33, byteArrayOf(3, 9, 0x12, 0x34), channel = 1))
+        radio.injectPacket(privateAppPacket(other, 34, byteArrayOf(3, 5, 0xff.toByte(), 0x40), channel = 1))
+        eventually(5_000, "stored") { messages.all.size == 4 }
+        val unknown = messages.all[2]
+        assertEquals("unknown", unknown.type)
+        assertEquals(MessageState.RECEIVED, unknown.state)
+        assertTrue(MeshText.isDomainFrame(unknown))
+        assertNull(MeshText.tagOf(unknown))
+        assertTrue(Readable.of(unknown.json, "en")!!.contains("unsupported vocabulary 9"), Readable.of(unknown.json, "en"))
+        assertTrue(Readable.of(unknown.json, "de")!!.contains("Vokabular 9"), Readable.of(unknown.json, "de"))
+        assertEquals(MessageState.INVALID, messages.all[3].state)
+    }
+
     @Test
     fun reportsAlwaysGoOnPort256() = runUnit {
         assertEquals(TextMode.AUTO, settings.defaultChannelMode, "auto by default")

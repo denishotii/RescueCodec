@@ -286,7 +286,8 @@ def create_app(service: GatewayService, *, hub: ConnectorHub | None = None, stat
         try:
             return extract_api.preview(body, next_id=service.store.peek_message_id,
                                        text_as_meshtastic=service.config.text_as_meshtastic,
-                                       route=service.text_route, compact=service.config.compact_text)
+                                       route=service.text_route, compact=service.config.compact_text,
+                                       vocab=service.config.vocabulary)
         except extract_api.ExtractError as exc:
             raise ApiError(400, "bad_request", exc.message, exc.field) from None
 

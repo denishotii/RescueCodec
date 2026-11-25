@@ -78,6 +78,25 @@ class Contract(unittest.TestCase):
             self.check("Message", decoded["message"])
             self.check("Text2", decoded["text"])
 
+    def test_compact_and_domain_frames_match_the_schemas(self):
+        from rescuecodec.v2 import encode_compact, encode_domain
+        with gateway(compact_text=True) as gw:
+            c = gw.client
+            self.check("Health", c.get("/v2/health").json())
+            self.check("ChatMode", c.put("/v2/channels/RescueCodec/mode", json={"mode": "compressed"}).json())
+            gw.radio.inject("!0000e002", encode_domain("Missing person found, alive.", "sar"), channel=0, packet_id=5)
+            gw.radio.inject("!0000e002", bytes.fromhex("0309fe41f1f43900b79000"), channel=0, packet_id=6)   # unknown
+            gw.radio.inject("!0000e002", encode_compact("hello world"), channel=0, packet_id=7)
+            for text in ("Check airway and breathing.", "hello world", "Ok"):
+                self.check("MessageRecord", c.post("/v2/text", json={"text": text}).json())
+                self.check("ExtractResult", c.post("/v2/extract", json={"text": text, "channel": "RescueCodec"}).json())
+            items = wait_for(lambda: len(c.get("/v2/messages").json()["items"]) >= 6 and c.get("/v2/messages").json()["items"])
+            self.assertEqual({i["codec"].get("form") for i in items}, {"domain", "lean", None})
+            for record in items:
+                self.check("MessageRecord", record)
+            decoded = c.post("/v2/decode", json={"hex": encode_domain("Apply a tourniquet.", "medical").hex()}).json()
+            self.check("Message", decoded["message"])
+
     def test_errors_match_the_error_schema(self):
         with gateway() as gw:
             c = gw.client

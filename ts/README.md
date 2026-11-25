@@ -41,6 +41,8 @@ console.log(render(decodeAny(bytes), "en")); // decodeAny also reads old v1 pack
 | `resolveTime("17:45", now)` | Full UTC date for a message time. |
 | `PORTNUM` | 256, the Meshtastic port. |
 | `packText(text)`, `unpackText(bytes, 1)` | Raw DEFLATE with the shared text dictionary (see below). |
+| `encodeCompact(text)`, `decodeCompact(bytes)` | Compact frame `0x02`: word tokens, no Envelope (spec section 3.7). |
+| `encodeDomain(text, "sar")`, `decodeDomain(bytes)` | Domain frame `0x03` with a team vocabulary (see below). |
 
 ## Packed texts
 
@@ -48,13 +50,24 @@ A free text can travel packed: `encode({id: 3, text: {text: "We are at the hut, 
 
 Packing and unpacking use [pako](https://github.com/nodeca/pako) 2.1.0 (MIT and Zlib licence), the only other runtime dependency. Its output is byte-identical to Python's zlib for the vectors, but the spec does not require that: any valid DEFLATE stream is fine. The dictionary is bundled in `src/text-dict-data.ts` (about 16 KB), and a test checks its SHA-256 against the vectors.
 
+## Domain frames (team vocabularies)
+
+A domain frame is `0x03`, one byte vocabulary id, then 10-bit codes (spec section 3.8). Five vocabularies are bundled: 1 Emergency, 2 Search & Rescue (`sar`), 3 Firefighting (`fire`), 4 Hiking / Mountain (`hiking`), 5 Medical / First aid (`medical`). Each has 1016 entries. A word in the vocabulary costs 10 bits. Other words escape to word dictionary 2 (26 bits). Names, numbers and emoji go as exact literals.
+
+```ts
+encodeDomain("Apply a tourniquet.", "medical");   // 03 05 e3 00 60 9c 00: 7 bytes (19 as plain text)
+decodeAny(bytes);                                 // {v: 2, text: {text: "Apply a tourniquet.", vocab: 5}}
+```
+
+The text always comes back byte for byte. An id this library does not have (0, 6..255) or a vocabulary copy that fails its SHA-256 check decodes as `{unknown: {vocab: n}}`. `render` shows it as "unsupported vocabulary n", never as words. A cut or broken stream is `malformed`. This library has no sender: the gateway and the app pick the smallest form. The vocabularies are bundled in `src/domain-vocab-data.ts` (about 36 KB), and the tests check their SHA-256 and run `spec/vectors/domain.json`.
+
 `CodecError` has a stable `code` (`empty`, `too_large`, `unsupported_version`, `malformed`, `no_body`, `multiple_bodies`, `unknown_key`, `invalid_value`, `missing_field`) and a `field` path such as `pos.lat`. The JSON shape and all rules are in `spec/SPEC.md`.
 
 ## Develop
 
 ```sh
 npm install
-npm run gen     # regenerate src/gen, src/i18n-data.ts and src/text-dict-data.ts from ../spec (needs protoc)
+npm run gen     # regenerate src/gen and the bundled data files (src/*-data.ts) from ../spec (needs protoc)
 npm test        # conformance vectors with vitest
 npm run build   # ESM and type definitions in dist/
 ```

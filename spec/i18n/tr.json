@@ -26,7 +26,8 @@
     "ack.other": "#{ref} için yanıt",
     "text": "Mesaj",
     "unknown": "Daha yeni türde mesaj, lütfen uygulamayı güncelleyin",
-    "unknown_dict": "Bu uygulamada olmayan bir sözlükle kodlanmış mesaj (sözlük {n}), lütfen uygulamayı güncelleyin"
+    "unknown_dict": "Bu uygulamada olmayan bir sözlükle kodlanmış mesaj (sözlük {n}), lütfen uygulamayı güncelleyin",
+    "unknown_vocab": "Bu uygulamada olmayan bir ekip sözlüğüyle kodlanmış mesaj (desteklenmeyen sözlük {n}), lütfen uygulamayı güncelleyin"
   },
   "part": {
     "found.needs": "gerekli: {list}",

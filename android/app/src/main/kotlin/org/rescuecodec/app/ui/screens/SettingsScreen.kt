@@ -6,6 +6,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -46,9 +48,12 @@ import org.rescuecodec.app.ui.SettingsViewModel
 import org.rescuecodec.app.ui.components.BigButton
 import org.rescuecodec.app.ui.components.Hairline
 import org.rescuecodec.app.ui.components.RcCard
+import org.rescuecodec.app.ui.components.RcChip
+import org.rescuecodec.app.ui.components.VocabLabels
 import org.rescuecodec.app.ui.components.SectionHeader
 import org.rescuecodec.app.voice.ModelStatus
 import org.rescuecodec.app.voice.VoskModels
+import org.rescuecodec.codec.TextDomain
 import org.rescuecodec.engine.Airtime
 
 /** The day/night choice is off while the app is light only. */
@@ -154,6 +159,11 @@ fun SettingsScreen(vm: SettingsViewModel, connection: ConnectionViewModel, lang:
             }
             Switch(checked = compactText, onCheckedChange = { vm.setCompactText(it) }, modifier = Modifier.testTag("compact_text_switch"))
         }
+        // Team vocabulary (domain frames, spec section 3.8): only with compact texts on. Receiving reads every one.
+        if (compactText) {
+            val teamVocab by vm.teamVocabulary.collectAsStateWithLifecycle()
+            TeamVocabularyPicker(teamVocab) { vm.setTeamVocabulary(it) }
+        }
 
         SectionHeader(stringResource(R.string.set_voice))
         RcCard {
@@ -216,6 +226,24 @@ private fun segColors() = SegmentedButtonDefaults.colors(
     activeBorderColor = MaterialTheme.colorScheme.primary,
     inactiveBorderColor = MaterialTheme.colorScheme.outline,
 )
+
+/** "Team vocabulary": Auto (default), General and one chip per domain. The picked one is filled. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TeamVocabularyPicker(current: String, onPick: (String) -> Unit) {
+    Column(Modifier.fillMaxWidth().testTag("team_vocab"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(stringResource(R.string.set_team_vocab), style = MaterialTheme.typography.titleSmall)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            TextDomain.SETTINGS.forEach { setting ->
+                RcChip(
+                    VocabLabels.setting(setting), onClick = { onPick(setting) }, selected = current == setting,
+                    modifier = Modifier.testTag("team_vocab_$setting"),
+                )
+            }
+        }
+        Text(stringResource(R.string.set_team_vocab_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
 
 @Composable
 private fun InfoRow(label: String, value: String, ok: Boolean? = null) {

@@ -7,8 +7,9 @@ result is the report (or a text when no report fits), its fields as short labels
     text_bytes   bytes on air when you send the same words as a plain text (POST /v2/text)
 
 With `channel` or `to` in the body, a text is sized for that chat (SPEC sections 2.3 and 3.6): `send_as` (compressed
-or normal), `max_text_bytes` (400 in a chat that packs, else 180), `form` (plain, deflate or words) and `cut` (the text
-is too long for one radio message and will be shortened with "…").
+or normal), `max_text_bytes` (400 in a chat that packs, else 180), `form` (plain, deflate, words, lean or domain),
+`vocab` (the team vocabulary of a domain frame, e.g. "sar", else null) and `cut` (the text is too long for one radio
+message and will be shortened with "…").
 
 Example: "Kind gefunden, ansprechbar, unterkühlt. Wir brauchen eine Trage." -> found, coded_bytes 11, text_bytes 64.
 """
@@ -20,6 +21,7 @@ from typing import Any
 from rescuecodec.engine.extract import extract, fit_plain
 from rescuecodec.engine.textmode import choose_form
 from rescuecodec.v2 import codes as C
+from rescuecodec.v2 import textdomain
 from rescuecodec.v2.codec import CodecError, encode
 from rescuecodec.v2.render import load_language, render
 
@@ -90,7 +92,8 @@ def fields(message: Mapping[str, Any]) -> list[dict[str, Any]]:
 
 
 def preview(body: Any, *, next_id: Callable[[], int], text_as_meshtastic: bool,
-            route: Callable[..., dict[str, Any]] | None = None, compact: bool = False) -> dict[str, Any]:
+            route: Callable[..., dict[str, Any]] | None = None, compact: bool = False,
+            vocab: str = "auto") -> dict[str, Any]:
     """The JSON of POST /v2/extract. `next_id` gives the id the gateway would add (it costs 1 to 2 bytes);
     `text_as_meshtastic` = a text goes out as a plain Meshtastic text (its UTF-8 bytes). Raises ExtractError."""
     if not isinstance(body, dict):
@@ -134,9 +137,12 @@ def preview(body: Any, *, next_id: Callable[[], int], text_as_meshtastic: bool,
         out["max_text_bytes"] = C.MAX_PACKED_TEXT_BYTES if packs else C.MAX_TEXT_BYTES
         if kind == "text":
             typed = text.strip()                 # what the composer sends (POST /v2/text), line breaks kept
-            form = choose_form({"id": next_id(), "text": {"text": typed}}, packs, chat["reason"], compact=compact)
+            form = choose_form({"id": next_id(), "text": {"text": typed}}, packs, chat["reason"], compact=compact,
+                               vocab=vocab)
             out["message"] = {"text": {"text": typed}}
             out["form"], out["cut"] = form.form, form.cut
+            out["vocab"] = form.vocab
+            out["vocab_label"] = textdomain.VOCABS[textdomain.CURRENT[form.vocab]].short if form.vocab else None
             out["coded_bytes"], out["text_bytes"] = len(form.payload), len(typed.encode("utf-8"))
             if not packs and out["text_bytes"] > C.MAX_TEXT_BYTES:
                 out["cut"] = True                # refused by POST /v2/text; the composer stops at 180 bytes

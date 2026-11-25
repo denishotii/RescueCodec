@@ -5,7 +5,7 @@ tests/test_v2_spec.py checks that all three agree.
 """
 from __future__ import annotations
 
-SPEC_VERSION = "2.2.0"
+SPEC_VERSION = "2.3.0"
 
 # Limits (spec/SPEC.md, section "Limits").
 MAX_ENCODE_BYTES = 200   # encoders never produce more

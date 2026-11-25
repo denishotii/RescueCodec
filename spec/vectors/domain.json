@@ -1,0 +1,1322 @@
+{
+ "spec_version": "2.3.0",
+ "about": "RescueCodec domain frame vectors (SPEC section 3.8, first byte 0x03). vocabularies: id, domain, code width and SHA-256 of each bundled vocabulary file; check them. frames: encode_domain(text, vocab) must give hex exactly and decode_domain(hex) must give decoded (decode_any adds \"v\": 2). trace is informative (one line per code). streams: encode_stream(text, vocab) must give stream exactly and decode_stream(stream, vocab) must give text (no frame, may be larger than one packet). random: like streams, seeded random texts. invalid_decode: decode_domain(hex) must be rejected with error. invalid_encode: encode_domain(text, vocab) must be rejected with error. unknown: decode_domain(hex) must give decoded ({\"unknown\": {\"vocab\": id}}), rendered as render.en. choice: the send rule (SPEC 2.3 rule 6, 3.8.6) for {\"id\": 3, \"text\": {\"text\": text}} in a chat that packs, compact text on, team vocabulary setting: form, vocab, size and hex of what goes out; sizes lists the candidates (DEFLATE is left out: compressors may differ, and in these cases it is at least 3 bytes larger than what goes out).",
+ "vocabularies": [
+  {
+   "id": 1,
+   "domain": "emergency",
+   "label": "Emergency",
+   "short": "Emergency",
+   "version": 1,
+   "bits": 10,
+   "entries": 1016,
+   "file": "domain-emergency-v1.txt",
+   "sha256": "e98e8c9026b9f75b29a681dfaee2a49ebac39fbbea4d1471e60949ac71164664"
+  },
+  {
+   "id": 2,
+   "domain": "sar",
+   "label": "Search & Rescue",
+   "short": "S&R",
+   "version": 1,
+   "bits": 10,
+   "entries": 1016,
+   "file": "domain-sar-v1.txt",
+   "sha256": "444798678a105827cf783b990c0ceda05b4cf927b4846c15e0345213f60092ee"
+  },
+  {
+   "id": 3,
+   "domain": "fire",
+   "label": "Firefighting",
+   "short": "Fire",
+   "version": 1,
+   "bits": 10,
+   "entries": 1016,
+   "file": "domain-fire-v1.txt",
+   "sha256": "d37f489ed55a944d59fcc3b53c985da2facf3aefa81cf9053240d80cf62dc9a2"
+  },
+  {
+   "id": 4,
+   "domain": "hiking",
+   "label": "Hiking / Mountain",
+   "short": "Hiking",
+   "version": 1,
+   "bits": 10,
+   "entries": 1016,
+   "file": "domain-hiking-v1.txt",
+   "sha256": "3e03a004a0696afc41738d71280e13125390eff85f3ab073d6b9c7b510e6464a"
+  },
+  {
+   "id": 5,
+   "domain": "medical",
+   "label": "Medical / First aid",
+   "short": "Medical",
+   "version": 1,
+   "bits": 10,
+   "entries": 1016,
+   "file": "domain-medical-v1.txt",
+   "sha256": "21a76e1f01d3aac7291875f6b863244fc873d724cdae4afddd7a3cfcade6be3b"
+  }
+ ],
+ "frames": [
+  {
+   "name": "emergency-evacuate",
+   "note": "Emergency: CAP + entries, punctuation attaches left. 14 B (36 B plain, 18 B as a 0x02 frame).",
+   "vocab": "emergency",
+   "vocab_id": 1,
+   "text": "Evacuate now, the river is flooding.",
+   "hex": "0301fe63077402005c702c810000",
+   "size": 14,
+   "plain_size": 36,
+   "decoded": {
+    "text": {
+     "text": "Evacuate now, the river is flooding.",
+     "vocab": 1
+    }
+   },
+   "trace": [
+    "CAP",
+    "E 560 \"evacuate\"",
+    "E 477 \"now\"",
+    "E 2 \",\"",
+    "E 1 \"the\"",
+    "E 455 \"river\"",
+    "E 11 \"is\"",
+    "E 129 \"flooding\"",
+    "E 0 \".\""
+   ]
+  },
+  {
+   "name": "sar-missing-found",
+   "note": "Search & Rescue: 11 B (28 B plain, 16 B as a 0x02 frame).",
+   "vocab": "sar",
+   "vocab_id": 2,
+   "text": "Missing person found, alive.",
+   "hex": "0302fe41f1f43900b79000",
+   "size": 11,
+   "plain_size": 28,
+   "decoded": {
+    "text": {
+     "text": "Missing person found, alive.",
+     "vocab": 2
+    }
+   },
+   "trace": [
+    "CAP",
+    "E 31 \"missing\"",
+    "E 125 \"person\"",
+    "E 57 \"found\"",
+    "E 2 \",\"",
+    "E 889 \"alive\"",
+    "E 0 \".\""
+   ]
+  },
+  {
+   "name": "fire-ridge",
+   "note": "Firefighting: \"ridge\" is not in the vocabulary, so ESC16 + its word dictionary 2 token. 12 B.",
+   "vocab": "fire",
+   "vocab_id": 3,
+   "text": "Smoke on the ridge, wildfire.",
+   "hex": "03031445bfe2562c02058000",
+   "size": 12,
+   "plain_size": 29,
+   "decoded": {
+    "text": {
+     "text": "Smoke on the ridge, wildfire.",
+     "vocab": 3
+    }
+   },
+   "trace": [
+    "E 81 \"Smoke\"",
+    "E 91 \"on the\"",
+    "ESC16 0x958B \"ridge\"",
+    "E 2 \",\"",
+    "E 22 \"wildfire\"",
+    "E 0 \".\""
+   ]
+  },
+  {
+   "name": "hiking-trail",
+   "note": "Hiking / Mountain: five entries and a comma, 10 B (31 B plain).",
+   "vocab": "hiking",
+   "vocab_id": 4,
+   "text": "Trail closed, avalanche danger.",
+   "hex": "0304810fe0080b5a0000",
+   "size": 10,
+   "plain_size": 31,
+   "decoded": {
+    "text": {
+     "text": "Trail closed, avalanche danger.",
+     "vocab": 4
+    }
+   },
+   "trace": [
+    "E 516 \"Trail\"",
+    "E 254 \"closed\"",
+    "E 2 \",\"",
+    "E 11 \"avalanche\"",
+    "E 360 \"danger\"",
+    "E 0 \".\""
+   ]
+  },
+  {
+   "name": "medical-tourniquet",
+   "note": "Medical: codes 908, 6, 39, 0 = 40 bits = 5 bytes, no padding. 7 B (19 B plain, 22 B as a 0x02 frame).",
+   "vocab": "medical",
+   "vocab_id": 5,
+   "text": "Apply a tourniquet.",
+   "hex": "0305e300609c00",
+   "size": 7,
+   "plain_size": 19,
+   "decoded": {
+    "text": {
+     "text": "Apply a tourniquet.",
+     "vocab": 5
+    }
+   },
+   "trace": [
+    "E 908 \"Apply\"",
+    "E 6 \"a\"",
+    "E 39 \"tourniquet\"",
+    "E 0 \".\""
+   ]
+  },
+  {
+   "name": "medical-pitch",
+   "note": "The pitch example: 19 B (64 B plain, 38 B as a 0x02 frame).",
+   "vocab": "medical",
+   "vocab_id": 5,
+   "text": "Patient is conscious, bleeding from the leg, apply a tourniquet.",
+   "hex": "0305fe5480226d008322b515008dd018270000",
+   "size": 19,
+   "plain_size": 64,
+   "decoded": {
+    "text": {
+     "text": "Patient is conscious, bleeding from the leg, apply a tourniquet.",
+     "vocab": 5
+    }
+   },
+   "trace": [
+    "CAP",
+    "E 328 \"patient\"",
+    "E 8 \"is\"",
+    "E 621 \"conscious\"",
+    "E 2 \",\"",
+    "E 50 \"bleeding\"",
+    "E 173 \"from the\"",
+    "E 277 \"leg\"",
+    "E 2 \",\"",
+    "E 221 \"apply\"",
+    "E 6 \"a\"",
+    "E 39 \"tourniquet\"",
+    "E 0 \".\""
+   ]
+  },
+  {
+   "name": "escape-cap",
+   "note": "CAP applies to an escaped token too.",
+   "vocab": "fire",
+   "vocab_id": 3,
+   "text": "Ridge closed.",
+   "hex": "0303fe7f8958b5ac00",
+   "size": 9,
+   "plain_size": 13,
+   "decoded": {
+    "text": {
+     "text": "Ridge closed.",
+     "vocab": 3
+    }
+   },
+   "trace": [
+    "CAP",
+    "ESC16 0x958B \"ridge\"",
+    "E 363 \"closed\"",
+    "E 0 \".\""
+   ]
+  },
+  {
+   "name": "escape-upper",
+   "note": "UPPER applies to an escaped token too.",
+   "vocab": "fire",
+   "vocab_id": 3,
+   "text": "RIDGE closed.",
+   "hex": "0303febf8958b5ac00",
+   "size": 9,
+   "plain_size": 13,
+   "decoded": {
+    "text": {
+     "text": "RIDGE closed.",
+     "vocab": 3
+    }
+   },
+   "trace": [
+    "UPPER",
+    "ESC16 0x958B \"ridge\"",
+    "E 363 \"closed\"",
+    "E 0 \".\""
+   ]
+  },
+  {
+   "name": "escape-phrase",
+   "note": "An escaped two-word phrase of word dictionary 2 (\"Need help\").",
+   "vocab": "emergency",
+   "vocab_id": 1,
+   "text": "Need help, two injured at the shelter.",
+   "hex": "0301fe286dc0244b1c684e2000",
+   "size": 13,
+   "plain_size": 38,
+   "decoded": {
+    "text": {
+     "text": "Need help, two injured at the shelter.",
+     "vocab": 1
+    }
+   },
+   "trace": [
+    "ESC16 0xA1B7 \"Need help\"",
+    "E 2 \",\"",
+    "E 274 \"two\"",
+    "E 796 \"injured\"",
+    "E 417 \"at the\"",
+    "E 226 \"shelter\"",
+    "E 0 \".\""
+   ]
+  },
+  {
+   "name": "escape-single-letter",
+   "note": "A word of word dictionary 2 only: ESC16.",
+   "vocab": "sar",
+   "vocab_id": 2,
+   "text": "x",
+   "hex": "0302fe11f600",
+   "size": 6,
+   "plain_size": 1,
+   "decoded": {
+    "text": {
+     "text": "x",
+     "vocab": 2
+    }
+   },
+   "trace": [
+    "ESC16 0x47D8 \"x\""
+   ]
+  },
+  {
+   "name": "upper",
+   "note": "UPPER before each entry.",
+   "vocab": "sar",
+   "vocab_id": 2,
+   "text": "MISSING PERSON",
+   "hex": "0302fe81ffe87d",
+   "size": 7,
+   "plain_size": 14,
+   "decoded": {
+    "text": {
+     "text": "MISSING PERSON",
+     "vocab": 2
+    }
+   },
+   "trace": [
+    "UPPER",
+    "E 31 \"missing\"",
+    "UPPER",
+    "E 125 \"person\""
+   ]
+  },
+  {
+   "name": "glue-quotes",
+   "note": "GLUE: no space between the quote and the word.",
+   "vocab": "fire",
+   "vocab_id": 3,
+   "text": "\"Fire\" on the ridge",
+   "hex": "03030bffb0dbfb0bc5bfe2562c",
+   "size": 13,
+   "plain_size": 19,
+   "decoded": {
+    "text": {
+     "text": "\"Fire\" on the ridge",
+     "vocab": 3
+    }
+   },
+   "trace": [
+    "E 47 \"\\\"\"",
+    "GLUE",
+    "E 54 \"Fire\"",
+    "GLUE",
+    "E 47 \"\\\"\"",
+    "E 91 \"on the\"",
+    "ESC16 0x958B \"ridge\""
+   ]
+  },
+  {
+   "name": "glue-dot",
+   "note": "GLUE after a dot.",
+   "vocab": "sar",
+   "vocab_id": 2,
+   "text": "found.found",
+   "hex": "03020e400fec39",
+   "size": 7,
+   "plain_size": 11,
+   "decoded": {
+    "text": {
+     "text": "found.found",
+     "vocab": 2
+    }
+   },
+   "trace": [
+    "E 57 \"found\"",
+    "E 0 \".\"",
+    "GLUE",
+    "E 57 \"found\""
+   ]
+  },
+  {
+   "name": "brackets",
+   "note": "( attaches right, ) attaches left: no GLUE needed.",
+   "vocab": "fire",
+   "vocab_id": 3,
+   "text": "(fire)",
+   "hex": "030305007054",
+   "size": 6,
+   "plain_size": 6,
+   "decoded": {
+    "text": {
+     "text": "(fire)",
+     "vocab": 3
+    }
+   },
+   "trace": [
+    "E 20 \"(\"",
+    "E 7 \"fire\"",
+    "E 21 \")\""
+   ]
+  },
+  {
+   "name": "literal-coordinates",
+   "note": "Numbers and the comma between them go in one literal that carries its own leading space.",
+   "vocab": "sar",
+   "vocab_id": 2,
+   "text": "Missing person found at 50.69212, 7.21345.",
+   "hex": "0302fe41f1f43907bfc132035302e36393231322c20372e32313334352e0",
+   "size": 30,
+   "plain_size": 42,
+   "decoded": {
+    "text": {
+     "text": "Missing person found at 50.69212, 7.21345.",
+     "vocab": 2
+    }
+   },
+   "trace": [
+    "CAP",
+    "E 31 \"missing\"",
+    "E 125 \"person\"",
+    "E 57 \"found\"",
+    "E 30 \"at\"",
+    "LIT 19 \" 50.69212, 7.21345.\""
+   ]
+  },
+  {
+   "name": "literal-name",
+   "note": "A name owns the spaces around it: the literal is \" Aylin Demir \".",
+   "vocab": "medical",
+   "vocab_id": 5,
+   "text": "Patient Aylin Demir is conscious.",
+   "hex": "0305fe548ff0348105e5b1a5b8811195b5a5c880089b4000",
+   "size": 24,
+   "plain_size": 33,
+   "decoded": {
+    "text": {
+     "text": "Patient Aylin Demir is conscious.",
+     "vocab": 5
+    }
+   },
+   "trace": [
+    "CAP",
+    "E 328 \"patient\"",
+    "LIT 13 \" Aylin Demir \"",
+    "E 8 \"is\"",
+    "E 621 \"conscious\"",
+    "E 0 \".\""
+   ]
+  },
+  {
+   "name": "literal-emoji-newline",
+   "note": "Emoji and a line break are literal bytes, copied exactly.",
+   "vocab": "medical",
+   "vocab_id": 5,
+   "text": "Bleeding 🙂\nApply a tourniquet.",
+   "hex": "0305fe432ff01883c27e66082b8c01827000",
+   "size": 18,
+   "plain_size": 33,
+   "decoded": {
+    "text": {
+     "text": "Bleeding 🙂\nApply a tourniquet.",
+     "vocab": 5
+    }
+   },
+   "trace": [
+    "CAP",
+    "E 50 \"bleeding\"",
+    "LIT 6 \" 🙂\\n\"",
+    "E 908 \"Apply\"",
+    "E 6 \"a\"",
+    "E 39 \"tourniquet\"",
+    "E 0 \".\""
+   ]
+  },
+  {
+   "name": "literal-two-spaces",
+   "note": "Two spaces are a literal.",
+   "vocab": "hiking",
+   "vocab_id": 4,
+   "text": "Trail  closed",
+   "hex": "0304813fc0220203f8",
+   "size": 9,
+   "plain_size": 13,
+   "decoded": {
+    "text": {
+     "text": "Trail  closed",
+     "vocab": 4
+    }
+   },
+   "trace": [
+    "E 516 \"Trail\"",
+    "LIT 2 \"  \"",
+    "E 254 \"closed\""
+   ]
+  },
+  {
+   "name": "literal-tab",
+   "note": "A tab is a literal.",
+   "vocab": "hiking",
+   "vocab_id": 4,
+   "text": "Trail\tclosed",
+   "hex": "0304813fc01093f8",
+   "size": 8,
+   "plain_size": 12,
+   "decoded": {
+    "text": {
+     "text": "Trail\tclosed",
+     "vocab": 4
+    }
+   },
+   "trace": [
+    "E 516 \"Trail\"",
+    "LIT 1 \"\\t\"",
+    "E 254 \"closed\""
+   ]
+  },
+  {
+   "name": "literal-only-space",
+   "note": "Only a space: one literal of 1 byte.",
+   "vocab": "hiking",
+   "vocab_id": 4,
+   "text": " ",
+   "hex": "0304ff004800",
+   "size": 6,
+   "plain_size": 1,
+   "decoded": {
+    "text": {
+     "text": " ",
+     "vocab": 4
+    }
+   },
+   "trace": [
+    "LIT 1 \" \""
+   ]
+  },
+  {
+   "name": "literal-spaces-around",
+   "note": "Leading and trailing spaces are literals.",
+   "vocab": "hiking",
+   "vocab_id": 4,
+   "text": " snow ",
+   "hex": "0304ff0048014ff00480",
+   "size": 10,
+   "plain_size": 6,
+   "decoded": {
+    "text": {
+     "text": " snow ",
+     "vocab": 4
+    }
+   },
+   "trace": [
+    "LIT 1 \" \"",
+    "E 20 \"snow\"",
+    "LIT 1 \" \""
+   ]
+  },
+  {
+   "name": "literal-accent",
+   "note": "Not ASCII: the whole word is a literal (never a near match).",
+   "vocab": "medical",
+   "vocab_id": 5,
+   "text": "café",
+   "hex": "0305ff0158d859b0ea40",
+   "size": 10,
+   "plain_size": 5,
+   "decoded": {
+    "text": {
+     "text": "café",
+     "vocab": 5
+    }
+   },
+   "trace": [
+    "LIT 5 \"café\""
+   ]
+  },
+  {
+   "name": "literal-190",
+   "note": "A literal of 190 bytes: 2 + ceil((10 + 8 + 190 * 8) / 8) = 195 B.",
+   "vocab": "sar",
+   "vocab_id": 2,
+   "text": "QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ",
+   "hex": "0302ff2f9454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545440",
+   "size": 195,
+   "plain_size": 190,
+   "decoded": {
+    "text": {
+     "text": "QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ",
+     "vocab": 2
+    }
+   },
+   "trace": [
+    "LIT 190 \"QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ\""
+   ]
+  },
+  {
+   "name": "literal-1-and-word",
+   "note": "A 1-byte literal, then a word.",
+   "vocab": "sar",
+   "vocab_id": 2,
+   "text": "7 found",
+   "hex": "0302830390",
+   "size": 5,
+   "plain_size": 7,
+   "decoded": {
+    "text": {
+     "text": "7 found",
+     "vocab": 2
+    }
+   },
+   "trace": [
+    "E 524 \"7\"",
+    "E 57 \"found\""
+   ]
+  }
+ ],
+ "streams": [
+  {
+   "name": "literal-254",
+   "note": "One LIT of 254 bytes.",
+   "vocab": "sar",
+   "text": "QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ",
+   "stream": "ff3f945454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545440",
+   "trace": [
+    "LIT 254 \"QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ\""
+   ]
+  },
+  {
+   "name": "literal-255",
+   "note": "One LIT of 255 bytes, the longest.",
+   "vocab": "sar",
+   "text": "QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ",
+   "stream": "ff3fd4545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545440",
+   "trace": [
+    "LIT 255 \"QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ\""
+   ]
+  },
+  {
+   "name": "literal-256",
+   "note": "256 bytes: LIT 255 + LIT 1.",
+   "vocab": "sar",
+   "text": "QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ",
+   "stream": "ff3fd454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454547fc01510",
+   "trace": [
+    "LIT 255 \"QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ\"",
+    "LIT 1 \"Q\""
+   ]
+  },
+  {
+   "name": "literal-split-on-character",
+   "note": "254 + 2 bytes: the first LIT stops before the 2-byte character (LIT 254 + LIT 2).",
+   "vocab": "sar",
+   "text": "QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQé",
+   "stream": "ff3f94545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454547fc02c3a90",
+   "trace": [
+    "LIT 254 \"QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ\"",
+    "LIT 2 \"é\""
+   ]
+  },
+  {
+   "name": "literal-600",
+   "note": "LIT 255 + LIT 255 + LIT 90.",
+   "vocab": "medical",
+   "text": "QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ",
+   "stream": "ff3fd454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454547fcff515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151ff169454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454544",
+   "trace": [
+    "LIT 255 \"QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ\"",
+    "LIT 255 \"QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ\"",
+    "LIT 90 \"QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ\""
+   ]
+  }
+ ],
+ "random": [
+  {
+   "name": "random-emergency-1",
+   "vocab": "emergency",
+   "text": "50.6921 from ",
+   "stream": "ff020d4c0b8d8e4c8c4801dff00480"
+  },
+  {
+   "name": "random-emergency-2",
+   "vocab": "emergency",
+   "text": ", YOU COULD'VE NEED whether . 26 June Ж gibberishscooped\nRange , ü then working ",
+   "stream": "00bfafe3b41ffa0ce4fff0048000fe1515bfc1520d0962067696262657269736873636f6f7065640afe68bff01880b0830ef0823591bfc0120"
+  },
+  {
+   "name": "random-emergency-3",
+   "vocab": "emergency",
+   "text": "depending fancied an emergency 3 heartfelt ",
+   "stream": "bd3f8d362965d9fe1e803fc01200"
+  },
+  {
+   "name": "random-emergency-4",
+   "vocab": "emergency",
+   "text": "help CERTs Ж system whyß Alerting flexible and ot",
+   "stream": "0283cff0108342588040ff01c81dda1e70e7c83f9e0fe2013fc03206f740"
+  },
+  {
+   "name": "random-emergency-5",
+   "vocab": "emergency",
+   "text": "high dishes ",
+   "stream": "57bf80c9cff00480"
+  },
+  {
+   "name": "random-emergency-6",
+   "vocab": "emergency",
+   "text": "WEAR wind gvf7c",
+   "stream": "febcf717fc06206776663763"
+  },
+  {
+   "name": "random-emergency-7",
+   "vocab": "emergency",
+   "text": "🙂 steps most villagers to help us\ntraffic\tservices\tSince its\t",
+   "stream": "ff017c27e6608828cfe338f580ff00429a6ff004250bff00427f888a8ff00424"
+  },
+  {
+   "name": "random-emergency-8",
+   "vocab": "emergency",
+   "text": "is\tINTO room 🙂  based on the\tsecure rain yell said Lightning  He Or clothes to ",
+   "stream": "02ffc0109fe88e637fc0720f09f99822020a27fc01099ed70fe0fe9c64ccbfc0220205cff9033f87f0cff00480"
+  },
+  {
+   "name": "random-sar-1",
+   "vocab": "sar",
+   "text": "held a \nbook conduct yiai operat",
+   "stream": "fe18ccbfc02200afa15bff03081e5a585a481bdc195c985d00"
+  },
+  {
+   "name": "random-sar-2",
+   "vocab": "sar",
+   "text": "he's glad and large Ж : \nü #3 same 50.6921 agency Planning ",
+   "stream": "fe1bb1803e7bfc0d20d096203a200ac3bc202333205cbfc092035302e3639323120aabf9457fc01200"
+  },
+  {
+   "name": "random-sar-3",
+   "vocab": "sar",
+   "text": "1dklo5he Useless Indian ",
+   "stream": "ff024c591adb1bcd5a19483f9fe0747a2bff004800"
+  },
+  {
+   "name": "random-sar-4",
+   "vocab": "sar",
+   "text": ".paws 50.6921 know\n0u6r renovation … positions  counting During ",
+   "stream": "ff038b9c185ddcc80d4c0b8d8e4c8c4804bff01828c1d4d9c883f82cc6ff00483f8000dadbfc022020fe03d26fbff00480"
+  },
+  {
+   "name": "random-sar-5",
+   "vocab": "sar",
+   "text": "\" 200 death nothing L",
+   "stream": "08b10ce368fe1a7600"
+  },
+  {
+   "name": "random-sar-6",
+   "vocab": "sar",
+   "text": "home a face\nAfter nqeo",
+   "stream": "a4006e53fc010ae73fc05206e71656f0"
+  },
+  {
+   "name": "random-sar-7",
+   "vocab": "sar",
+   "text": "Debris\tand look I last 7,2 ? \net9v5wb  floods floods \n",
+   "stream": "fe592ff0042403dcc3d4420cff03cb0c880fc802995d0e5d8d5dd888082e0b83fc02200a"
+  },
+  {
+   "name": "random-sar-8",
+   "vocab": "sar",
+   "text": "Stronglost\nN6ONZY \nAREN'T ALLOWED local hats collapsed hospital 8 All situation what\norder ",
+   "stream": "ff04d4dd1c9bdb99db1bdcdd02938d93d396964802bfafe35f551dfe083e1f7ae596559402e3fc010aa0bfc01200"
+  },
+  {
+   "name": "random-fire-1",
+   "vocab": "fire",
+   "text": "rugby he still , A FIRE\n",
+   "stream": "fe17e7c968ebfc012000bfa163fc010a"
+  },
+  {
+   "name": "random-fire-2",
+   "vocab": "fire",
+   "text": "prepare for  if I \nAFRAID I  WHICH q 8 Falsified ",
+   "stream": "1180dff0208081a5988124802bfafe008a071ff0088083fa263fc052071203820fe7f8b6b4ff004800"
+  },
+  {
+   "name": "random-fire-3",
+   "vocab": "fire",
+   "text": "#3 \nRequired departments villages \n48i98br join the jxac467   But rise trz9ffrf food\tdarkness été ",
+   "stream": "ff0108ccc802bf98ffd8f2bfc0a200a3438693938627220fe0ed73fc0c206a78616334363720c2a020fe4a1dcbfc0a2074727a396666726620373fc0109f97fc0720c3a974c3a920"
+  },
+  {
+   "name": "random-fire-4",
+   "vocab": "fire",
+   "text": "Ж\nvehicle left z2f5 leaving \nM3Q money h4cj Remember Fires i",
+   "stream": "ff00f42582b1f843fc06207a32663520fa7fc06200a4d335120e17fc06206834636a20c1af91c0"
+  },
+  {
+   "name": "random-fire-5",
+   "vocab": "fire",
+   "text": "Out of the !\tlives leave Boston Relief Fund  and the   th",
+   "stream": "fe5dbff00c808424f0fe2ad17f84effff0088080c6ff018830a8081d1a00"
+  },
+  {
+   "name": "random-fire-6",
+   "vocab": "fire",
+   "text": "( Wave ) you today \nshore  \nPlan ",
+   "stream": "ff01ca0815d85d9948015fe18ecffc10200a73686f726520c2a00a506c616e20"
+  },
+  {
+   "name": "random-fire-7",
+   "vocab": "fire",
+   "text": "n  Ü 7,2 \n: : up both an heavy\nwill help Appropriate été the home and : ",
+   "stream": "ff035b880830e7080dcb0c88028e8801728e2d0b99bff00429b4fe61aff01c830ea5d30ea4820bff00c80e8800"
+  },
+  {
+   "name": "random-fire-8",
+   "vocab": "fire",
+   "text": "Taps\tclear\n- . wn7fes8 ü :  #3 SOUTHERN LXQ \n,  opening   ",
+   "stream": "ff0155185c1cc260eff05828b480b881ddb8dd9995cce0830ef080e880808ccc83fabcffc09204c5851200a2c2020a57fc0420c2a020"
+  },
+  {
+   "name": "random-hiking-1",
+   "vocab": "hiking",
+   "text": "🙂 , \nü #3 cold water\n",
+   "stream": "ff03bc27e660880b0802b0ef0808ccc80500dbfc010a"
+  },
+  {
+   "name": "random-hiking-2",
+   "vocab": "hiking",
+   "text": "! 10 years O8rvyhrz3 FORESTS",
+   "stream": "24bf8c42eff02c813ce1c9d9e5a1c9e8cc83fa9800"
+  },
+  {
+   "name": "random-hiking-3",
+   "vocab": "hiking",
+   "text": ": left bw0b  7,2 impacts of ÉTÉ the following thought you environment\t",
+   "stream": "04254ff02c8189dcc1888080dcb0c882daff01c830e25530e2483b3fe05b13e7ff004240"
+  },
+  {
+   "name": "random-hiking-4",
+   "vocab": "hiking",
+   "text": "can be \ngeologically campsite",
+   "stream": "53ffc02200afe0d746b4"
+  },
+  {
+   "name": "random-hiking-5",
+   "vocab": "hiking",
+   "text": "m0va Avoid ",
+   "stream": "ff015b4c1d984813dff00480"
+  },
+  {
+   "name": "random-hiking-6",
+   "vocab": "hiking",
+   "text": "wilderness strategic airlift ",
+   "stream": "6c7f8a5e4ff00480"
+  },
+  {
+   "name": "random-hiking-7",
+   "vocab": "hiking",
+   "text": "neck  loss … suffocated school for ",
+   "stream": "297fc02202045bfc0120fe00037f87556fe167bbfc0120"
+  },
+  {
+   "name": "random-hiking-8",
+   "vocab": "hiking",
+   "text": "good\tproducts mat Leave ß for Its\nWith Aval",
+   "stream": "75ffc0109b7ff843fffe548ff010830e7c800dfe582ff028295da5d1a08105d985b0"
+  },
+  {
+   "name": "random-medical-1",
+   "vocab": "medical",
+   "text": "was right Y ",
+   "stream": "0a18eff00c816480"
+  },
+  {
+   "name": "random-medical-2",
+   "vocab": "medical",
+   "text": "formidable changes - REALLY persons cupboards winds and worked at injury not stupid ",
+   "stream": "fe18187954effaddf9bfe3b817f841a7fe1a38c3dfe3a0c3fc0120"
+  },
+  {
+   "name": "random-medical-3",
+   "vocab": "medical",
+   "text": "#3 \nAccurate l9566q3k Cli",
+   "stream": "ff0108ccc802bf9fe05dd7fc0d206c3935363671336b20436c69"
+  },
+  {
+   "name": "random-medical-4",
+   "vocab": "medical",
+   "text": "conduct ,result\n",
+   "stream": "4fbfc02202c70bfc010a"
+  },
+  {
+   "name": "random-medical-5",
+   "vocab": "medical",
+   "text": "MT6F father of any . up\ndressings\ncasualty do wi",
+   "stream": "ff0153550d91883f898f51f7fc06202e2075700a14bfc010a09845ff00c81dda40"
+  },
+  {
+   "name": "random-medical-6",
+   "vocab": "medical",
+   "text": "AND \nflexible 2jk0as ostriches TO THE ",
+   "stream": "803fc02200aedbfc0820326a6b30617320fe2d64ffa0effc0120"
+  },
+  {
+   "name": "random-medical-7",
+   "vocab": "medical",
+   "text": "go Ж 09c To the hospital 7,2 \nQI89SXQ9 shoppi",
+   "stream": "40ffc0820d0962030396320fe529ff05480dcb0c880294524e0e54d6144e481cda1bdc1c1a40"
+  },
+  {
+   "name": "random-medical-8",
+   "vocab": "medical",
+   "text": "!TAKE ",
+   "stream": "5b3fbfe89fff004800"
+  }
+ ],
+ "invalid_decode": [
+  {
+   "name": "only-marker",
+   "note": "No vocabulary id.",
+   "hex": "03",
+   "error": "malformed"
+  },
+  {
+   "name": "no-stream",
+   "note": "A vocabulary id but no codes.",
+   "hex": "0302",
+   "error": "malformed"
+  },
+  {
+   "name": "only-padding",
+   "note": "8 zero bits: no code (fewer than 10 bits), and padding must be < 8 bits.",
+   "hex": "030200",
+   "error": "malformed"
+  },
+  {
+   "name": "padding-8-bits",
+   "note": "medical-tourniquet plus one zero byte: 8 bits left over (padding must be fewer than 8 bits).",
+   "hex": "0305e300609c0000",
+   "error": "malformed"
+  },
+  {
+   "name": "padding-not-zero",
+   "note": "sar-missing-found with a 1 bit in the padding.",
+   "hex": "0302fe41f1f43900b79001",
+   "error": "malformed"
+  },
+  {
+   "name": "reserved-code-5",
+   "note": "Code 1021 (base + 5) is reserved.",
+   "hex": "0305ff40",
+   "error": "malformed"
+  },
+  {
+   "name": "reserved-code-7",
+   "note": "Code 1023 (base + 7) is reserved.",
+   "hex": "0305ffc0",
+   "error": "malformed"
+  },
+  {
+   "name": "escape-cut",
+   "note": "ESC16 with only 14 bits after it.",
+   "hex": "0305fe0000",
+   "error": "malformed"
+  },
+  {
+   "name": "escape-out-of-range",
+   "note": "ESC16 0xF000: past word dictionary 2.",
+   "hex": "0305fe3c0000",
+   "error": "malformed"
+  },
+  {
+   "name": "literal-length-0",
+   "note": "LIT with length 0.",
+   "hex": "0305ff0000",
+   "error": "malformed"
+  },
+  {
+   "name": "literal-length-cut",
+   "note": "LIT with no length after it (6 bits of padding).",
+   "hex": "0305ff00",
+   "error": "malformed"
+  },
+  {
+   "name": "literal-cut",
+   "note": "LIT of 3 bytes with only 2 bytes after it.",
+   "hex": "0305ff00d85880",
+   "error": "malformed"
+  },
+  {
+   "name": "literal-not-utf8",
+   "note": "LIT of 1 byte 0xFF: not UTF-8.",
+   "hex": "0305ff007fc0",
+   "error": "malformed"
+  },
+  {
+   "name": "cap-at-end",
+   "note": "The stream ends with CAP.",
+   "hex": "0305fe40",
+   "error": "malformed"
+  },
+  {
+   "name": "glue-at-end",
+   "note": "The stream ends with GLUE.",
+   "hex": "0305003fb0",
+   "error": "malformed"
+  },
+  {
+   "name": "cap-before-literal",
+   "note": "CAP before a literal.",
+   "hex": "0305fe7fc01410",
+   "error": "malformed"
+  },
+  {
+   "name": "glue-before-literal",
+   "note": "GLUE before a literal.",
+   "hex": "0305003fbff00504",
+   "error": "malformed"
+  },
+  {
+   "name": "two-case-controls",
+   "note": "CAP then UPPER before one entry.",
+   "hex": "0305fe7fa000",
+   "error": "malformed"
+  },
+  {
+   "name": "two-glue",
+   "note": "GLUE twice before one entry.",
+   "hex": "0305003fbfec00",
+   "error": "malformed"
+  },
+  {
+   "name": "too-large-frame",
+   "note": "234 bytes: over the 233-byte decoder limit.",
+   "hex": "030500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+   "error": "too_large"
+  },
+  {
+   "name": "decodes-over-1024",
+   "note": "184 times entry 36 (\"interoperability\", 16 letters) in 232 bytes: over 1024 bytes of text.",
+   "hex": "03010902409024090240902409024090240902409024090240902409024090240902409024090240902409024090240902409024090240902409024090240902409024090240902409024090240902409024090240902409024090240902409024090240902409024090240902409024090240902409024090240902409024090240902409024090240902409024090240902409024090240902409024090240902409024090240902409024090240902409024090240902409024090240902409024090240902409024090240902409024090240902409024090240902409024090240902409024",
+   "error": "too_large"
+  }
+ ],
+ "invalid_encode": [
+  {
+   "name": "empty-text",
+   "note": "An empty text has no domain frame.",
+   "text": "",
+   "vocab": "sar",
+   "error": "missing_field"
+  },
+  {
+   "name": "unknown-vocab",
+   "note": "Vocabulary 9 is not assigned.",
+   "text": "fire",
+   "vocab": 9,
+   "error": "invalid_value"
+  },
+  {
+   "name": "vocab-0",
+   "note": "Vocabulary 0 is not assigned.",
+   "text": "fire",
+   "vocab": 0,
+   "error": "invalid_value"
+  },
+  {
+   "name": "frame-over-200",
+   "note": "203 bytes: over the 200-byte encoder limit.",
+   "text": "QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ",
+   "vocab": "sar",
+   "error": "too_large"
+  },
+  {
+   "name": "text-over-1024",
+   "note": "1025 bytes of text: over the 1024-byte text limit.",
+   "text": "fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire fire ",
+   "vocab": "fire",
+   "error": "too_large"
+  }
+ ],
+ "unknown": [
+  {
+   "name": "vocab-0",
+   "note": "Id 0 is never assigned.",
+   "hex": "0300fe41f1f43900b79000",
+   "decoded": {
+    "unknown": {
+     "vocab": 0
+    }
+   },
+   "render": {
+    "en": "Message encoded with a team vocabulary this app does not have (unsupported vocabulary 0), please update the app.",
+    "de": "Nachricht mit einem Team-Vokabular, das diese App nicht hat (nicht unterstütztes Vokabular 0), bitte App aktualisieren."
+   }
+  },
+  {
+   "name": "vocab-6",
+   "note": "Id 6 is not assigned in spec 2.3.",
+   "hex": "0306fe41f1f43900b79000",
+   "decoded": {
+    "unknown": {
+     "vocab": 6
+    }
+   },
+   "render": {
+    "en": "Message encoded with a team vocabulary this app does not have (unsupported vocabulary 6), please update the app.",
+    "de": "Nachricht mit einem Team-Vokabular, das diese App nicht hat (nicht unterstütztes Vokabular 6), bitte App aktualisieren."
+   }
+  },
+  {
+   "name": "vocab-255",
+   "note": "Id 255, any stream: never decoded.",
+   "hex": "03ff00",
+   "decoded": {
+    "unknown": {
+     "vocab": 255
+    }
+   },
+   "render": {
+    "en": "Message encoded with a team vocabulary this app does not have (unsupported vocabulary 255), please update the app.",
+    "de": "Nachricht mit einem Team-Vokabular, das diese App nicht hat (nicht unterstütztes Vokabular 255), bitte App aktualisieren."
+   }
+  }
+ ],
+ "choice": [
+  {
+   "name": "domain-wins",
+   "note": "The medical frame (19 B) beats the 0x02 frame (38 B) and the plain text (64 B).",
+   "text": "Patient is conscious, bleeding from the leg, apply a tourniquet.",
+   "setting": "auto",
+   "form": "domain",
+   "vocab": "medical",
+   "size": 19,
+   "hex": "0305fe5480226d008322b515008dd018270000",
+   "sizes": {
+    "plain": 64,
+    "lean": 38,
+    "words": 44,
+    "domain": {
+     "emergency": 40,
+     "sar": 38,
+     "fire": 38,
+     "hiking": 38,
+     "medical": 19
+    }
+   }
+  },
+  {
+   "name": "general-wins",
+   "note": "Too many words outside every vocabulary: the 0x02 frame (24 B) beats the best domain frame (25 B).",
+   "text": "Fire is spreading up the ridge, need two more engines and water.",
+   "setting": "auto",
+   "form": "lean",
+   "vocab": null,
+   "size": 24,
+   "hex": "02022c4700160d290dcd958b0001003d8e432c7608dd0000",
+   "sizes": {
+    "plain": 64,
+    "lean": 24,
+    "words": 30,
+    "domain": {
+     "emergency": 26,
+     "sar": 28,
+     "fire": 25,
+     "hiking": 26,
+     "medical": 27
+    }
+   }
+  },
+  {
+   "name": "general-wins-short",
+   "note": "0x02 frame 6 B, best domain frame 7 B.",
+   "text": "hello world",
+   "setting": "auto",
+   "form": "lean",
+   "vocab": null,
+   "size": 6,
+   "hex": "0202033e0124",
+   "sizes": {
+    "plain": 11,
+    "lean": 6,
+    "words": 12,
+    "domain": {
+     "emergency": 9,
+     "sar": 7,
+     "fire": 9,
+     "hiking": 9,
+     "medical": 9
+    }
+   }
+  },
+  {
+   "name": "plain-wins",
+   "note": "2 B plain: smaller than every packed form.",
+   "text": "Ok",
+   "setting": "auto",
+   "form": "plain",
+   "vocab": null,
+   "size": 2,
+   "hex": "4f6b",
+   "sizes": {
+    "plain": 2,
+    "lean": 4,
+    "words": 10,
+    "domain": {
+     "emergency": 6,
+     "sar": 6,
+     "fire": 6,
+     "hiking": 6,
+     "medical": 6
+    }
+   }
+  },
+  {
+   "name": "plain-wins-tie",
+   "note": "The fire frame is 6 B like the plain text: plain wins ties.",
+   "text": "(fire)",
+   "setting": "auto",
+   "form": "plain",
+   "vocab": null,
+   "size": 6,
+   "hex": "286669726529",
+   "sizes": {
+    "plain": 6,
+    "lean": 8,
+    "words": 14,
+    "domain": {
+     "emergency": 6,
+     "sar": 8,
+     "fire": 6,
+     "hiking": 6,
+     "medical": 6
+    }
+   }
+  },
+  {
+   "name": "other-domain-wins",
+   "note": "Auto tries every vocabulary: the hiking frame (18 B) beats the S&R frame (20 B).",
+   "text": "SAR team 2 at the trailhead",
+   "setting": "auto",
+   "form": "domain",
+   "vocab": "hiking",
+   "size": 18,
+   "hex": "0304ff0114d054883f8020dfe00dc14d2c40",
+   "sizes": {
+    "plain": 27,
+    "lean": 26,
+    "words": 32,
+    "domain": {
+     "emergency": 25,
+     "sar": 20,
+     "fire": 25,
+     "hiking": 18,
+     "medical": 25
+    }
+   }
+  },
+  {
+   "name": "pinned-domain",
+   "note": "Pinned to S&R: only the S&R frame and the general forms are tried (20 B).",
+   "text": "SAR team 2 at the trailhead",
+   "setting": "sar",
+   "form": "domain",
+   "vocab": "sar",
+   "size": 20,
+   "hex": "0302020702b8dcff02881d1c985a5b1a19585900",
+   "sizes": {
+    "plain": 27,
+    "lean": 26,
+    "words": 32,
+    "domain": {
+     "sar": 20
+    }
+   }
+  },
+  {
+   "name": "pinned-other-domain",
+   "note": "Pinned to S&R: the medical frame is not tried; the 0x02 frame (38 B) wins over the S&R frame.",
+   "text": "Patient is conscious, bleeding from the leg, apply a tourniquet.",
+   "setting": "sar",
+   "form": "lean",
+   "vocab": null,
+   "size": 38,
+   "hex": "0202f001071a00162a29000112ec0025e87a0001139b0017f80c20746f75726e69717565742e",
+   "sizes": {
+    "plain": 64,
+    "lean": 38,
+    "words": 44,
+    "domain": {
+     "sar": 38
+    }
+   }
+  },
+  {
+   "name": "general-setting",
+   "note": "General: no domain frame at all.",
+   "text": "Patient is conscious, bleeding from the leg, apply a tourniquet.",
+   "setting": "general",
+   "form": "lean",
+   "vocab": null,
+   "size": 38,
+   "hex": "0202f001071a00162a29000112ec0025e87a0001139b0017f80c20746f75726e69717565742e",
+   "sizes": {
+    "plain": 64,
+    "lean": 38,
+    "words": 44,
+    "domain": {}
+   }
+  },
+  {
+   "name": "tie-lowest-id",
+   "note": "Several vocabularies give 7 B: the lowest id wins (emergency).",
+   "text": "found.found",
+   "setting": "auto",
+   "form": "domain",
+   "vocab": "emergency",
+   "size": 7,
+   "hex": "0301ed800fefb6",
+   "sizes": {
+    "plain": 11,
+    "lean": 9,
+    "words": 15,
+    "domain": {
+     "emergency": 7,
+     "sar": 7,
+     "fire": 7,
+     "hiking": 7,
+     "medical": 7
+    }
+   }
+  }
+ ]
+}

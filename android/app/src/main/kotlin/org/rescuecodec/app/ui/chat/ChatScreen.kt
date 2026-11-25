@@ -303,6 +303,11 @@ private fun MessageSheet(m: MessageEntity, lang: String, vm: MessagesViewModel, 
     val packed = remember(m.json) { org.rescuecodec.app.core.MeshText.isPacked(m) }
     val compactDict = remember(m.json) { org.rescuecodec.app.core.MeshText.compactDict(m) }
     val frame = remember(m.json) { org.rescuecodec.app.core.MeshText.isCompactFrame(m) }
+    val vocab = remember(m.json) { org.rescuecodec.app.core.MeshText.vocabOf(m) }
+    // A domain frame: what the same words cost as a general compact frame (0x02), to show what the vocabulary saved.
+    val generalFrame = remember(m.json) {
+        if (vocab == null) null else textBody(m.json)?.let { t -> runCatching { org.rescuecodec.codec.RescueCodec.encodeCompact(t).size }.getOrNull() }
+    }
     val plainText = remember(m.json) { org.rescuecodec.app.core.MeshText.isPlain(m) }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet, containerColor = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)) {
         Column(Modifier.semantics { testTagsAsResourceId = true }.padding(horizontal = 16.dp).padding(bottom = 20.dp).verticalScroll(rememberScrollState()).testTag("message_sheet")) {
@@ -330,6 +335,11 @@ private fun MessageSheet(m: MessageEntity, lang: String, vm: MessagesViewModel, 
                 if (packed) Text(stringResource(R.string.details_packed), style = small, color = Rc.colors.ink3, modifier = Modifier.testTag("details_packed"))
                 // A compact text (spec section 3.6): the words above are decoded from 2-byte word tokens.
                 if (compactDict != null) Text(stringResource(if (frame) R.string.details_frame else R.string.details_words, compactDict), style = small, color = Rc.colors.ink3, modifier = Modifier.testTag("details_words"))
+                // A domain frame (spec section 3.8): the words above are decoded from N-bit codes of a team vocabulary.
+                if (vocab != null) {
+                    Text(stringResource(R.string.details_vocab, org.rescuecodec.app.ui.components.VocabLabels.setting(vocab.domain), vocab.bits), style = small, color = Rc.colors.ink3, modifier = Modifier.testTag("details_vocab"))
+                    if (generalFrame != null) Text(stringResource(R.string.details_vocab_sizes, generalFrame), style = small, color = Rc.colors.ink3, modifier = Modifier.testTag("details_vocab_sizes"))
+                }
                 if (plainText) Text(stringResource(R.string.details_plain), style = small, color = Rc.colors.ink3, modifier = Modifier.testTag("details_plain"))
                 if (incoming && m.rssi != null && m.rssi != 0) {
                     Text(

@@ -17,7 +17,7 @@ from google.protobuf.message import DecodeError
 
 from rescuecodec.v2 import codes as C
 from rescuecodec.v2 import rescuecodec_pb2 as pb
-from rescuecodec.v2 import textpack, textwords
+from rescuecodec.v2 import textdomain, textpack, textwords
 
 
 class CodecError(ValueError):
@@ -288,7 +288,10 @@ def _build_ack(env: pb.Envelope, body: Any) -> None:
 
 
 def _build_text(env: pb.Envelope, body: Any) -> None:
-    b = _check_keys(body, {"text", "dict", "words"}, "text")
+    b = _check_keys(body, {"text", "dict", "words", "vocab"}, "text")
+    if "vocab" in b:            # a domain frame (0x03, SPEC 3.8) has no Envelope form: encode_domain builds it
+        raise _err("invalid_value", "a text with a team vocabulary goes in a domain frame (encode_domain), "
+                   "not in an Envelope", "text.vocab")
     t = env.text
     t.SetInParent()
     if "dict" in b and _int(b["dict"], "text.dict", 1, 0xFFFFFFFF) not in textpack.DICTS:
@@ -625,6 +628,63 @@ def decode_compact(data: bytes) -> dict:
     except textwords.WordsError as exc:
         raise _err(exc.code, str(exc), "text.words") from exc
     return {"text": {"text": text, "words": version}}
+
+
+#: First byte of a domain frame (SPEC section 3.8): 0x03, the vocabulary id, the bit stream of N-bit codes.
+DOMAIN_FRAME = 0x03
+
+
+def is_domain_frame(data: bytes) -> bool:
+    """True when the payload is a domain frame (first byte 0x03), not an Envelope."""
+    return bool(data) and data[0] == DOMAIN_FRAME
+
+
+def encode_domain(text: str, vocab: int | str) -> bytes:
+    """Text -> domain frame: 0x03, 1 byte vocabulary id, the bit stream. `vocab` is an id (1..5) or a domain name
+    ("emergency", "sar", "fire", "hiking", "medical"). No id, no position, no time. Raises CodecError (missing_field
+    for an empty text, invalid_value for an unknown vocabulary, too_large)."""
+    if not isinstance(text, str):
+        raise _err("invalid_value", "must be a string", "text.text")
+    if not text:
+        raise _err("missing_field", "a domain frame needs a text", "text.text")
+    try:
+        vid = textdomain.vocab_id(vocab)
+    except KeyError:
+        vid = None
+    if vid is None or not textdomain.available(vid):
+        known = ", ".join(f"{v.id} {v.domain}" for v in textdomain.VOCABS.values())
+        raise _err("invalid_value", f"unknown team vocabulary, known: {known}", "text.vocab")
+    try:
+        stream = textdomain.encode_stream(text, vid)
+    except UnicodeEncodeError as exc:
+        raise _err("invalid_value", "must be valid Unicode", "text.text") from exc
+    except textwords.WordsError as exc:
+        raise _err(exc.code, str(exc), "text.text") from exc
+    data = bytes((DOMAIN_FRAME, vid)) + stream
+    if len(data) > C.MAX_ENCODE_BYTES:
+        raise _err("too_large", f"{len(data)} bytes, the limit is {C.MAX_ENCODE_BYTES}")
+    return data
+
+
+def decode_domain(data: bytes) -> dict:
+    """Domain frame -> canonical JSON {"text": {"text": ..., "vocab": id}} (no id). A vocabulary this library does not
+    have (ids 0 and 6..255 today, or a copy that fails the SHA-256 check) gives {"unknown": {"vocab": id}}, shown as
+    "unsupported vocabulary". Raises CodecError (malformed, too_large)."""
+    data = bytes(data)
+    if not data or data[0] != DOMAIN_FRAME:
+        raise _err("unsupported_version", "not a domain frame")
+    if len(data) > C.MAX_DECODE_BYTES:
+        raise _err("too_large", f"{len(data)} bytes, the limit is {C.MAX_DECODE_BYTES}")
+    if len(data) < 2:
+        raise _err("malformed", "the domain frame is cut off (no vocabulary id)", "text.vocab")
+    vid = data[1]
+    if not textdomain.available(vid):
+        return {"unknown": {"vocab": vid}}            # shown as "unsupported vocabulary", never guessed words
+    try:
+        text = textdomain.decode_stream(data[2:], vid)
+    except textwords.WordsError as exc:
+        raise _err(exc.code, str(exc), "text.vocab") from exc
+    return {"text": {"text": text, "vocab": vid}}
 
 
 def detect_version(data: bytes) -> int:

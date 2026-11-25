@@ -30,7 +30,8 @@ export const LANGUAGES: Record<string, Language> = {
    "ack.other": "رد على #{ref}",
    "text": "رسالة",
    "unknown": "رسالة من نوع أحدث، يرجى تحديث التطبيق",
-   "unknown_dict": "رسالة مرمّزة بقاموس غير موجود في هذا التطبيق (القاموس {n})، يرجى تحديث التطبيق"
+   "unknown_dict": "رسالة مرمّزة بقاموس غير موجود في هذا التطبيق (القاموس {n})، يرجى تحديث التطبيق",
+   "unknown_vocab": "رسالة مرمّزة بمفردات فريق غير موجودة في هذا التطبيق (مفردات غير مدعومة {n})، يرجى تحديث التطبيق"
   },
   "part": {
    "found.needs": "يحتاج {list}",
@@ -169,7 +170,8 @@ export const LANGUAGES: Record<string, Language> = {
    "ack.other": "Antwort auf #{ref}",
    "text": "Nachricht",
    "unknown": "Nachricht eines neueren Typs, bitte App aktualisieren",
-   "unknown_dict": "Nachricht mit einem Wörterbuch, das diese App nicht hat (Wörterbuch {n}), bitte App aktualisieren"
+   "unknown_dict": "Nachricht mit einem Wörterbuch, das diese App nicht hat (Wörterbuch {n}), bitte App aktualisieren",
+   "unknown_vocab": "Nachricht mit einem Team-Vokabular, das diese App nicht hat (nicht unterstütztes Vokabular {n}), bitte App aktualisieren"
   },
   "part": {
    "found.needs": "braucht {list}",
@@ -308,7 +310,8 @@ export const LANGUAGES: Record<string, Language> = {
    "ack.other": "Answer to #{ref}",
    "text": "Message",
    "unknown": "Message of a newer type, please update the app",
-   "unknown_dict": "Message encoded with a dictionary this app does not have (word dictionary {n}), please update the app"
+   "unknown_dict": "Message encoded with a dictionary this app does not have (word dictionary {n}), please update the app",
+   "unknown_vocab": "Message encoded with a team vocabulary this app does not have (unsupported vocabulary {n}), please update the app"
   },
   "part": {
    "found.needs": "needs {list}",
@@ -448,7 +451,8 @@ export const LANGUAGES: Record<string, Language> = {
    "ack.other": "#{ref} için yanıt",
    "text": "Mesaj",
    "unknown": "Daha yeni türde mesaj, lütfen uygulamayı güncelleyin",
-   "unknown_dict": "Bu uygulamada olmayan bir sözlükle kodlanmış mesaj (sözlük {n}), lütfen uygulamayı güncelleyin"
+   "unknown_dict": "Bu uygulamada olmayan bir sözlükle kodlanmış mesaj (sözlük {n}), lütfen uygulamayı güncelleyin",
+   "unknown_vocab": "Bu uygulamada olmayan bir ekip sözlüğüyle kodlanmış mesaj (desteklenmeyen sözlük {n}), lütfen uygulamayı güncelleyin"
   },
   "part": {
    "found.needs": "gerekli: {list}",
@@ -588,7 +592,8 @@ export const LANGUAGES: Record<string, Language> = {
    "ack.other": "Відповідь на #{ref}",
    "text": "Повідомлення",
    "unknown": "Повідомлення нового типу, оновіть застосунок",
-   "unknown_dict": "Повідомлення закодоване словником, якого немає в цьому застосунку (словник {n}), оновіть застосунок"
+   "unknown_dict": "Повідомлення закодоване словником, якого немає в цьому застосунку (словник {n}), оновіть застосунок",
+   "unknown_vocab": "Повідомлення закодоване командним словником, якого немає в цьому застосунку (непідтримуваний словник {n}), оновіть застосунок"
   },
   "part": {
    "found.needs": "потрібно: {list}",

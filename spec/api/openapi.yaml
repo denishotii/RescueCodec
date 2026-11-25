@@ -69,6 +69,16 @@ info:
     with a word dictionary this gateway does not have is a record of type `unknown` with `message.unknown.words`
     and the readable line "Message encoded with a dictionary this app does not have".
 
+    **Team vocabularies** (SPEC section 3.8, with `--compact-text on`). The gateway also builds the domain frames
+    (first byte `0x03`: 10-bit codes from a small vocabulary for Emergency, Search & Rescue, Firefighting,
+    Hiking / Mountain or Medical) and sends the strictly smallest form. `--vocabulary auto` (default) tries every
+    vocabulary, `general` none, a domain (`sar`, ...) only that one; never larger than the normal text.
+    `GET /v2/health` shows `vocabulary` and `vocabularies`. A record of a domain frame has `codec.form: domain`,
+    `codec.vocab` (`sar`), `codec.vocab_label` (`S&R`, for a tag like "compact · S&R · 9 B") and
+    `message.text.vocab` (the id). Receiving works for every vocabulary, whatever the flags say. A vocabulary
+    this gateway does not have is a record of type `unknown` with `message.unknown.vocab` and the readable line
+    "Message encoded with a team vocabulary this app does not have (unsupported vocabulary n)".
+
     **Text limits.** A chat that packs (`send_as: compressed`) takes up to 400 bytes of UTF-8; the packet stays at most
     200 bytes, and a text that does not fit one packet is cut to the longest prefix that fits and ends with "…". Any
     other chat takes up to 180 bytes (`GET /v2/health` -> `text_limits`). There is no multipart message.
@@ -140,9 +150,10 @@ paths:
         Meshtastic text (port 1, TEXT_MESSAGE_APP, only the words), as the chat's text mode says (see "Packed texts"
         above and `GET /v2/channels/{name}/mode`). Both use the same queue, priority, airtime budget and `want_ack`.
         A normal text record has `codec.version: 0` and no `key`; a packed one has `codec.packed: true` and
-        `codec.form` (`deflate`, `words` or `lean` = compact frame 0x02, SPEC 3.7, which has no id and so no `key`).
-        A `dict` or `words` in the text body is ignored: the chat's mode and
-        `--compact-text` decide. The words may be up to 400 bytes in a chat that packs, else 180 (see "Text limits").
+        `codec.form` (`deflate`, `words`, `lean` = compact frame 0x02, SPEC 3.7, or `domain` = domain frame 0x03 with
+        `codec.vocab`, SPEC 3.8; both frames have no id and so no `key`).
+        A `dict`, `words` or `vocab` in the text body is ignored: the chat's mode, `--compact-text` and
+        `--vocabulary` decide. The words may be up to 400 bytes in a chat that packs, else 180 (see "Text limits").
         With `dry_run: true` nothing is sent; you get the record as it would be queued.
         `channel` picks a channel by name (one of `GET /v2/health` -> `radio.channels`); without it the message goes
         out on the default channel. Reports never go out on a public channel. `to` makes a text a direct message to
@@ -603,9 +614,10 @@ paths:
         - `text_bytes`: bytes on air for the same words sent as a plain text.
         - `fields`: the facts of the report as short labels in English and German (chips in a UI). Empty for a text.
         - With `channel` or `to`: `send_as` and `max_text_bytes` of that chat (400 when it packs, else 180), and for a
-          text `form` (`plain`, `deflate`, `words` or `lean`), `cut` (it will be shortened to fit one radio message)
-          and `coded_bytes` of the form that would go out (with `--compact-text on` this can be `words` or `lean`, the
-          compact frame: "hello world" is 6 bytes).
+          text `form` (`plain`, `deflate`, `words`, `lean` or `domain`), `vocab` and `vocab_label` (the team
+          vocabulary of a domain frame, else null), `cut` (it will be shortened to fit one radio message) and
+          `coded_bytes` of the form that would go out (with `--compact-text on` this can be `words`, `lean`, the
+          compact frame: "hello world" is 6 bytes, or `domain`: "Check airway and breathing." is 9 bytes).
 
         Input is at most 1000 characters. Not limited by `--tx-per-minute`: nothing goes on air.
       requestBody:
@@ -780,9 +792,10 @@ components:
         unknown:
           type: object
           additionalProperties: false
-          description: "Body of a newer type this gateway does not know. `words` is set for a compact text whose word dictionary this gateway does not have (shown as \"dictionary this app does not have\", never as words)."
+          description: "Body of a newer type this gateway does not know. `words` is set for a compact text whose word dictionary this gateway does not have (shown as \"dictionary this app does not have\", never as words). `vocab` is set for a domain frame whose team vocabulary this gateway does not have (shown as \"unsupported vocabulary\", never as words)."
           properties:
             words: { type: integer, minimum: 1 }
+            vocab: { type: integer, minimum: 0, maximum: 255 }
       oneOf:
         - required: [found]
         - required: [track]
@@ -896,6 +909,7 @@ components:
         text: { type: string, minLength: 1, description: "1..180 bytes of UTF-8. In a record of a plain Meshtastic text (`codec.version: 0`) up to 233 bytes, as the sender typed it. In a packed text up to 1024 bytes." }
         dict: { type: integer, minimum: 1, description: "Set when the words came or went packed (DEFLATE with text dictionary `dict`, SPEC section 3.5). The words are always unpacked here." }
         words: { type: integer, minimum: 1, description: "Set when the words came or went as a compact text (word tokens with word dictionary `words`, SPEC section 3.6, in the Envelope or as a compact frame 0x02, section 3.7; `codec.form` tells which). The words are always decoded here, exactly as typed." }
+        vocab: { type: integer, minimum: 1, maximum: 255, description: "Set when the words came or went as a domain frame 0x03 (SPEC section 3.8): the team vocabulary id (1 emergency, 2 sar, 3 fire, 4 hiking, 5 medical; `codec.vocab` has the name). The words are always decoded here, exactly as typed. Not accepted when sending (the gateway decides)." }
     Text2:
       type: object
       description: The message as one readable line, built from the spec templates.
@@ -973,8 +987,11 @@ components:
               description: "2 = RescueCodec v2, 1 = v1. 0 = a plain Meshtastic text (port 1, TEXT_MESSAGE_APP), not a RescueCodec packet: `hex` is the UTF-8 text, `type` is `text`, there is no id and no task, and a received one can be up to 233 bytes. A UI can show it with a small \"via Meshtastic\" hint."
             size: { type: integer, description: "Payload bytes (measured)." }
             hex: { type: string }
-            packed: { type: boolean, description: "Present and true for a packed text (DEFLATE with the shared dictionary, or compact word tokens). `message.text.text` holds the unpacked words." }
-            form: { type: string, enum: [deflate, words, lean], description: "With packed: deflate (SPEC 3.5), words (word tokens in the Envelope, SPEC 3.6) or lean (compact frame 0x02 without Envelope or id, SPEC 3.7)." }
+            packed: { type: boolean, description: "Present and true for a packed text (DEFLATE with the shared dictionary, compact word tokens or a domain frame). `message.text.text` holds the unpacked words." }
+            form: { type: string, enum: [deflate, words, lean, domain], description: "With packed: deflate (SPEC 3.5), words (word tokens in the Envelope, SPEC 3.6), lean (compact frame 0x02 without Envelope or id, SPEC 3.7) or domain (domain frame 0x03 with a team vocabulary, no Envelope or id, SPEC 3.8; also set for a domain frame whose vocabulary this gateway does not have)." }
+            vocab: { type: [string, "null"], enum: [emergency, sar, fire, hiking, medical, null], description: "form domain: the team vocabulary, null when this gateway does not have it." }
+            vocab_id: { type: integer, minimum: 0, maximum: 255, description: "form domain: the vocabulary id on the air (the byte after 0x03)." }
+            vocab_label: { type: [string, "null"], description: "form domain: short name for a tag, e.g. S&R, Fire, Medical." }
         radio:
           type: [object, "null"]
           description: Radio facts for received packets (measured). Null for outgoing records.
@@ -1139,6 +1156,22 @@ components:
           properties:
             connected: { type: boolean }
         compact_text: { type: boolean, description: "--compact-text: chats that pack may send compact word-token texts (SPEC section 3.6)." }
+        vocabulary: { type: string, enum: [auto, general, emergency, sar, fire, hiking, medical], description: "--vocabulary: the team vocabulary for compact texts (SPEC 3.8). auto = try every domain frame, general = none, a domain = only that one." }
+        vocabularies:
+          type: array
+          description: "The team vocabularies this gateway has. Every one is bundled, so receiving always works."
+          items:
+            type: object
+            required: [id, domain, label, short, version, bits, entries, available]
+            properties:
+              id: { type: integer, description: "Vocabulary id on the air (byte after 0x03)." }
+              domain: { type: string, example: sar }
+              label: { type: string, example: Search & Rescue }
+              short: { type: string, example: S&R }
+              version: { type: integer }
+              bits: { type: integer, description: "Code width N (10 for every vocabulary of version 1)." }
+              entries: { type: integer, description: "2^N - 8." }
+              available: { type: boolean, description: "The bundled file matches its SHA-256 (and word dictionary 2 does)." }
         text_limits:
           type: object
           description: "Bytes of UTF-8 a sent text may have: `text` in a chat that does not pack, `packed` in one that packs."
@@ -1179,7 +1212,9 @@ components:
         text_bytes: { type: integer, description: "Bytes on air for the same words as a plain text." }
         send_as: { type: string, enum: [compressed, normal], description: "Only with channel or to: how a text goes out in that chat." }
         max_text_bytes: { type: integer, enum: [180, 400], description: "Only with channel or to: the text limit of that chat." }
-        form: { type: string, enum: [plain, deflate, words, lean], description: "Only for a text with channel or to: the form that would go out (lean = compact frame, SPEC 3.7)." }
+        form: { type: string, enum: [plain, deflate, words, lean, domain], description: "Only for a text with channel or to: the form that would go out (lean = compact frame, SPEC 3.7; domain = domain frame, SPEC 3.8)." }
+        vocab: { type: [string, "null"], description: "Only for a text with channel or to: the team vocabulary of a domain frame (e.g. sar), else null." }
+        vocab_label: { type: [string, "null"], description: "Only for a text with channel or to: its short name for a tag (e.g. S&R), else null." }
         cut: { type: boolean, description: "Only for a text with channel or to: the text is too long and will be cut to fit one radio message." }
     StreamEvent:
       type: object

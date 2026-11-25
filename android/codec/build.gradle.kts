@@ -48,11 +48,13 @@ tasks.processResources {
         include("*.json")
         into("rescuecodec/i18n")
     }
-    // Preset dictionaries for packed texts (spec section 3.5) and word dictionaries for compact texts (section 3.6).
-    // Copied byte for byte, the same files the gateway reads; each is checked by its SHA-256 when loaded.
+    // Preset dictionaries for packed texts (spec section 3.5), word dictionaries for compact texts (section 3.6) and
+    // the team vocabularies of domain frames (section 3.8). Copied byte for byte, the same files the gateway reads;
+    // each is checked by its SHA-256 when loaded (and by TextDomainTest against spec/vocab/domains.yaml).
     from(specDir.dir("vocab")) {
         include("text-dict-v*.txt")
         include("words-dict-v*.txt")
+        include("domain-*-v*.txt")
         into("rescuecodec/vocab")
     }
 }

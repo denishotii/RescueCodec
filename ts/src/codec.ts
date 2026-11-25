@@ -9,6 +9,7 @@ import { MAX_UNPACKED_BYTES, PackError, knownDict, packText, unpackText } from "
 import {
   CURRENT_WORD_DICT, MAX_WORDS_TEXT_BYTES, WORD_DICTS, WordsError, decodeWords, encodeWords, wordDictAvailable,
 } from "./textwords.js";
+import { VOCABS, decodeDomainStream, domainVocabAvailable, encodeDomainStream, vocabId } from "./textdomain.js";
 import type { RescueMessage } from "./types.js";
 
 type Obj = Record<string, unknown>;
@@ -263,7 +264,11 @@ function buildAck(b0: unknown): Body {
 }
 
 function buildText(b0: unknown): Body {
-  const b = checkKeys(b0, ["text", "dict", "words"], "text");
+  const b = checkKeys(b0, ["text", "dict", "words", "vocab"], "text");
+  if ("vocab" in b) {
+    // A domain frame (0x03, spec section 3.8) has no Envelope form: encodeDomain builds it.
+    throw err("invalid_value", "a text with a team vocabulary goes in a domain frame (encodeDomain), not in an Envelope", "text.vocab");
+  }
   if ("dict" in b && !knownDict(int(b.dict, "text.dict", 1, 0xffffffff))) {
     throw err("invalid_value", "unknown dictionary, known: [1]", "text.dict");
   }
@@ -727,5 +732,72 @@ export function decodeCompact(data: Uint8Array): RescueMessage {
   } catch (e) {
     if (e instanceof WordsError) throw err(e.code, e.message, "text.words");
     throw err("malformed", e instanceof Error ? e.message : String(e), "text.words");
+  }
+}
+
+// ------------------------------------------------------------------ domain frame (spec section 3.8)
+
+/** First byte of a domain frame: 0x03, the vocabulary id, the bit stream of N-bit codes. No Envelope, no id. */
+export const DOMAIN_FRAME = 0x03;
+
+/** True when the payload is a domain frame (first byte 0x03), not an Envelope. */
+export function isDomainFrame(data: Uint8Array): boolean {
+  return data.length > 0 && data[0] === DOMAIN_FRAME;
+}
+
+/**
+ * Text -> domain frame: 0x03, 1 byte vocabulary id, the bit stream. `vocab` is an id (1..5) or a domain name
+ * ("emergency", "sar", "fire", "hiking", "medical"). No id, no position, no time. Throws CodecError (missing_field for
+ * an empty text, invalid_value for an unknown vocabulary, too_large).
+ */
+export function encodeDomain(text: string, vocab: number | string): Uint8Array {
+  if (typeof text !== "string") throw err("invalid_value", "must be a string", "text.text");
+  if (!text) throw err("missing_field", "a domain frame needs a text", "text.text");
+  let vid: number | null;
+  try {
+    vid = vocabId(vocab);
+  } catch {
+    vid = null;
+  }
+  if (vid === null || !domainVocabAvailable(vid)) {
+    const known = Object.values(VOCABS).map((v) => `${v.id} ${v.domain}`).join(", ");
+    throw err("invalid_value", `unknown team vocabulary, known: ${known}`, "text.vocab");
+  }
+  if (hasLoneSurrogate(text)) throw err("invalid_value", "must be valid Unicode", "text.text");
+  let stream: Uint8Array;
+  try {
+    stream = encodeDomainStream(text, vid);
+  } catch (e) {
+    if (e instanceof WordsError) throw err(e.code, e.message, "text.text");
+    throw e;
+  }
+  const data = new Uint8Array(2 + stream.length);
+  data[0] = DOMAIN_FRAME;
+  data[1] = vid;
+  data.set(stream, 2);
+  if (data.length > C.MAX_ENCODE_BYTES) {
+    throw err("too_large", `${data.length} bytes, the limit is ${C.MAX_ENCODE_BYTES}`);
+  }
+  return data;
+}
+
+/**
+ * Domain frame -> canonical JSON `{text: {text, vocab: id}}` (no id). A vocabulary this library does not have (ids 0
+ * and 6..255 today, or a copy that fails the SHA-256 check) gives `{unknown: {vocab: id}}`, shown as "unsupported
+ * vocabulary", never as words. Throws CodecError (malformed, too_large).
+ */
+export function decodeDomain(data: Uint8Array): RescueMessage {
+  if (data.length === 0 || data[0] !== DOMAIN_FRAME) throw err("unsupported_version", "not a domain frame");
+  if (data.length > C.MAX_DECODE_BYTES) {
+    throw err("too_large", `${data.length} bytes, the limit is ${C.MAX_DECODE_BYTES}`);
+  }
+  if (data.length < 2) throw err("malformed", "the domain frame is cut off (no vocabulary id)", "text.vocab");
+  const vid = data[1];
+  if (!Object.hasOwn(VOCABS, vid) || !domainVocabAvailable(vid)) return { unknown: { vocab: vid } };
+  try {
+    return { text: { text: decodeDomainStream(data.subarray(2), vid), vocab: vid } };
+  } catch (e) {
+    if (e instanceof WordsError) throw err(e.code, e.message, "text.vocab");
+    throw err("malformed", e instanceof Error ? e.message : String(e), "text.vocab");
   }
 }

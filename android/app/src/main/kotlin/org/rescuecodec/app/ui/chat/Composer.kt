@@ -193,14 +193,16 @@ private fun TooLongNote() {
 }
 
 /**
- * "105 bytes as text → 23 bytes sent", in green. For a text how it goes (spec sections 2.3 and 3.6): "Compressed for
- * RescueCodec · 39 B instead of 81 B", "Compact words · 58 B (as text 151 B)" or "Normal Meshtastic text · readable by
- * everyone".
+ * "105 bytes as text → 23 bytes sent", in green. For a text how it goes (spec sections 2.3, 3.6 and 3.8): "Compressed
+ * for RescueCodec · 39 B instead of 81 B", "Compact words · 58 B (as text 151 B)", "Compact words · Medical · 19 B
+ * (as text 64 B)" (a team vocabulary) or "Normal Meshtastic text · readable by everyone".
  */
 @Composable
 private fun ByteLine(ui: ReportUi, text: Boolean) {
     if (ui.sentBytes <= 0) return
     val line = when {
+        text && ui.packed && ui.textForm == TextMode.FORM_DOMAIN && ui.textVocab != null ->
+            stringResource(R.string.text_mode_vocab, org.rescuecodec.app.ui.components.VocabLabels.short(ui.textVocab), ui.sentBytes, ui.plainBytes)
         text && ui.packed && (ui.textForm == TextMode.FORM_WORDS || ui.textForm == TextMode.FORM_LEAN) ->
             stringResource(R.string.text_mode_words, ui.sentBytes, ui.plainBytes)
         text && ui.packed -> stringResource(R.string.text_mode_packed, ui.sentBytes, ui.plainBytes)

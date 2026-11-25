@@ -254,7 +254,8 @@ class Messenger(
      * chat's mode and the people in it allow it and it saves at least 3 bytes (spec section 2.3), else a normal
      * Meshtastic text. A packed text keeps its id and position, like any RescueCodec message. With
      * [AppSettings.compactText] on, a chat that packs sends the strictly smallest form: often a compact frame (0x02,
-     * word tokens without an Envelope or id, spec section 3.7; "hello world" is 6 bytes).
+     * word tokens without an Envelope or id, spec section 3.7; "hello world" is 6 bytes) or a domain frame of a team
+     * vocabulary (0x03, spec section 3.8; [AppSettings.teamVocabulary] picks which ones are tried).
      * A chat that packs takes up to 400 bytes of text, cut to fit one packet ([TextFit.fitPacked]); a normal chat 180.
      */
     private suspend fun submitText(input: Map<String, Any?>, source: String, channel: String?, peer: Long?): SubmitResult {
@@ -271,7 +272,7 @@ class Messenger(
         if (!wish.packed) return submitPlain(input, channel, peer)
         val message = LinkedHashMap(input)
         if ((message["id"] as? Number)?.toInt().let { it == null || it == 0 }) message["id"] = settings.nextMessageId()
-        val form = TextMode.chooseForm(message, true, wish.reason, compact = settings.compactText)
+        val form = TextMode.chooseForm(message, true, wish.reason, compact = settings.compactText, vocab = settings.teamVocabulary)
         if (!form.packed) return submitPlain(input, channel, peer, form.text)
         val msgId = (form.message["id"] as? Number)?.toInt() ?: 0
         return mutex.withLock {
@@ -294,7 +295,7 @@ class Messenger(
     suspend fun textForm(message: Map<String, Any?>, channel: String?, peer: Long?): TextMode.Form {
         val wish = textWish(channel, peer)
         val probe = if (message["id"] == null) LinkedHashMap(message).also { it["id"] = ID_PROBE } else message
-        return TextMode.chooseForm(probe, wish.packed, wish.reason, compact = settings.compactText)
+        return TextMode.chooseForm(probe, wish.packed, wish.reason, compact = settings.compactText, vocab = settings.teamVocabulary)
     }
 
     /** Whether a text to [channel] (null: the team channel) or [peer] goes packed, and why (spec section 2.3). */
@@ -751,8 +752,9 @@ class Messenger(
         val type = RescueCodec.messageType(canonical)
         val outcome = tracker.onReceived(from, canonical)
         val duplicate = when {
-            // A compact frame (0x02) has no id: like a normal text, the Meshtastic packet id finds repeats.
-            RescueCodec.isCompactFrame(bytes) -> textSeenBefore(from, p.id.toLong() and 0xFFFFFFFFL, bytes, now)
+            // A compact frame (0x02) or a domain frame (0x03) has no id: like a normal text, the Meshtastic packet id
+            // finds repeats.
+            RescueCodec.isCompactFrame(bytes) || RescueCodec.isDomainFrame(bytes) -> textSeenBefore(from, p.id.toLong() and 0xFFFFFFFFL, bytes, now)
             outcome == Outcome.DUPLICATE -> true
             outcome == Outcome.IGNORED -> canonical["ack"] != null || (RequestTracker.taskType(canonical) == null && tracker.isDuplicatePayload(from, bytes))
             else -> false
@@ -889,7 +891,7 @@ class Messenger(
             for (row in messages.replaySince(since)) {
                 val msg = Json.parseObject(row.json ?: continue)
                 replayAt = row.atMs
-                if (row.dir == "in" && (MeshText.isPlain(row) || MeshText.isCompactFrame(row))) {
+                if (row.dir == "in" && (MeshText.isPlain(row) || MeshText.isCompactFrame(row) || MeshText.isDomainFrame(row))) {
                     textSeenBefore(row.node, row.packetId ?: 0L, row.bytes, row.atMs)
                     continue
                 }

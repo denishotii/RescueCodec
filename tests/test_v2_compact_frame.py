@@ -148,9 +148,12 @@ class SendRule(unittest.TestCase):
 
     def test_priority_is_kept_locally(self):
         form = choose_form({"id": 3, "priority": "urgent", "text": {"text": "we need water now"}}, True, "x",
-                           compact=True)
+                           compact=True, vocab="general")
         self.assertEqual(form.form, "lean")
         self.assertEqual(form.message["priority"], "urgent")
+        form = choose_form({"id": 3, "priority": "urgent", "text": {"text": "we need water now"}}, True, "x",
+                           compact=True)                 # a team vocabulary saves a byte here: a domain frame
+        self.assertEqual((form.form, form.message["priority"]), ("domain", "urgent"))
 
 
 if __name__ == "__main__":

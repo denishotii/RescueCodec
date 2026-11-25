@@ -2,6 +2,7 @@
 package org.rescuecodec.app.core
 
 import org.rescuecodec.app.data.MessageEntity
+import org.rescuecodec.codec.TextDomain
 
 /**
  * Normal Meshtastic texts (port 1, `TEXT_MESSAGE_APP`), as the official app and radio screens send and show them
@@ -36,17 +37,31 @@ object MeshText {
      */
     fun compactDict(row: MessageEntity): Int? = (textKey(row, "words") as? Number)?.toInt()
 
+    /**
+     * The team vocabulary id of a domain frame text (0x03, spec section 3.8), or null for any other row. The stored
+     * JSON keeps the decoded words and `"vocab": 5`.
+     */
+    fun domainVocab(row: MessageEntity): Int? = (textKey(row, "vocab") as? Number)?.toInt()
+
+    /** The team vocabulary of a domain frame text (its name and labels), or null for any other row. */
+    fun vocabOf(row: MessageEntity): TextDomain.Vocab? = domainVocab(row)?.let { TextDomain.VOCABS[it] }
+
+    /** True for a domain frame (first byte 0x03, spec section 3.8), also one with a vocabulary this app does not have. */
+    fun isDomainFrame(row: MessageEntity): Boolean =
+        !isPlain(row) && row.bytes.isNotEmpty() && (row.bytes[0].toInt() and 0xFF) == org.rescuecodec.codec.RescueCodec.DOMAIN_FRAME
+
     /** True for a compact frame (first byte 0x02, spec section 3.7): the word stream without an Envelope or id. */
     fun isCompactFrame(row: MessageEntity): Boolean =
         !isPlain(row) && row.bytes.isNotEmpty() && (row.bytes[0].toInt() and 0xFF) == org.rescuecodec.codec.RescueCodec.COMPACT_FRAME
 
     /**
      * The small tag of a text that went packed for RescueCodec: [TAG_COMPACT] (word tokens, in the Envelope or as a
-     * compact frame) or [TAG_PACKED] (DEFLATE); null for a plain Meshtastic text and for reports (they get no tag).
+     * compact frame, or a domain frame; [vocabOf] names its vocabulary) or [TAG_PACKED] (DEFLATE); null for a plain
+     * Meshtastic text and for reports (they get no tag).
      */
     fun tagOf(row: MessageEntity): String? = when {
         isPlain(row) || row.type != "text" -> null
-        compactDict(row) != null -> TAG_COMPACT
+        compactDict(row) != null || domainVocab(row) != null -> TAG_COMPACT
         isPacked(row) -> TAG_PACKED
         else -> null
     }
