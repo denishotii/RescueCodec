@@ -66,7 +66,7 @@ fun ChatListScreen(vm: ChatListViewModel, lang: String, onOpen: (ChatId) -> Unit
     var picking by remember { mutableStateOf(false) }
     val list = chats ?: return
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
-        LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag("chat_list_screen"), contentPadding = PaddingValues(bottom = 8.dp)) {
+        LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag("chat_list_screen"), contentPadding = PaddingValues(bottom = 88.dp)) {
             items(list, key = { it.id.key }) { s ->
                 ChatListRow(s, lang) { onOpen(s.id) }
                 Hairline(Modifier.padding(start = 76.dp))
@@ -157,7 +157,8 @@ private fun preview(m: MessageEntity?, lang: String): String {
         m.type in CARD_TYPES -> Labels.head(lang, m.type)
         else -> wordsOf(m, lang).orEmpty()
     }
-    return (if (m.dir == "out") stringResource(R.string.chat_you) else "") + words.replace('\n', ' ')
+    val line = words.replace('\n', ' ')
+    return if (m.dir == "out") stringResource(R.string.chat_you, line) else line
 }
 
 /** "14:05" today, else "24.11". */

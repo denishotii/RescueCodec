@@ -372,7 +372,7 @@
     <string name="chat_no_nodes">Das Funkgerät kennt noch keine anderen Funkgeräte. Verbinden und kurz warten.</string>
     <string name="chat_direct_hint">Direktnachricht. Nur Text. Meldungen und SOS gehen an den Team-Kanal.</string>
     <string name="chat_public_hint">Öffentlicher Kanal. Jeder kann mitlesen. Nur Text, keine Meldungen.</string>
-    <string name="chat_you">Du: </string>
+    <string name="chat_you">Du: %1$s</string>
     <string name="chat_mayday_open">Offener Mayday</string>
     <string name="chat_unread">%1$d ungelesen</string>
     <string name="chat_team_pinned">Team-Kanal</string>

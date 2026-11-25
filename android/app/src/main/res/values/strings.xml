@@ -372,7 +372,7 @@
     <string name="chat_no_nodes">The radio has not told us about other radios yet. Connect and wait a moment.</string>
     <string name="chat_direct_hint">Direct message. Text only. Reports and SOS go to the team channel.</string>
     <string name="chat_public_hint">Public channel. Anyone can read it. Text only, no reports.</string>
-    <string name="chat_you">You: </string>
+    <string name="chat_you">You: %1$s</string>
     <string name="chat_mayday_open">Open Mayday</string>
     <string name="chat_unread">%1$d unread</string>
     <string name="chat_team_pinned">Team channel</string>

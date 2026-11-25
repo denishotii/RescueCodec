@@ -250,8 +250,8 @@ private fun RescueScaffold(
                     Screen.RADIO -> ConnectScreen(connection, snackbar)
                     Screen.SETTINGS -> SettingsScreen(settings, connection, lang)
                 }
-                // SOS is always one hold away: in the composer on Team, at the bottom left everywhere else.
-                if (current != Screen.TEAM && !imeUp) SosDock(onSos, Modifier.align(Alignment.BottomStart))
+                // SOS is always one hold away: in the composer of a chat, at the bottom left everywhere else (chat list too).
+                if ((current != Screen.TEAM || chat == null) && !imeUp) SosDock(onSos, Modifier.align(Alignment.BottomStart))
             }
         }
     }
