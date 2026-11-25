@@ -79,6 +79,10 @@ class Behaviour(unittest.TestCase):
     def test_mayday_wins(self):
         self.assertEqual(extract("Mayday, Kind gefunden").type, "mayday")
 
+    def test_words_of_both_languages_do_not_pick_the_language(self):
+        self.assertEqual(extract("Mayday, Kollege abgestürzt").lang, "de")     # "mayday" is in both lists
+        self.assertEqual(extract("SOS").lang, "en")                             # nothing else: as before
+
     def test_sector_needs_number_and_status(self):
         self.assertEqual(extract("Sector 3 cleared").message, {"sector": {"sector": 3, "status": "cleared"}})
         self.assertTrue(extract("Sector 3").unsupported)

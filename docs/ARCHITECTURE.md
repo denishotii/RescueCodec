@@ -51,7 +51,7 @@ Four decisions shape everything:
 
 ### Spec (`spec/`)
 
-The spec is a folder you can copy. `SPEC.md` is the text. `rescuecodec/v2/rescuecodec.proto` is the one wire definition. `vocab/sar.yaml` holds the words the extractor knows (German and English). `i18n/*.json` holds the words for readable text. `vectors/` holds test cases: valid and invalid messages with exact bytes, readable text, and 70 extraction sentences. `api/openapi.yaml` describes the gateway. A new library is finished when it passes the vectors (SPEC section 12).
+The spec is a folder you can copy. `SPEC.md` is the text. `rescuecodec/v2/rescuecodec.proto` is the one wire definition. `vocab/sar.yaml` holds the words the extractor knows (German and English). `i18n/*.json` holds the words for readable text. `vectors/` holds test cases: valid and invalid messages with exact bytes, readable text, and 73 extraction sentences. `api/openapi.yaml` describes the gateway. A new library is finished when it passes the vectors (SPEC section 12).
 
 ### Engine
 

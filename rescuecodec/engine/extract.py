@@ -248,8 +248,14 @@ class _Run:
     def _language(self, hint: str | None) -> str:
         if hint in ("de", "en"):
             return hint
-        de = sum(1 for m in self.matches if m.lang == "de")
-        en = sum(1 for m in self.matches if m.lang == "en")
+        # words listed in both languages ("mayday", "sos", "gps") count only when there is nothing else
+        listed = {"de": set(), "en": set()}
+        for p in self.voc.phrases:
+            listed.get(p.lang, set()).add(p.tokens)
+        both = listed["de"] & listed["en"]
+        mine = [m for m in self.matches if tuple(self.tokens[m.start:m.end]) not in both] or self.matches
+        de = sum(1 for m in mine if m.lang == "de")
+        en = sum(1 for m in mine if m.lang == "en")
         return "de" if de > en else "en" if en > de else "unknown"
 
     # --- helpers over matches

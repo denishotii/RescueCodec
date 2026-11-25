@@ -366,7 +366,7 @@ Any other move is an `invalid_transition` error. A valid move produces an Ack to
 | `spec/vocab/sar.yaml` | Codes, meanings, German and English words |
 | `spec/i18n/{en,de,uk,tr,ar}.json` | Words for readable text (uk, tr, ar are machine drafts) |
 | `spec/vectors/codec.json` | 113 conformance cases (42 valid, 7 decode-only, 59 invalid, 5 v1) |
-| `spec/vectors/extraction.json` | 70 extraction sentences |
+| `spec/vectors/extraction.json` | 73 extraction sentences |
 | `spec/api/openapi.yaml` | Gateway REST and WebSocket API |
 | `spec/tools/gen_vectors.py` | Regenerates `codec.json` from the reference |
 | `rescuecodec/v2/` | Python reference library |
