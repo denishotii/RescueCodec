@@ -50,8 +50,7 @@ export function SendPanel() {
 
   // live preview: ask the gateway what this sentence sends, after a short pause in typing
   useEffect(() => {
-    if (!words) { setReading(false); return; }
-    if (preview?.words === words) return;
+    if (!words || preview?.words === words) { setReading(false); return; }
     setReading(true);
     const ctl = new AbortController();
     const id = setTimeout(() => {

@@ -396,6 +396,9 @@ html[data-room="on"] .report-radio, html[data-room="on"] .node-sub, html[data-ro
   .board > .slot-map { display: flex; flex: none; height: 40vh; order: -1; }
   .app[data-tab="map"] .board > .slot-map { flex: 1 1 0; height: auto; }
   .mobile-action { display: flex; }
+  /* the Reports tab scrolls as one: the feed keeps its room, the Send panel follows below it */
+  .board > .slot-feed { overflow-y: auto; overscroll-behavior: contain; }
+  .slot-feed > .panel-feed { flex: none; height: 62vh; }
 }
 .mobile-action { display: none; align-items: center; gap: var(--sp-3); padding: var(--sp-2) var(--sp-3); background: var(--surface); border-top: 2px solid var(--open-solid); flex: none; position: sticky; bottom: 0; z-index: 10; }
 .mobile-action p { flex: 1; min-width: 0; font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
