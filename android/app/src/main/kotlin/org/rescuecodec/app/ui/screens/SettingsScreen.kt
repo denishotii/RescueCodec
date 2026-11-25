@@ -196,7 +196,7 @@ fun SettingsScreen(vm: SettingsViewModel, connection: ConnectionViewModel, lang:
                 BigButton(stringResource(R.string.set_licences), { licences = true }, Modifier.fillMaxWidth().testTag("licences_button"), outlined = true)
             }
         }
-        Spacer(Modifier.height(88.dp)) // room for the SOS button
+        Spacer(Modifier.height(16.dp))
     }
     if (licences) LicencesDialog { licences = false }
 }

@@ -78,7 +78,7 @@ import org.rescuecodec.app.core.TeamAlerts
 import org.rescuecodec.app.ui.chat.ChatListScreen
 import org.rescuecodec.app.ui.chat.ChatScreen
 import org.rescuecodec.app.ui.components.Hairline
-import org.rescuecodec.app.ui.components.SosDock
+import org.rescuecodec.app.ui.components.SosBar
 import org.rescuecodec.app.ui.components.StatusDot
 import org.rescuecodec.app.ui.screens.ConnectScreen
 import org.rescuecodec.app.ui.screens.MaydayBanner
@@ -241,6 +241,9 @@ private fun RescueScaffold(
     val content: @Composable (Modifier) -> Unit = { m ->
         Column(m) {
             MaydayBanner(tasksVm, tasks, waiting, lang) { go(Screen.TASKS) }
+            // SOS is always one hold away: in the composer of a chat, in a slim bar under every other screen, at the
+            // same bottom-left spot. The bar covers nothing.
+            val sosBar = (current != Screen.TEAM || chat == null) && !imeUp
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when (current) {
                     Screen.TEAM -> if (chat == null) ChatListScreen(chatList, lang, onOpen = { openChat = it.key })
@@ -250,9 +253,8 @@ private fun RescueScaffold(
                     Screen.RADIO -> ConnectScreen(connection, snackbar)
                     Screen.SETTINGS -> SettingsScreen(settings, connection, lang)
                 }
-                // SOS is always one hold away: in the composer of a chat, at the bottom left everywhere else (chat list too).
-                if ((current != Screen.TEAM || chat == null) && !imeUp) SosDock(onSos, Modifier.align(Alignment.BottomStart))
             }
+            if (sosBar) SosBar(onSos)
         }
     }
 

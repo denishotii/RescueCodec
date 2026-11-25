@@ -95,7 +95,7 @@ fun TasksScreen(vm: TasksViewModel, tasks: List<TaskItem>, snackbar: SnackbarHos
     val maydayColor = Rc.colors.maydayText
     LazyColumn(
         Modifier.fillMaxSize().background(Rc.colors.chatGround).testTag("actions_list"),
-        contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 88.dp),
+        contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         section(R.string.lane_mayday, mayday, maydayColor, lang, now, showChannel, onAnswer)

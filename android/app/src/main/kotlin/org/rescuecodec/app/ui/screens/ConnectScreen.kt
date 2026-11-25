@@ -205,7 +205,7 @@ fun ConnectScreen(vm: ConnectionViewModel, snackbar: SnackbarHostState) {
                 JoinPanel(vm, join, connected) { pasted = "" }
             }
         }
-        Spacer(Modifier.height(88.dp)) // room for the SOS button
+        Spacer(Modifier.height(16.dp))
     }
 
     if (scanner) {
