@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
-"""Builds .overnight/gallery/index.html: every screenshot in .overnight/gallery/ with a caption.
+"""Builds build/screenshots.html: every screenshot with a caption.
 
     python3 scripts/build_gallery.py
 
-Plain HTML with relative image links, no scripts, no network. Open the file in a browser.
+It shows docs/screenshots/app/, docs/screenshots/dashboard/ and, if it exists, the last end-to-end run in
+build/e2e/ (scripts/e2e-full.sh). Plain HTML with relative image links, no scripts, no network. Open the file
+in a browser. build/ is not in git.
 """
 from __future__ import annotations
 
 import html
+import os
 import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-GALLERY = ROOT / ".overnight" / "gallery"
+OUT = ROOT / "build" / "screenshots.html"
 
 # Captions for the end-to-end run (file name after "runN-NN-").
 E2E = {
@@ -41,7 +44,9 @@ E2E = {
     "app-back-from-background": "App back from the background: task list kept, link up",
     "app-after-restart-sent": "App: a new report after both restarts",
 }
-FOLDERS = [("e2e", "End-to-end run on the simulator"), ("app", "Android app screens"), ("dashboard", "Dashboard screens")]
+FOLDERS = [("app", ROOT / "docs" / "screenshots" / "app", "Android app screens"),
+           ("dashboard", ROOT / "docs" / "screenshots" / "dashboard", "Dashboard screens"),
+           ("e2e", ROOT / "build" / "e2e", "Last end-to-end run on the simulator")]
 
 
 def caption(folder: str, name: str) -> str:
@@ -62,15 +67,15 @@ def caption(folder: str, name: str) -> str:
 def main() -> None:
     parts = []
     total = 0
-    for folder, title in FOLDERS:
-        files = sorted((GALLERY / folder).glob("*.png")) if (GALLERY / folder).is_dir() else []
+    for folder, path, title in FOLDERS:
+        files = sorted(path.glob("*.png")) if path.is_dir() else []
         if not files:
             continue
         total += len(files)
         figs = []
         for f in files:
             cap = html.escape(caption(folder, f.name))
-            src = html.escape(f"{folder}/{f.name}")
+            src = html.escape(Path(os.path.relpath(f, OUT.parent)).as_posix())
             figs.append(f'<figure><a href="{src}"><img src="{src}" alt="{cap}" loading="lazy"></a><figcaption>{cap}<br><code>{html.escape(f.name)}</code></figcaption></figure>')
         parts.append(f"<h2>{html.escape(title)} ({len(files)})</h2>\n<div class=\"grid\">\n" + "\n".join(figs) + "\n</div>")
     page = f"""<!doctype html>
@@ -92,8 +97,9 @@ figcaption {{ font-size:14px; margin-top:6px; }} code {{ color:var(--mute); font
 {chr(10).join(parts)}
 </body></html>
 """
-    (GALLERY / "index.html").write_text(page, encoding="utf-8")
-    print(f"{GALLERY / 'index.html'}: {total} screenshots")
+    OUT.parent.mkdir(parents=True, exist_ok=True)
+    OUT.write_text(page, encoding="utf-8")
+    print(f"{OUT}: {total} screenshots")
 
 
 if __name__ == "__main__":

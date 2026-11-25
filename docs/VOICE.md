@@ -4,10 +4,10 @@ Both work with no internet.
 
 ## Speech to text (Vosk)
 
-The Report screen has a big mic button. Hold it, speak, let go. The words land in the text field, the fields are read from them, and a person checks the chips before pressing Send.
+In a chat, the mic button sits next to the message field while the field is empty. Hold it, speak, let go. The words land in the text field, the fields are read from them, and a person checks the chips before pressing Send.
 
 - Engine: Vosk 0.3.75 (`com.alphacephei:vosk-android`, Apache-2.0). It adds about 13 MB to the APK (native code for arm64, armv7 and x86_64).
-- Models: `vosk-model-small-de-0.15` (about 45 MB zipped, 50 MB unpacked) and `vosk-model-small-en-us-0.15` (40 MB zipped, 68 MB unpacked). Both Apache-2.0. They are in `assets-offline/vosk/` (see `OFFLINE.md`).
+- Models: `vosk-model-small-de-0.15` (about 45 MB zipped, 50 MB unpacked) and `vosk-model-small-en-us-0.15` (40 MB zipped, 68 MB unpacked). Both Apache-2.0. They are in `assets-offline/vosk/` (see `docs/OFFLINE.md`).
 - The app keeps one model in memory (roughly 100 to 300 MB of RAM while loaded). Changing the language in the app loads the other model.
 - The app reads the microphone itself (16 kHz mono), so the screen can draw the loudness rings and so letting go of the button ends the phrase at once.
 
@@ -37,7 +37,7 @@ Why not Play Asset Delivery or a download button? The phones are sideloaded and 
 
 ## Read aloud (Android TextToSpeech)
 
-Every card in the Feed has a "Read aloud" button (48 dp tall, with a label, not just an icon). It reads the decoded line in the language of the app.
+Every message in a chat has a speaker button, and a long press on a message offers **Read aloud**. It reads the decoded line in the language of the app.
 
 - `voice/Speaker.kt` uses `android.speech.tts.TextToSpeech`. It prefers an installed voice that does not need the network. If the phone has no voice for the language, the button shows a message ("No offline voice for German on this phone. The text stays on screen.") and the card keeps its large text. Nothing breaks.
 - Tested on the emulator: the Google engine speaks English and German with embedded (offline) voices.

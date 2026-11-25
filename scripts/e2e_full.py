@@ -13,7 +13,8 @@ Per run:
   5. App: a sentence the rules cannot code goes out as readable text.
   6. Gateway restart and app background/foreground: state persists, the connection recovers.
 
-Screenshots go to .overnight/gallery/e2e/, numbers to the results file (default: <tmp>/e2e-results.json).
+Screenshots go to build/e2e/ (not in git; set E2E_GALLERY for another folder, it is emptied at the start), numbers to
+the results file (default: <tmp>/e2e-results.json).
 """
 from __future__ import annotations
 
@@ -39,7 +40,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from e2e_gateway import CotWatcher, MqttWatcher, StreamWatcher, call, wait  # noqa: E402
 
 PKG = "org.rescuecodec.app"
-GALLERY = Path(os.environ.get("E2E_GALLERY") or ROOT / ".overnight" / "gallery" / "e2e")
+GALLERY = Path(os.environ.get("E2E_GALLERY") or ROOT / "build" / "e2e")
 API = "http://127.0.0.1:8000"
 PITCH = "Kind gefunden, ansprechbar, stark unterkühlt, Knöchel verletzt. Wir brauchen eine Trage und zwei Leute."
 # Sentences the rules cannot code. One per run: the gateway drops a text with the same sender and bytes seen in the last 10 minutes.
