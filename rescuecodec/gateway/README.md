@@ -12,6 +12,7 @@ rescuecodec-gateway --tcp 127.0.0.1:4404
 
 # A USB radio, for example a Heltec V3. "auto" finds /dev/cu.usbserial-* or /dev/cu.SLAB_USBtoUART*
 rescuecodec-gateway --serial auto
+rescuecodec-gateway --ble auto             # the radio over Bluetooth (e.g. a Heltec on a USB charger); or --ble <name or address>
 rescuecodec-gateway --serial /dev/cu.usbserial-0001      # if you have more than one
 
 # No radio at all: an in-memory mesh, with a pretend team that reports and accepts

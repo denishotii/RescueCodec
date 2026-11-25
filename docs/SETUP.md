@@ -193,6 +193,16 @@ Find this Mac's address with `ipconfig getifaddr en0`. On the other device open 
 
 ---
 
+## Base radio over Bluetooth (frees both USB ports)
+
+Power the Heltec from any USB charger or power bank, then start the gateway with `--ble` instead of `--serial`:
+
+```bash
+.venv/bin/rescuecodec-gateway --ble <name> --db demo.db --compact-text on
+```
+
+Use the radio's Bluetooth name (the Radio tab of the app shows it when scanning, for example `BASE_65b0`); `--ble auto` takes the first Meshtastic radio it finds, which in a busy hall may be someone else's. The first time, macOS asks whether the app may use Bluetooth (allow it) and the radio may ask for the PIN shown on its screen. Only one device can use a radio over Bluetooth at a time.
+
 ## Plan B: no radios (simulator and emulator, all on this Mac)
 
 Use this if the radios fail. Three real Meshtastic nodes run in Docker, and the Android emulator plays the phone. Start Docker Desktop first.

@@ -1,4 +1,4 @@
-"""Command line: rescuecodec-gateway --tcp localhost:4404 | --serial auto | --emulator"""
+"""Command line: rescuecodec-gateway --tcp localhost:4404 | --serial auto | --ble auto | --emulator"""
 from __future__ import annotations
 
 import argparse
@@ -26,6 +26,7 @@ def build_parser() -> argparse.ArgumentParser:
     radio = p.add_argument_group("radio (choose one)")
     radio.add_argument("--tcp", metavar="HOST:PORT", default=env("TCP"), help="Meshtastic over TCP: the simulator or a Wi-Fi radio (env TCP)")
     radio.add_argument("--serial", metavar="auto|PATH", default=env("SERIAL"), help="Meshtastic over USB, for example a Heltec V3. 'auto' finds /dev/cu.usbserial-* or /dev/cu.SLAB_USBtoUART* (env SERIAL)")
+    radio.add_argument("--ble", metavar="auto|NAME|ADDRESS", default=env("BLE"), help="Meshtastic over Bluetooth, for example a Heltec V3 on a USB charger. 'auto' takes the first Meshtastic radio found; else its Bluetooth name (e.g. Base_65b0) or address. The radio may ask for its PIN (shown on its screen) the first time (env BLE)")
     radio.add_argument("--emulator", action="store_true", default=env_flag("EMULATOR"), help="in-memory radio, no hardware (env EMULATOR=1)")
     radio.add_argument("--emulator-demo", action="store_true", default=env_flag("EMULATOR_DEMO"), help="with --emulator: a pretend team reports and accepts")
     radio.add_argument("--channel", type=int, default=int(env("CHANNEL")) if env("CHANNEL") is not None else None,
@@ -83,7 +84,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def config_from_args(args: argparse.Namespace) -> GatewayConfig:
     cfg = GatewayConfig(
-        tcp=args.tcp, serial=args.serial, emulator=args.emulator or args.emulator_demo, emulator_demo=args.emulator_demo,
+        tcp=args.tcp, serial=args.serial, ble=args.ble, emulator=args.emulator or args.emulator_demo, emulator_demo=args.emulator_demo,
         channel_index=args.channel, channel_name=args.channel_name, listen_channels=parse_channels(args.channels),
         show_public=bool(args.show_public), hop_limit=int(args.hop_limit) if args.hop_limit is not None else None,
         db_path=args.db, team=args.team, preset=args.preset, ack_timeout_s=args.ack_timeout,
@@ -106,6 +107,8 @@ def build_radio(cfg: GatewayConfig):
         return EmulatorRadio(demo=cfg.emulator_demo, **channels)
     if cfg.tcp:
         return MeshtasticRadio("tcp", cfg.tcp, channel_index=cfg.channel_index, **channels)
+    if cfg.ble:
+        return MeshtasticRadio("ble", cfg.ble, channel_index=cfg.channel_index, **channels)
     return MeshtasticRadio("serial", cfg.serial or "auto", channel_index=cfg.channel_index, **channels)
 
 
@@ -145,7 +148,7 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=cfg.log_level.upper(), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     import uvicorn
     app = build_app(cfg)
-    kind = "emulator" if cfg.emulator else f"tcp {cfg.tcp}" if cfg.tcp else f"serial {cfg.serial}"
+    kind = "emulator" if cfg.emulator else f"tcp {cfg.tcp}" if cfg.tcp else f"bluetooth {cfg.ble}" if cfg.ble else f"serial {cfg.serial}"
     logging.getLogger("rescuecodec.gateway").info("RescueCodec gateway %s, radio: %s, http://%s:%d/ (API docs at /docs)",
                                                   __version__, kind, cfg.host, cfg.http_port)
     uvicorn.run(app, host=cfg.host, port=cfg.http_port, log_level="warning")
