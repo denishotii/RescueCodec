@@ -1,6 +1,7 @@
 // Logic of the Send panel (the command post's composer), kept pure so it is unit tested.
 // Who to send to, what the preview says, and which API call a send becomes.
 import type { ExtractBody, ExtractResult, Health, MeshNode, RadioChannel, SendMessageBody, SendTextBody } from "../api/types";
+import { vocabName } from "./format";
 import { t, type Lang } from "./i18n";
 
 /** A channel (by name, like the gateway) or one person (a direct message to a node). */
@@ -130,7 +131,8 @@ export function previewView(text: string, preview: ExtractResult | null, plain: 
     // A text goes to /v2/text either way, so "plain text" ticked changes nothing: the gateway picked word tokens
     // (or a domain frame with a team vocabulary: "Compact words · S&R").
     const textBytes = preview.text_bytes > preview.coded_bytes ? preview.text_bytes : null;
-    const vocab = preview.form === "domain" ? preview.vocab_label : null;
+    // the vocabulary in the dashboard's language ("Medizin"), else the gateway's label
+    const vocab = preview.form === "domain" && preview.vocab_label ? vocabName(preview.vocab, lang) ?? preview.vocab_label : null;
     const head = vocab ? `${t(lang, "compactWords")} · ${vocab}` : t(lang, "compactWords");
     return { report: false, head, bytes: preview.coded_bytes, textBytes, chips: [] };
   }

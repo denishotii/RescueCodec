@@ -155,7 +155,18 @@ describe("card text", () => {
     expect(formTag(sar, "de")).toBe("kompakt · S&R · 9 B");
     const health = { vocabularies: [{ id: 2, domain: "sar", label: "Search & Rescue", short: "S&R", version: 1, bits: 10, entries: 1016, available: true }] } as any;
     expect(vocabTitle(sar, health, "en")).toBe("Team vocabulary: Search & Rescue (10-bit)");
-    expect(vocabTitle(sar, null, "de")).toBe("Team-Vokabular: S&R");
+    expect(vocabTitle(sar, null, "de")).toBe("Team-Vokabular: Suche & Rettung");
+    // names in the dashboard's language, like the app ("Medizin"); a domain it does not know keeps the gateway's label
+    const med = rec(5, {
+      codec: { version: 2, size: 19, hex: "", packed: true, form: "domain", vocab: "medical", vocab_id: 5, vocab_label: "Medical" },
+      message: { text: { text: "Apply a tourniquet.", vocab: 5 } },
+    });
+    expect(formTag(med, "en")).toBe("compact · Medical · 19 B");
+    expect(formTag(med, "de")).toBe("kompakt · Medizin · 19 B");
+    expect(vocabTitle(med, null, "de")).toBe("Team-Vokabular: Medizin / Erste Hilfe");
+    const newer = rec(6, { codec: { ...med.codec, vocab: "water" as any, vocab_id: 9, vocab_label: "Water" }, message: med.message });
+    expect(formTag(newer, "de")).toBe("kompakt · Water · 19 B");
+    expect(vocabTitle(newer, health, "de")).toBe("Team-Vokabular: Water");
     // other forms: no vocabulary in the tag
     const lean = rec(2, { codec: { version: 2, size: 6, hex: "", packed: true, form: "lean" }, message: { text: { text: "hello world", words: 2 } } });
     expect(formTag(lean, "en")).toBe("compact · 6 B");
@@ -171,5 +182,6 @@ describe("card text", () => {
     expect(codecForm(unknown)).toBe("compact");
     expect(vocabLabel(unknown)).toBeNull();
     expect(formTag(unknown, "en")).toBe("compact · 11 B");
+    expect(formTag(unknown, "de")).toBe("kompakt · 11 B");
   });
 });

@@ -59,6 +59,10 @@ const en = {
   mapNoWebgl: "Map needs WebGL2: open in Chrome/Safari with graphics acceleration.",
   radioConnected: "Radio connected", radioNotConnected: "Radio not connected", menu: "Menu", formCompact: "compact",
   teamVocabulary: "Team vocabulary",
+  // team vocabularies (spec 3.8): short name for tags, long name for tooltips; the same words as the app
+  vocabEmergency: "Emergency", vocabSar: "S&R", vocabFire: "Fire", vocabHiking: "Hiking", vocabMedical: "Medical",
+  vocabLongEmergency: "Emergency", vocabLongSar: "Search & Rescue", vocabLongFire: "Firefighting",
+  vocabLongHiking: "Hiking / Mountain", vocabLongMedical: "Medical / First aid",
 } as const;
 
 export type Key = keyof typeof en;
@@ -122,6 +126,9 @@ const de: Record<Key, string> = {
   mapNoWebgl: "Die Karte braucht WebGL2: in Chrome/Safari mit Grafikbeschleunigung öffnen.",
   radioConnected: "Funk verbunden", radioNotConnected: "Funk nicht verbunden", menu: "Menü", formCompact: "kompakt",
   teamVocabulary: "Team-Vokabular",
+  vocabEmergency: "Notfall", vocabSar: "S&R", vocabFire: "Feuer", vocabHiking: "Berg", vocabMedical: "Medizin",
+  vocabLongEmergency: "Notfall", vocabLongSar: "Suche & Rettung", vocabLongFire: "Feuerwehr",
+  vocabLongHiking: "Wandern / Berg", vocabLongMedical: "Medizin / Erste Hilfe",
 };
 
 export const dict: Record<Lang, Record<Key, string>> = { en, de };

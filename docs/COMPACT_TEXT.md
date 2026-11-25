@@ -95,7 +95,7 @@ First turn on compact text (see "Turn it on" above). Then:
 | **General** | no team list (the spec 2.2 forms only) |
 | One list, for example **Search & Rescue** ("pinned") | that list only, plus all the normal forms |
 
-**What you see.** The message tag names the list: "compact · S&R · 11 B" (app and dashboard feed). The composer line says "Compact words · Medical · 19 B (as text 64 B)"; the dashboard send line says "Sends as: Compact words · Medical · 19 B (as text 64 B)". Long-press → Details: "Domain frame (no envelope), team vocabulary Medical / First aid, 10-bit codes" and "Without the vocabulary: 38 B as a general compact frame".
+**What you see.** The message tag names the list: "compact · S&R · 11 B" (app and dashboard feed). The composer line says "Compact words · Medical · 19 B (as text 64 B)"; the dashboard send line says "Sends as: Compact words · Medical · 19 B (as text 64 B)". Long-press → Details: "Domain frame (no envelope), team vocabulary Medical / First aid, 10-bit codes" and "Without the vocabulary: 38 B as a general compact frame". In German the app and the dashboard both say "kompakt · Medizin · 19 B".
 
 **Libraries.** Python (`rescuecodec.v2.encode_domain`), Kotlin (`RescueCodec.encodeDomain`) and TypeScript (`encodeDomain(text, "sar")`) make identical bytes. All three pass the same 108 cases in `spec/vectors/domain.json`.
 

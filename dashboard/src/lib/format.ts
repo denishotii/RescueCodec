@@ -98,26 +98,46 @@ export function codecForm(rec: Coded): "compact" | "packed" | null {
   return body?.words || body?.vocab != null ? "compact" : "packed";
 }
 
+/** Short and long name keys of the team vocabularies (spec 3.8), the same words as the app. */
+const VOCAB_KEYS: Record<string, readonly [Key, Key]> = {
+  emergency: ["vocabEmergency", "vocabLongEmergency"], sar: ["vocabSar", "vocabLongSar"],
+  fire: ["vocabFire", "vocabLongFire"], hiking: ["vocabHiking", "vocabLongHiking"],
+  medical: ["vocabMedical", "vocabLongMedical"],
+};
+
 /**
- * The team vocabulary of a domain frame for the tag, e.g. "S&R" (the gateway's `codec.vocab_label`). Null for every
- * other form, and for a vocabulary the gateway does not have (the line itself says "unsupported vocabulary").
+ * A team vocabulary in the dashboard's language: "Medical" / "Medizin" (short, for tags) or "Medical / First aid" /
+ * "Medizin / Erste Hilfe" (long). Null for a domain this dashboard has no name for (callers fall back to the gateway's
+ * English label).
  */
-export function vocabLabel(rec: Coded): string | null {
-  return rec.codec.form === "domain" ? rec.codec.vocab_label ?? null : null;
+export function vocabName(domain: string | null | undefined, lang: Lang, long = false): string | null {
+  const keys = domain && Object.hasOwn(VOCAB_KEYS, domain) ? VOCAB_KEYS[domain] : null;
+  return keys ? t(lang, keys[long ? 1 : 0]) : null;
+}
+
+/**
+ * The team vocabulary of a domain frame for the tag, e.g. "S&R" (in `lang`, else the gateway's `codec.vocab_label`).
+ * Null for every other form, and for a vocabulary the gateway does not have (the line itself says "unsupported
+ * vocabulary").
+ */
+export function vocabLabel(rec: Coded, lang?: Lang): string | null {
+  if (rec.codec.form !== "domain" || !rec.codec.vocab_label) return null;
+  return (lang && vocabName(rec.codec.vocab, lang)) || rec.codec.vocab_label;
 }
 
 /** The tag of a coded message: "compact · S&R · 9 B", "compact · 6 B", "packed · 23 B"; null for a plain text. */
 export function formTag(rec: Coded, lang: Lang): string | null {
   const form = codecForm(rec);
   if (!form) return null;
-  return [t(lang, form === "compact" ? "formCompact" : "formPacked"), vocabLabel(rec), bytesLabel(rec.codec.size)]
+  return [t(lang, form === "compact" ? "formCompact" : "formPacked"), vocabLabel(rec, lang), bytesLabel(rec.codec.size)]
     .filter(Boolean).join(" · ");
 }
 
-/** Hover text of the tag for a domain frame: "Team vocabulary: Search & Rescue (10-bit codes)". */
+/** Hover text of the tag for a domain frame: "Team vocabulary: Search & Rescue (10-bit)". */
 export function vocabTitle(rec: Coded, health: Health | null, lang: Lang): string | undefined {
-  const short = vocabLabel(rec);
+  const short = vocabLabel(rec, lang);
   if (!short) return undefined;
   const v = health?.vocabularies?.find((x) => x.domain === rec.codec.vocab);
-  return `${t(lang, "teamVocabulary")}: ${v?.label ?? short}${v ? ` (${v.bits}-bit)` : ""}`;
+  const name = vocabName(rec.codec.vocab, lang, true) ?? v?.label ?? short;
+  return `${t(lang, "teamVocabulary")}: ${name}${v ? ` (${v.bits}-bit)` : ""}`;
 }

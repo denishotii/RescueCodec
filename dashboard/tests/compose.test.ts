@@ -155,6 +155,7 @@ describe("compact texts and the 400-byte limit on a chat that packs", () => {
       report: false, head: "Compact words · Medical", bytes: 19, textBytes: 64, chips: [],
     });
     expect(previewView(text, { ...DOMAIN, vocab: "sar", vocab_label: "S&R" }, false, "de").head).toBe("Kompakte Wörter · S&R");
+    expect(previewView(text, DOMAIN, false, "de").head).toBe("Kompakte Wörter · Medizin");
     // an older gateway without vocab_label: still compact words
     expect(previewView(text, { ...DOMAIN, vocab_label: undefined }, false, "en").head).toBe("Compact words");
     // a domain frame is a text: it goes to /v2/text with the words, the gateway picks the form again
