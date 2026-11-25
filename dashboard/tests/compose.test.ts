@@ -147,6 +147,18 @@ describe("compact texts and the 400-byte limit on a chat that packs", () => {
       report: false, head: "Compact words", bytes: 6, textBytes: 11, chips: [],
     });
     expect(previewView("Hi", { ...WORDS, form: "deflate" }, false, "en").head).toBe("");
+  });
+  it("shows the team vocabulary of a domain frame", () => {
+    const text = "Patient is conscious, bleeding from the leg, apply a tourniquet.";
+    const DOMAIN: ExtractResult = { ...WORDS, message: { text: { text } }, form: "domain", vocab: "medical", vocab_label: "Medical", coded_bytes: 19, text_bytes: 64 };
+    expect(previewView(text, DOMAIN, false, "en")).toEqual({
+      report: false, head: "Compact words · Medical", bytes: 19, textBytes: 64, chips: [],
+    });
+    expect(previewView(text, { ...DOMAIN, vocab: "sar", vocab_label: "S&R" }, false, "de").head).toBe("Kompakte Wörter · S&R");
+    // an older gateway without vocab_label: still compact words
+    expect(previewView(text, { ...DOMAIN, vocab_label: undefined }, false, "en").head).toBe("Compact words");
+    // a domain frame is a text: it goes to /v2/text with the words, the gateway picks the form again
+    expect(buildSend(text, team, DOMAIN, false, h)).toEqual({ path: "/v2/text", body: { text, channel: "RescueCodec" } });
     expect(previewView("Hi", { ...WORDS, form: "plain", coded_bytes: 151 }, false, "en")).toEqual({
       report: false, head: "", bytes: 151, textBytes: null, chips: [],
     });

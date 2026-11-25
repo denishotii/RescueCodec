@@ -22,10 +22,16 @@ export interface Message {
   hazard?: { kind: string; severity?: "low" | "medium" | "high"; radius?: number };
   mayday?: { reason?: string; persons?: number };
   ack?: { ref: number; node?: string; status: AckStatus; eta?: number; team?: string };
-  /** `dict`: sent packed (DEFLATE); `words`: sent as compact word tokens (spec 3.6). */
-  text?: { text: string; dict?: number; words?: number };
-  /** `words`: a compact text with a word dictionary the gateway does not have. */
-  unknown?: { words?: number };
+  /**
+   * `dict`: sent packed (DEFLATE); `words`: sent as compact word tokens (spec 3.6); `vocab`: came or went as a domain
+   * frame with that team vocabulary id (spec 3.8).
+   */
+  text?: { text: string; dict?: number; words?: number; vocab?: number };
+  /**
+   * `words`: a compact text with a word dictionary the gateway does not have. `vocab`: a domain frame with a team
+   * vocabulary the gateway does not have ("unsupported vocabulary").
+   */
+  unknown?: { words?: number; vocab?: number };
 }
 export interface Text2 { en: string; de: string }
 /** A Meshtastic channel, known by its name. public = no key or the default key (anyone can read it). */
@@ -38,12 +44,28 @@ export interface RadioFacts {
   packet_id: number; rssi: number | null; snr: number | null; hops: number | null; channel: number;
   via: "serial" | "tcp" | "ble" | "sim";
 }
+/** How a text went on air: DEFLATE, word tokens in the Envelope, a compact frame 0x02 or a domain frame 0x03. */
+export type TextForm = "deflate" | "words" | "lean" | "domain";
+/** A team vocabulary of the domain frame (spec 3.8). */
+export type VocabDomain = "emergency" | "sar" | "fire" | "hiking" | "medical";
+export interface CodecFacts {
+  version: 0 | 1 | 2; size: number; hex: string;
+  /** A packed text (DEFLATE, word tokens or a domain frame). */
+  packed?: boolean;
+  form?: TextForm;
+  /** form domain: the team vocabulary, null when the gateway does not have it. */
+  vocab?: VocabDomain | null;
+  /** form domain: the vocabulary id on the air (the byte after 0x03). */
+  vocab_id?: number;
+  /** form domain: short name for a tag, e.g. "S&R"; null when the gateway does not have the vocabulary. */
+  vocab_label?: string | null;
+}
 export interface MessageRecord {
   seq: number; key: string | null; direction: "in" | "out"; from: string; type: MessageType; priority: Priority;
   status: "received" | "queued" | "sent" | "delivered" | "failed" | "dry_run"; error: string | null;
   time: string; event_time: string | null;
   /** version 0: a normal Meshtastic text (port 1), not a RescueCodec packet; hex is the UTF-8 text (SPEC 2.1). */
-  codec: { version: 0 | 1 | 2; size: number; hex: string };
+  codec: CodecFacts;
   radio: RadioFacts | null;
   /** The channel it came in or went out on. */
   channel: Channel;
@@ -81,6 +103,15 @@ export interface Health {
   compact_text?: boolean;
   /** Most bytes of typed text: `text` for a normal chat, `packed` for a chat that packs. */
   text_limits?: { text: number; packed: number };
+  /** --vocabulary: auto (try every team vocabulary), general (none) or one domain (spec 3.8). */
+  vocabulary?: "auto" | "general" | VocabDomain;
+  /** The team vocabularies the gateway has (all bundled, so receiving always works). */
+  vocabularies?: VocabInfo[];
+}
+export interface VocabInfo {
+  id: number; domain: VocabDomain; label: string; short: string; version: number; bits: number; entries: number;
+  /** The bundled file matches its SHA-256. */
+  available: boolean;
 }
 export interface MessageStatusEvent { seq: number; status: "queued" | "sent" | "delivered" | "failed"; error?: string | null; updated: string }
 export type StreamEvent =
@@ -109,8 +140,15 @@ export interface ExtractResult {
   send_as?: SendAs;
   /** Most bytes of typed text there: 400 on a chat that packs, else 180. */
   max_text_bytes?: number;
-  /** Form of a text: plain, packed (deflate), compact word tokens in the Envelope (words) or a compact frame (lean). */
-  form?: "plain" | "deflate" | "words" | "lean";
+  /**
+   * Form of a text: plain, packed (deflate), compact word tokens in the Envelope (words), a compact frame (lean) or a
+   * domain frame with a team vocabulary (domain).
+   */
+  form?: "plain" | TextForm;
+  /** form domain: the team vocabulary (e.g. "sar"), else null. */
+  vocab?: VocabDomain | null;
+  /** form domain: its short name for a tag (e.g. "S&R"), else null. */
+  vocab_label?: string | null;
   /** True when the text will be shortened to fit one radio message. */
   cut?: boolean;
 }

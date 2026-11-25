@@ -22,6 +22,10 @@ const DEFAULT_CHANNEL = "RescueCodec";
 // Text mode per channel (GET /v2/health): the team channel packs (400 B of typed text), the other one sends normal texts.
 const SEND_AS = { RescueCodec: "compressed", "draeger-srs": "normal" };
 const TEXT_LIMITS = { text: 180, packed: 400 };
+// Team vocabularies of the domain frame 0x03 (spec 3.8), as GET /v2/health lists them.
+const VOCABS = [[1, "emergency", "Emergency", "Emergency"], [2, "sar", "Search & Rescue", "S&R"], [3, "fire", "Firefighting", "Fire"],
+  [4, "hiking", "Hiking / Mountain", "Hiking"], [5, "medical", "Medical / First aid", "Medical"]]
+  .map(([id, domain, label, short]) => ({ id, domain, label, short, version: 1, bits: 10, entries: 1016, available: true }));
 const withMode = (c) => ({ ...c, mode: "auto", send_as: SEND_AS[c.name] ?? "normal" });
 
 // ---------------------------------------------------------------- airtime (same formula as the dashboard)
@@ -116,7 +120,7 @@ function typeOf(m) { return Object.keys(m).find((k) => ["found", "track", "secto
 const DEFAULT_PRIO = { mayday: "critical", found: "urgent", hazard: "urgent", ack: "urgent", request: "normal", text: "normal", sector: "routine", track: "routine" };
 const SIZES = { found: 23, mayday: 15, request: 17, hazard: 19, sector: 11, ack: 12, track: 38 };
 
-function addRecord({ from, message, direction = "in", at = Date.now(), rssi = null, snr = null, hops = 0, status, size, channel, to = null }) {
+function addRecord({ from, message, direction = "in", at = Date.now(), rssi = null, snr = null, hops = 0, status, size, channel, to = null, codec = null }) {
   const type = typeOf(message);
   // an answer goes out (and usually comes in) on the channel of the report it answers
   const answered = type === "ack" ? state.tasks.get(`${message.ack.node.slice(1)}-${message.ack.ref}`) : null;
@@ -130,7 +134,7 @@ function addRecord({ from, message, direction = "in", at = Date.now(), rssi = nu
   const rec = {
     seq: ++state.seq, key, direction, from, type, priority: message.priority ?? DEFAULT_PRIO[type] ?? "normal",
     status: status ?? (direction === "in" ? "received" : "queued"), error: null, time: iso(at), event_time: null,
-    codec: { version: 2, size: sz, hex: "08" + (message.id ?? 0).toString(16).padStart(2, "0") + "1a".repeat(Math.max(0, sz - 2)).slice(0, (sz - 2) * 2) },
+    codec: codec ?? { version: 2, size: sz, hex: "08" + (message.id ?? 0).toString(16).padStart(2, "0") + "1a".repeat(Math.max(0, sz - 2)).slice(0, (sz - 2) * 2) },
     radio: direction === "in" ? { packet_id: 3141592000 + state.seq, rssi, snr, hops, channel: ch.index, via: "sim" } : null,
     channel: ch, to, message, text: render(message, nodeName), task_key: taskKey,
   };
@@ -182,6 +186,11 @@ function seed() {
   addRecord({ from: DOG, message: { text: { text: "Dräger SRS: Atemschutz bereit am Gasthaus" } }, at: ago(16), rssi: -101, snr: 4.5, channel: "draeger-srs" });
   addRecord({ from: T2, message: { text: { text: "Akku schwach, melde mich in 20 min" } }, at: ago(10), rssi: -108, snr: 3, hops: 1, to: GATEWAY });
   addRecord({ from: T2, message: { text: { text: "Treffpunkt jetzt am Gasthaus, nicht am Parkplatz" } }, at: ago(12), rssi: -108, snr: 3, hops: 1 });
+  // a domain frame 0x03 with the medical team vocabulary: 19 B instead of 64 B (bytes from spec/vectors/domain.json)
+  const med = { text: "Patient is conscious, bleeding from the leg, apply a tourniquet.", vocab: 5 };
+  const medHex = "0305fe5480226d008322b515008dd018270000";
+  addRecord({ from: T3, message: { text: med }, at: ago(11), rssi: -111, snr: -0.5, hops: 1,
+    codec: { version: 2, size: medHex.length / 2, hex: medHex, packed: true, form: "domain", vocab: "medical", vocab_id: 5, vocab_label: "Medical" } });
   addRecord({ from: T2, message: { pos: { lat: 50.6779, lon: 7.2318 }, request: { resource: "searchers", count: 10, urgency: "soon" } }, at: ago(4), rssi: -107, snr: 2.75, hops: 1 });
   // our own outgoing: ELZ sent a text and accepted nothing yet
   const o = addRecord({ from: GATEWAY, direction: "out", message: { text: { text: "ELZ: alle Trupps Rückmeldung in 10 Minuten" } }, at: ago(9), status: "delivered" });
@@ -205,7 +214,7 @@ function health() {
   return { status: state.control.radio ? "ok" : "degraded", version: "2.0.0-mock", spec_version: "2.0.0", uptime_s: Math.round((Date.now() - state.started) / 1000) + 3605,
     radio: state.control.radio ? { connected: true, kind: "sim", node: GATEWAY, port: 256, channel: DEFAULT_CHANNEL, channel_index: CHANNELS[DEFAULT_CHANNEL].index, channels: Object.values(CHANNELS).map(withMode), region: "EU_868", preset: "LONG_FAST", firmware: "2.7.26" }
       : { connected: false, kind: "none", node: null, port: 256, channel: null, channels: [], region: null, preset: null, firmware: null },
-    mqtt: { connected: false }, compact_text: false, text_limits: TEXT_LIMITS };
+    mqtt: { connected: false }, compact_text: false, vocabulary: "auto", vocabularies: VOCABS, text_limits: TEXT_LIMITS };
 }
 function stats() {
   let inN = 0, outN = 0, inB = 0, outB = 0, txt = 0, air = 0, hour = 0; const by = {};

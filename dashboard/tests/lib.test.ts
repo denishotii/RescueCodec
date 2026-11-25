@@ -3,7 +3,7 @@ import { toUtm, utmLabel, circlePolygon } from "../src/lib/geo";
 import { airtimeSaving, loraAirtimeSeconds, packetAirtime } from "../src/lib/airtime";
 import { applyStatus, lastSeq, mergeMessages, upsertMessage } from "../src/state/store";
 import type { MessageRecord } from "../src/api/types";
-import { cardText, codecForm, isNoRelay, stripPosition } from "../src/lib/format";
+import { cardText, codecForm, formTag, isNoRelay, stripPosition, vocabLabel, vocabTitle } from "../src/lib/format";
 import { t } from "../src/lib/i18n";
 import { buildMapModel } from "../src/map/data";
 
@@ -142,5 +142,34 @@ describe("card text", () => {
     expect(codecForm(rec(1, { message: { text: { text: "x", words: 1 } } }))).toBe("compact");
     expect(codecForm(rec(1, { message: { text: { text: "x", dict: 1 } } }))).toBe("packed");
     expect(codecForm(rec(1, { type: "hazard", message: { hazard: { kind: "blocked_path" } } }))).toBe("packed");
+    expect(codecForm(rec(1, { codec: { version: 2, size: 6, hex: "", packed: true, form: "lean" }, message: { text: { text: "hello world", words: 2 } } }))).toBe("compact");
+  });
+  it("tags a domain frame with its team vocabulary", () => {
+    const sar = rec(1, {
+      codec: { version: 2, size: 9, hex: "", packed: true, form: "domain", vocab: "sar", vocab_id: 2, vocab_label: "S&R" },
+      message: { text: { text: "Search the ridge.", vocab: 2 } },
+    });
+    expect(codecForm(sar)).toBe("compact");
+    expect(vocabLabel(sar)).toBe("S&R");
+    expect(formTag(sar, "en")).toBe("compact · S&R · 9 B");
+    expect(formTag(sar, "de")).toBe("kompakt · S&R · 9 B");
+    const health = { vocabularies: [{ id: 2, domain: "sar", label: "Search & Rescue", short: "S&R", version: 1, bits: 10, entries: 1016, available: true }] } as any;
+    expect(vocabTitle(sar, health, "en")).toBe("Team vocabulary: Search & Rescue (10-bit)");
+    expect(vocabTitle(sar, null, "de")).toBe("Team-Vokabular: S&R");
+    // other forms: no vocabulary in the tag
+    const lean = rec(2, { codec: { version: 2, size: 6, hex: "", packed: true, form: "lean" }, message: { text: { text: "hello world", words: 2 } } });
+    expect(formTag(lean, "en")).toBe("compact · 6 B");
+    expect(vocabTitle(lean, health, "en")).toBeUndefined();
+    expect(formTag(rec(3, { type: "hazard", codec: { version: 2, size: 19, hex: "" }, message: { hazard: { kind: "rockfall" } } }), "en")).toBe("packed · 19 B");
+    expect(formTag(rec(4, { codec: { version: 0, size: 4, hex: "" } }), "en")).toBeNull();
+  });
+  it("an unsupported vocabulary is a compact frame without a name", () => {
+    const unknown = rec(1, {
+      type: "unknown", codec: { version: 2, size: 11, hex: "", packed: true, form: "domain", vocab: null, vocab_id: 7, vocab_label: null },
+      message: { unknown: { vocab: 7 } },
+    });
+    expect(codecForm(unknown)).toBe("compact");
+    expect(vocabLabel(unknown)).toBeNull();
+    expect(formTag(unknown, "en")).toBe("compact · 11 B");
   });
 });

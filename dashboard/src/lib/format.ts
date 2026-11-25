@@ -1,4 +1,4 @@
-import type { MeshNode, MessageRecord, MessageType, Priority, Task } from "../api/types";
+import type { Health, MeshNode, MessageRecord, MessageType, Priority, Task } from "../api/types";
 import { type Lang, type Key, t } from "./i18n";
 
 export const pad = (n: number) => String(n).padStart(2, "0");
@@ -84,8 +84,40 @@ export function cardText(raw: string, type: MessageType, lang: Lang, nodes: Reco
   return nameIds(stripPosition(body), nodes);
 }
 
-/** How it went on air: "compact" (word tokens), "packed" (DEFLATE or a RescueCodec report), or null for a plain text. */
-export function codecForm(rec: Pick<MessageRecord, "codec" | "message">): "compact" | "packed" | null {
+type Coded = Pick<MessageRecord, "codec" | "message">;
+
+/**
+ * How it went on air: "compact" (word tokens, a compact frame or a domain frame with a team vocabulary), "packed"
+ * (DEFLATE or a RescueCodec report), or null for a plain text.
+ */
+export function codecForm(rec: Coded): "compact" | "packed" | null {
   if (rec.codec.version === 0) return null;
-  return rec.message.text?.words ? "compact" : "packed";
+  const form = rec.codec.form;
+  if (form === "words" || form === "lean" || form === "domain") return "compact";
+  const body = rec.message.text ?? rec.message.unknown;
+  return body?.words || body?.vocab != null ? "compact" : "packed";
+}
+
+/**
+ * The team vocabulary of a domain frame for the tag, e.g. "S&R" (the gateway's `codec.vocab_label`). Null for every
+ * other form, and for a vocabulary the gateway does not have (the line itself says "unsupported vocabulary").
+ */
+export function vocabLabel(rec: Coded): string | null {
+  return rec.codec.form === "domain" ? rec.codec.vocab_label ?? null : null;
+}
+
+/** The tag of a coded message: "compact · S&R · 9 B", "compact · 6 B", "packed · 23 B"; null for a plain text. */
+export function formTag(rec: Coded, lang: Lang): string | null {
+  const form = codecForm(rec);
+  if (!form) return null;
+  return [t(lang, form === "compact" ? "formCompact" : "formPacked"), vocabLabel(rec), bytesLabel(rec.codec.size)]
+    .filter(Boolean).join(" · ");
+}
+
+/** Hover text of the tag for a domain frame: "Team vocabulary: Search & Rescue (10-bit codes)". */
+export function vocabTitle(rec: Coded, health: Health | null, lang: Lang): string | undefined {
+  const short = vocabLabel(rec);
+  if (!short) return undefined;
+  const v = health?.vocabularies?.find((x) => x.domain === rec.codec.vocab);
+  return `${t(lang, "teamVocabulary")}: ${v?.label ?? short}${v ? ` (${v.bits}-bit)` : ""}`;
 }

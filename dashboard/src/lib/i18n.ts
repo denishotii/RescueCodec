@@ -58,6 +58,7 @@ const en = {
   panelCrashed: "This panel hit an error. The rest keeps working.", retry: "Try again",
   mapNoWebgl: "Map needs WebGL2: open in Chrome/Safari with graphics acceleration.",
   radioConnected: "Radio connected", radioNotConnected: "Radio not connected", menu: "Menu", formCompact: "compact",
+  teamVocabulary: "Team vocabulary",
 } as const;
 
 export type Key = keyof typeof en;
@@ -120,6 +121,7 @@ const de: Record<Key, string> = {
   panelCrashed: "Dieser Bereich hatte einen Fehler. Der Rest läuft weiter.", retry: "Nochmal versuchen",
   mapNoWebgl: "Die Karte braucht WebGL2: in Chrome/Safari mit Grafikbeschleunigung öffnen.",
   radioConnected: "Funk verbunden", radioNotConnected: "Funk nicht verbunden", menu: "Menü", formCompact: "kompakt",
+  teamVocabulary: "Team-Vokabular",
 };
 
 export const dict: Record<Lang, Record<Key, string>> = { en, de };

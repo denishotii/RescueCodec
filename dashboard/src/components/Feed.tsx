@@ -3,7 +3,7 @@ import { Check, CheckCheck, CircleAlert, Clock, MapPin } from "lucide-react";
 import type { MessageRecord } from "../api/types";
 import { useChannels, useData, useT } from "../state/hooks";
 import { focusOn, setUi, useUi, type Filter } from "../state/ui";
-import { bytesLabel, cardText, clock, codecForm, isNoRelay, nodeLabel, typeName } from "../lib/format";
+import { cardText, clock, formTag, isNoRelay, nodeLabel, typeName, vocabTitle } from "../lib/format";
 import { utmLabel } from "../lib/geo";
 import { matchesChannel } from "../lib/channels";
 import { ChannelChip, Panel, PriorityChip, TYPE_ICON } from "./bits";
@@ -31,7 +31,7 @@ const STATUS_ICON: Record<MessageRecord["status"] | "norelay", typeof Check | nu
 
 /** One report: a single meta line (who, when, and only what matters) and the words. */
 export function ReportCard({ rec, fresh, chips = false }: { rec: MessageRecord; fresh: boolean; chips?: boolean }) {
-  const { nodes } = useData();
+  const { nodes, health } = useData();
   const { lang } = useUi();
   const t = useT();
   const pos = rec.message.pos ?? rec.message.track?.points.at(-1) ?? null;
@@ -40,7 +40,7 @@ export function ReportCard({ rec, fresh, chips = false }: { rec: MessageRecord; 
   const noRelay = isNoRelay(rec);
   const Icon = TYPE_ICON[rec.type];
   const body = cardText(rec.text[lang], rec.type, lang, nodes);
-  const form = codecForm(rec);
+  const tag = formTag(rec, lang);
   const radio = [
     rec.radio?.rssi != null ? `${rec.radio.rssi} dBm` : "", rec.radio?.snr != null ? `SNR ${rec.radio.snr.toFixed(1)}` : "",
     rec.radio?.hops != null ? `${rec.radio.hops} ${t("hops")}` : "", rec.codec.version === 0 ? t("viaMeshtasticNote") : "",
@@ -60,7 +60,7 @@ export function ReportCard({ rec, fresh, chips = false }: { rec: MessageRecord; 
         {(chips || rec.to) && <ChannelChip channel={rec.channel} to={rec.to} from={rec.from} direction={rec.direction} nodes={nodes} />}
         <PriorityChip priority={rec.priority} />
         <span className="report-end">
-          {form && <span className="report-tag num">{t(form === "compact" ? "formCompact" : "formPacked")} · {bytesLabel(rec.codec.size)}</span>}
+          {tag && <span className="report-tag num" title={vocabTitle(rec, health, lang)}>{tag}</span>}
           {StatusIcon && (
             <span className={`out-state status-${state}`} role="img" aria-label={stateText}
               title={rec.status === "failed" && rec.error && !noRelay ? `${stateText}: ${rec.error}` : stateText}>

@@ -107,7 +107,7 @@ export interface PreviewView {
   report: boolean;
   /**
    * "Person found", "Request", ... from the readable line; "Compact words" for a text sent as word tokens (in the
-   * Envelope or as a compact frame);
+   * Envelope or as a compact frame); "Compact words · S&R" for a domain frame with a team vocabulary;
    * "" for any other text (the UI says "Text").
    */
   head: string;
@@ -126,10 +126,13 @@ export const headOf = (line: string) => line.replace(/^\[[^\]]*\]\s*/, "").split
  */
 export function previewView(text: string, preview: ExtractResult | null, plain: boolean, lang: Lang): PreviewView {
   const words = text.trim();
-  if (preview?.type === "text" && (preview.form === "words" || preview.form === "lean")) {
-    // A text goes to /v2/text either way, so "plain text" ticked changes nothing: the gateway picked word tokens.
+  if (preview?.type === "text" && (preview.form === "words" || preview.form === "lean" || preview.form === "domain")) {
+    // A text goes to /v2/text either way, so "plain text" ticked changes nothing: the gateway picked word tokens
+    // (or a domain frame with a team vocabulary: "Compact words · S&R").
     const textBytes = preview.text_bytes > preview.coded_bytes ? preview.text_bytes : null;
-    return { report: false, head: t(lang, "compactWords"), bytes: preview.coded_bytes, textBytes, chips: [] };
+    const vocab = preview.form === "domain" ? preview.vocab_label : null;
+    const head = vocab ? `${t(lang, "compactWords")} · ${vocab}` : t(lang, "compactWords");
+    return { report: false, head, bytes: preview.coded_bytes, textBytes, chips: [] };
   }
   if (!preview || plain || preview.type === "text") {
     const bytes = !preview ? byteLength(words) : plain ? preview.text_bytes : preview.coded_bytes;
