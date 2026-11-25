@@ -45,3 +45,6 @@ sim/data/
 # Dashboard build: the app is committed, the copied map tiles are not
 rescuecodec/gateway/static/map/
 dashboard/node_modules/
+
+# Gateway database
+rescuecodec-gateway.db*

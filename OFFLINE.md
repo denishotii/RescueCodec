@@ -58,3 +58,6 @@ add a package.xml for the emulator).
 - AGP 9.4.1, Kotlin 2.4.10, Compose BOM 2026.11.01
 - Meshtastic Kotlin SDK 0.2.0 (org.meshtastic:sdk-core, sdk-transport-ble, sdk-transport-tcp)
 - To build offline later: `cd android && ./gradlew --offline :app:assembleDebug`
+
+## Gateway API docs (committed in rescuecodec/gateway/docs/)
+- Swagger UI `swagger-ui-dist@5.32.1` (swagger-ui-bundle.js, swagger-ui.css, favicon, LICENSE, NOTICE), about 1.7 MB, Apache-2.0. Source: npm `swagger-ui-dist@5.32.1`. Served by the gateway at `/docs`, no CDN.
