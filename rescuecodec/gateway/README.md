@@ -45,15 +45,48 @@ curl -s -X POST localhost:8000/v2/tasks/a1b2c3d4-7/ack -H 'content-type: applica
 websocat ws://127.0.0.1:8000/v2/stream
 ```
 
+## Channels and direct messages
+
+The gateway listens on **every private channel** of its radio, on port 256 (reports) and port 1 (texts). It also keeps every direct message to its own node. Public channels (no key or the default key, like LongFast) are ignored unless you start it with `--show-public`.
+
+Every record says where it came from or went to:
+
+```json
+"channel": {"index": 2, "name": "draeger-srs", "public": false}, "to": null
+```
+
+`to` is null for a broadcast. For a direct message it is the other node (sent) or our node (received). Tasks have a `channel` too, and an Accept always goes out on the task's channel.
+
+| Flag | Default | What it does |
+|---|---|---|
+| `--channels all\|NAME,NAME` | `all` | Channels to listen on, by name. The default channel is always included. Env `RESCUECODEC_CHANNELS`. |
+| `--show-public` | off | Also show broadcasts on public channels. Env `RESCUECODEC_SHOW_PUBLIC=1`. |
+| `--channel-name NAME` | `RescueCodec` | The default channel for sending. |
+| `--channel N` | | Force the default channel by index. |
+
+```bash
+# A text on the draeger-srs channel
+curl -s -X POST localhost:8000/v2/text -H 'content-type: application/json' -d '{"text":"Trage kommt","channel":"draeger-srs"}'
+# A direct message to one radio (always a normal Meshtastic text)
+curl -s -X POST localhost:8000/v2/messages -H 'content-type: application/json' -d '{"message":{"text":{"text":"Bitte melden"}},"to":"!a1b2c3d4"}'
+# Only one channel
+curl -s 'localhost:8000/v2/messages?channel=draeger-srs'
+curl -s 'localhost:8000/v2/tasks?channel=RescueCodec'
+# Which channels does the gateway hear?
+curl -s localhost:8000/v2/health | jq .radio.channels
+```
+
+Reports never go out on a public channel (400). An unknown channel name gives 400. A database from an older gateway is migrated on start: old records get the default channel.
+
 ## Normal Meshtastic texts
 
 The gateway also shows normal Meshtastic texts (port 1), for example from the official Meshtastic app or a radio with a keyboard:
 
-- Only texts on the team channel (the same channel as the reports) and direct messages to the gateway's radio. The public LongFast chat is never shown.
+- Only texts on the channels we listen on (every private channel) and direct messages to the gateway's radio. The public LongFast chat is not shown without `--show-public`.
 - They are normal `text` records with `codec.version: 0`. `codec.hex` is the UTF-8 text. They go to the dashboard, the WebSocket, MQTT and TAK like every other record.
 - The same packet twice is shown once (same sender and Meshtastic packet id). Readable copies that start with `[RC] ` (from `--text-over-air` or `also_plain`) are skipped: we already have the report from port 256.
 
-Sending: a message with only a text (`POST /v2/text`, or `POST /v2/messages` with a `text` body) goes out as a normal Meshtastic text on the team channel, so the official app and the radio screens show it. Same queue, priority, airtime budget and `want_ack` as a report. Only the words go out, at most 200 bytes: no id, position or time. Reports still go out compact on port 256.
+Sending: a message with only a text (`POST /v2/text`, or `POST /v2/messages` with a `text` body) goes out as a normal Meshtastic text on the default channel (or the `channel` you name), so the official app and the radio screens show it. Same queue, priority, airtime budget and `want_ack` as a report. Only the words go out, at most 200 bytes: no id, position or time. Reports still go out compact on port 256.
 
 | Flag | Default | What it does |
 |---|---|---|
@@ -121,5 +154,5 @@ scripts/e2e-gateway.sh                                   # two gateways on the s
 - **Token.** With a token, every `/v2` call needs `Authorization: Bearer SECRET`. The WebSocket and the dashboard take `?token=SECRET`, for example `http://192.168.1.20:8000/?token=SECRET`. The dashboard keeps it for the tab.
 - **WebSocket origin.** Browsers do not apply CORS to WebSockets, so the gateway checks the `Origin` itself. A web page may connect only from localhost, from `--cors-origin`, or, with a valid token, from the gateway's own address. Programs that send no `Origin` are fine. Without this check any page you open could read your rescue messages.
 - **Rate limit.** The API queues at most 30 messages per minute (`--tx-per-minute`, 0 = no limit). More gives `429 rate_limited`.
-- **Channel.** The gateway sends and listens only on the private channel: the one named `RescueCodec`, else the only channel with its own key (`--channel-name`, or `--channel N` to force an index). If there is none, or it uses the public default key, sending is refused with 503 and `/v2/health` shows `radio.channel_error`. Port 256 packets from other channels are dropped and counted in `radio.other_channel`. Never plug in a radio whose only channel is LongFast.
+- **Channels.** The gateway listens on every private channel (`--channels`) and on direct messages to its node. Public channels stay out unless `--show-public`. The default channel for sending is the one named `RescueCodec`, else the only channel with its own key (`--channel-name`, or `--channel N` to force an index). If there is none, sending without a `channel` is refused with 503 and `/v2/health` shows `radio.channel_error`. Port 256 packets from channels we do not listen on are dropped and counted in `radio.other_channel`. Reports never go out on a public channel.
 - Anyone who holds the channel key can send as a team member. The key is the trust boundary.

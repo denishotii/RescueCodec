@@ -169,6 +169,17 @@ curl -s -X POST localhost:8000/v2/messages -H 'content-type: application/json' \
   -d '{"message":{"pos":{"lat":50.69212,"lon":7.21345},"found":{"age":"child","consciousness":"conscious","needs":["stretcher"]}}}'
 ```
 
+Pick a channel by name with `channel`, or send a direct message with `to` (a text only). Without them it goes out on the default channel (RescueCodec):
+
+```bash
+curl -s -X POST localhost:8000/v2/messages -H 'content-type: application/json' \
+  -d '{"message":{"text":{"text":"Trage kommt"}},"channel":"draeger-srs"}'
+curl -s -X POST localhost:8000/v2/text -H 'content-type: application/json' -d '{"text":"Bitte melden","to":"!a1b2c3d4"}'
+curl -s 'localhost:8000/v2/messages?channel=draeger-srs'     # also /v2/tasks?channel=... and /v2/export.geojson?channel=...
+```
+
+Every record has `"channel": {"index": 1, "name": "RescueCodec", "public": false}` and `"to": null` (or the peer of a direct message). `GET /v2/health` lists the channels the gateway hears in `radio.channels`. An Accept (`/v2/tasks/{key}/ack`) always goes out on the task's channel.
+
 The answer is `202` with a record. It starts as `"status":"queued"` and moves to `sent` and then `delivered` or `failed`. Here is the start of it:
 
 ```json
@@ -277,6 +288,7 @@ mosquitto_sub -h 127.0.0.1 -t 'rescuecodec/v2/#' -v
 |---|---|
 | `rescuecodec/v2/messages` | Every message record (same JSON as the REST API) |
 | `rescuecodec/v2/found`, `track`, `sector`, `request`, `hazard`, `mayday`, `ack`, `text` | The same record, split by type |
+| `rescuecodec/v2/channels/<name>` | The same record, split by channel (for example `channels/draeger-srs`) |
 | `rescuecodec/v2/tasks` | A task each time it changes |
 | `rescuecodec/v2/readable` | One plain English line |
 | `rescuecodec/v2/status` | `online` or `offline` (last will) |
@@ -329,12 +341,12 @@ Use `--mqtt-user`, `--mqtt-password` and `--mqtt-prefix` for a real broker. The 
 .venv/bin/rescuecodec-gateway --serial auto --cot-tcp 192.168.1.5:8087    # a TAK server over TCP
 ```
 
-`--cot-udp GROUP:PORT` changes the multicast group, `--cot-iface IP` picks the network card. ATAK, WinTAK and iTAK on the same network show the markers with no setup.
+`--cot-udp GROUP:PORT` changes the multicast group, `--cot-iface IP` picks the network card. ATAK, WinTAK and iTAK on the same network show the markers with no setup. The remarks end with the channel, for example `[OPEN] (channel draeger-srs)`.
 
 One event, as sent for the Found report above (the first line of a test run):
 
 ```xml
-<event version="2.0" uid="RescueCodec.0000e001-1" type="b-m-p-s-m" time="2026-11-25T06:57:55.434Z" start="2026-11-25T06:57:55.434Z" stale="2026-11-25T12:57:55.434Z" how="h-g-i-g-o"><point lat="50.69212" lon="7.21345" hae="9999999.0" ce="10.0" le="9999999.0" /><detail><status readiness="true" /><contact callsign="FOUND 0000e001-1" /><remarks source="RescueCodec">Person found: child, conscious, needs stretcher. Position 50.69212, 7.21345. [OPEN]</remarks><color argb="-65536" /><usericon iconsetpath="COT_MAPPING_SPOTMAP/b-m-p-s-m/-65536" /></detail></event>
+<event version="2.0" uid="RescueCodec.0000e001-1" type="b-m-p-s-m" time="2026-11-25T06:57:55.434Z" start="2026-11-25T06:57:55.434Z" stale="2026-11-25T12:57:55.434Z" how="h-g-i-g-o"><point lat="50.69212" lon="7.21345" hae="9999999.0" ce="10.0" le="9999999.0" /><detail><status readiness="true" /><contact callsign="FOUND 0000e001-1" /><remarks source="RescueCodec">Person found: child, conscious, needs stretcher. Position 50.69212, 7.21345. [OPEN] (channel RescueCodec)</remarks><color argb="-65536" /><usericon iconsetpath="COT_MAPPING_SPOTMAP/b-m-p-s-m/-65536" /></detail></event>
 ```
 
 The uid is `RescueCodec.<task key>`, so Accept and Done update the same marker. A Mayday is the ATAK emergency alert (`b-a-o-tbl`, cancelled with `b-a-o-can` when done). The full table is in `rescuecodec/gateway/README.md`.
@@ -357,7 +369,7 @@ curl -s localhost:8000/v2/export.geojson > rescue.geojson
 curl -s 'localhost:8000/v2/export.geojson?type=found' | head -c 100
 ```
 
-It is a `FeatureCollection`. Finds, hazards, maydays and requests are points, tracks are lines. Every feature has these properties: `seq`, `key`, `type`, `from`, `priority`, `state`, `acc`, `time`, `text_en`, `text_de`. Real output:
+It is a `FeatureCollection`. Finds, hazards, maydays and requests are points, tracks are lines. Every feature has these properties: `seq`, `key`, `type`, `from`, `priority`, `state`, `acc`, `channel`, `to`, `time`, `text_en`, `text_de`. Real output:
 
 ```json
 {"type": "Feature", "geometry": {"type": "Point", "coordinates": [7.21345, 50.69212]},
@@ -377,7 +389,7 @@ Every record carries the same report in English and German, so a log, a chat bot
 - MQTT: topic `rescuecodec/v2/readable`.
 - Any bytes you have: `POST /v2/decode` (above), or `render(msg, "en")` in the libraries. Languages: `en`, `de` (checked), `uk`, `tr`, `ar` (machine drafts, need a native check).
 - Stock Meshtastic apps do not show port 256. To let them show the line anyway, start the gateway with `--text-over-air out` (what it sends) or `both`. It costs extra airtime, so it is off by default. The copy starts with `[RC] `, and RescueCodec receivers skip such texts (SPEC section 2.1).
-- Free text is different: a message with only a text goes out as a normal Meshtastic text (port 1) by default, and normal texts on the team channel come in as `text` records with `codec.version: 0` (gateway `--text-as-meshtastic`, app setting "Send plain text as normal Meshtastic text").
+- Free text is different: a message with only a text goes out as a normal Meshtastic text (port 1) by default, and normal texts on the private channels come in as `text` records with `codec.version: 0` (gateway `--text-as-meshtastic`, app setting "Send plain text as normal Meshtastic text").
 
 Example lines:
 
