@@ -13,8 +13,8 @@ State: .overnight/STATE.json (stage status, runId, attempts, transcriptDir). Mar
    - build-dashboard          args {stage: "build", chain: "dashboard"}   needs spec
 4. integrate                  args {stage: "integrate"}                needs all 4 build chains done or blocked
 5. design                     args {stage: "design"}                   needs integrate
-6. final                      args {stage: "final"}                    needs design
-7. handover                   args {stage: "handover"}                 needs final
+6. final                      args {stage: "final"}                    needs integrate (changed 06:26: runs IN PARALLEL with design to be ready for 08:30)
+7. handover                   args {stage: "handover"}                 needs design AND final
 
 ## On every check (cron every 30 min) and on every workflow notification
 1. Read STATE.json and list .overnight/stages/.

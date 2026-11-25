@@ -1,15 +1,137 @@
 {
   "scriptPath": "/Users/denishoti/.claude/projects/-Users-denishoti-Denis-Hackathons-PMRExpo-2026/42dfbc78-ba86-44c4-939c-bb5a68f17c2e/workflows/scripts/rescuecodec-overnight-wf_0f827823-a59.js",
   "stages": {
-    "setup": { "status": "running", "args": { "stage": "setup" }, "runId": "wf_0f827823-a59", "taskId": "w7kfnhe3f", "transcriptDir": "/Users/denishoti/.claude/projects/-Users-denishoti-Denis-Hackathons-PMRExpo-2026/42dfbc78-ba86-44c4-939c-bb5a68f17c2e/subagents/workflows/wf_0f827823-a59", "attempts": 1, "started": "Wed 00:38" },
-    "spec": { "status": "running", "args": { "stage": "spec" }, "runId": "wf_53d25b79-1a4", "taskId": "whhex7l77", "transcriptDir": "/Users/denishoti/.claude/projects/-Users-denishoti-Denis-Hackathons-PMRExpo-2026/42dfbc78-ba86-44c4-939c-bb5a68f17c2e/subagents/workflows/wf_53d25b79-1a4", "attempts": 1, "started": "Wed 01:36", "note": "started early: needs only .venv/protoc from setup-sim, which is done" },
-    "build-android": { "status": "pending", "args": { "stage": "build", "chain": "android" }, "attempts": 0 },
-    "build-python": { "status": "pending", "args": { "stage": "build", "chain": "python" }, "attempts": 0 },
-    "build-ts": { "status": "pending", "args": { "stage": "build", "chain": "ts" }, "attempts": 0 },
-    "build-dashboard": { "status": "pending", "args": { "stage": "build", "chain": "dashboard" }, "attempts": 0 },
-    "integrate": { "status": "pending", "args": { "stage": "integrate" }, "attempts": 0 },
-    "design": { "status": "pending", "args": { "stage": "design" }, "attempts": 0 },
-    "final": { "status": "pending", "args": { "stage": "final" }, "attempts": 0 },
-    "handover": { "status": "pending", "args": { "stage": "handover" }, "attempts": 0 }
-  }
+    "setup": {
+      "status": "done",
+      "finished": "Wed 01:51",
+      "args": {
+        "stage": "setup"
+      },
+      "runId": "wf_0f827823-a59",
+      "taskId": "w7kfnhe3f",
+      "transcriptDir": "/Users/denishoti/.claude/projects/-Users-denishoti-Denis-Hackathons-PMRExpo-2026/42dfbc78-ba86-44c4-939c-bb5a68f17c2e/subagents/workflows/wf_0f827823-a59",
+      "attempts": 1,
+      "started": "Wed 00:38"
+    },
+    "spec": {
+      "status": "done",
+      "args": {
+        "stage": "spec"
+      },
+      "runId": "wf_53d25b79-1a4",
+      "taskId": "whhex7l77",
+      "transcriptDir": "/Users/denishoti/.claude/projects/-Users-denishoti-Denis-Hackathons-PMRExpo-2026/42dfbc78-ba86-44c4-939c-bb5a68f17c2e/subagents/workflows/wf_53d25b79-1a4",
+      "attempts": 1,
+      "started": "Wed 01:36",
+      "note": "started early: needs only .venv/protoc from setup-sim, which is done",
+      "finished": "Wed 02:04"
+    },
+    "build-android": {
+      "status": "done",
+      "args": {
+        "stage": "build",
+        "chain": "android"
+      },
+      "attempts": 1,
+      "runId": "wf_92babad0-092",
+      "taskId": "wgo25ljlk",
+      "transcriptDir": "/Users/denishoti/.claude/projects/-Users-denishoti-Denis-Hackathons-PMRExpo-2026/42dfbc78-ba86-44c4-939c-bb5a68f17c2e/subagents/workflows/wf_92babad0-092",
+      "started": "Wed 02:05",
+      "finished": "Wed 05:07",
+      "note": "BLE, live mic, QR/channel admin untested on real hardware; Vosk models not in default APK (docs/VOICE.md)"
+    },
+    "build-python": {
+      "status": "done",
+      "args": {
+        "stage": "build",
+        "chain": "python"
+      },
+      "attempts": 1,
+      "runId": "wf_686272fe-299",
+      "taskId": "wyq7xkdha",
+      "transcriptDir": "/Users/denishoti/.claude/projects/-Users-denishoti-Denis-Hackathons-PMRExpo-2026/42dfbc78-ba86-44c4-939c-bb5a68f17c2e/subagents/workflows/wf_686272fe-299",
+      "started": "Wed 02:05",
+      "finished": "Wed 02:50",
+      "note": "engine partial: Kotlin extractor parity items handed to integrate; gateway e2e 3/3 on sim"
+    },
+    "build-ts": {
+      "status": "done",
+      "args": {
+        "stage": "build",
+        "chain": "ts"
+      },
+      "attempts": 1,
+      "runId": "wf_31ee29bd-fa1",
+      "taskId": "w1hcj685y",
+      "transcriptDir": "/Users/denishoti/.claude/projects/-Users-denishoti-Denis-Hackathons-PMRExpo-2026/42dfbc78-ba86-44c4-939c-bb5a68f17c2e/subagents/workflows/wf_31ee29bd-fa1",
+      "started": "Wed 02:05",
+      "finished": "Wed 02:14"
+    },
+    "build-dashboard": {
+      "status": "done",
+      "args": {
+        "stage": "build",
+        "chain": "dashboard"
+      },
+      "attempts": 1,
+      "runId": "wf_fa4e57fb-7d6",
+      "taskId": "wqf704e3i",
+      "transcriptDir": "/Users/denishoti/.claude/projects/-Users-denishoti-Denis-Hackathons-PMRExpo-2026/42dfbc78-ba86-44c4-939c-bb5a68f17c2e/subagents/workflows/wf_fa4e57fb-7d6",
+      "started": "Wed 02:05",
+      "finished": "Wed 02:33",
+      "note": "tested against mock only; integrate must test against the real gateway and run npm run build on the demo laptop for map tiles"
+    },
+    "integrate": {
+      "status": "done",
+      "args": {
+        "stage": "integrate"
+      },
+      "attempts": 1,
+      "runId": "wf_519ad03d-daa",
+      "taskId": "wdqo034nt",
+      "transcriptDir": "/Users/denishoti/.claude/projects/-Users-denishoti-Denis-Hackathons-PMRExpo-2026/42dfbc78-ba86-44c4-939c-bb5a68f17c2e/subagents/workflows/wf_519ad03d-daa",
+      "started": "Wed 05:08",
+      "finished": "Wed 06:34",
+      "note": "3/3 full e2e passes; open: one cold-start no-reconnect, text dedupe, text fallback size"
+    },
+    "design": {
+      "status": "done",
+      "args": {
+        "stage": "design"
+      },
+      "attempts": 1,
+      "runId": "wf_72550b41-b8a",
+      "taskId": "wunvt9le4",
+      "transcriptDir": "/Users/denishoti/.claude/projects/-Users-denishoti-Denis-Hackathons-PMRExpo-2026/42dfbc78-ba86-44c4-939c-bb5a68f17c2e/subagents/workflows/wf_72550b41-b8a",
+      "started": "Wed 06:35",
+      "finished": "Wed 07:00",
+      "note": "12 critique issues fixed; gallery 117 images"
+    },
+    "final": {
+      "status": "done",
+      "args": {
+        "stage": "final"
+      },
+      "attempts": 1,
+      "runId": "wf_cf87d4fd-3ac",
+      "taskId": "w2zijzxen",
+      "transcriptDir": "/Users/denishoti/.claude/projects/-Users-denishoti-Denis-Hackathons-PMRExpo-2026/42dfbc78-ba86-44c4-939c-bb5a68f17c2e/subagents/workflows/wf_cf87d4fd-3ac",
+      "started": "Wed 06:35",
+      "note": "23 issues; BLE transport blocker fixed; all suites + sim e2e 3/3 pass; see FINAL_REVIEW.md",
+      "finished": "Wed 07:57"
+    },
+    "handover": {
+      "status": "done",
+      "args": {
+        "stage": "handover"
+      },
+      "attempts": 1,
+      "runId": "wf_79198e8b-304",
+      "taskId": "w6wni6410",
+      "transcriptDir": "/Users/denishoti/.claude/projects/-Users-denishoti-Denis-Hackathons-PMRExpo-2026/42dfbc78-ba86-44c4-939c-bb5a68f17c2e/subagents/workflows/wf_79198e8b-304",
+      "started": "Wed 07:58",
+      "finished": "Wed 08:07"
+    }
+  },
+  "finished": "Wed 08:08: all stages done"
 }
