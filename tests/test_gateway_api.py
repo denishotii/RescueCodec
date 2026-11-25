@@ -7,6 +7,7 @@ import tempfile
 
 from gateway_fixtures import FOUND, PEER, gateway, wait_for
 from rescuecodec.engine.sendqueue import AirtimeBudget
+from rescuecodec.gateway.radio.base import RadioPacket
 from rescuecodec.v2 import encode
 
 HEX_FOUND_ID7 = "08071a0908b8e6ea041082875832080841100518012802"
@@ -393,6 +394,17 @@ class Tasks(unittest.TestCase):
             gw.hear({"id": 7, **FOUND})
             tasks = gw.client.get("/v2/tasks").json()["items"]
             self.assertEqual(tasks[0]["state"], "accepted")
+
+    def test_our_decline_does_not_hide_another_teams_accept(self):
+        with gateway() as gw:
+            gw.hear({"id": 7, **FOUND})
+            team_a = encode({"ack": {"ref": 7, "node": PEER, "status": "accepted"}})
+            gw.service._on_packet(RadioPacket("!0000e003", "^all", 256, team_a))                     # team A takes it
+            first = gw.post("/v2/tasks/0000e002-7/ack", status="declined").json()                   # we cannot
+            self.assertEqual(first["task"]["state"], "accepted")
+            again = gw.post("/v2/tasks/0000e002-7/ack", status="declined").json()   # the same Ack may still be queued
+            self.assertEqual(again["task"]["state"], "accepted")
+            self.assertEqual(gw.client.get("/v2/tasks/0000e002-7").json()["state"], "accepted")
 
     def test_tasks_are_sorted_critical_first(self):
         with gateway() as gw:

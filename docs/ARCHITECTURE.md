@@ -59,7 +59,7 @@ Three pieces, written first in Python and ported line by line to Kotlin:
 
 - **Extractor.** Spoken or typed German or English becomes one message. It uses plain rules: token matching, a filler word list, negation ("nicht ansprechbar"), number words, typos of one edit, and spoken coordinates. If it cannot code a sentence safely, it says so and offers the plain text message instead. It never guesses a medical fact. A person always checks the chips before sending. An optional local model (Ollama) can help in Python, but the rules are the default and the only path on the phone.
 - **Send queue and airtime budget.** EU 868 MHz allows 10 percent airtime per hour (360 s). The queue computes LoRa airtime per packet, sends Mayday first, then Found, Request and Ack, then Hazard, Sector, Track and Text. Each type has its own ceiling (a Mayday and an Ack are never held, tracks stop at 70 percent). A held message stays queued and goes out when the window frees up.
-- **Task tracker.** Every Found, Request, Hazard and Mayday is a task with the key `<sender node>-<id>`. The newest Ack with that key sets its state: open, accepted, declined or done. Done is final. Duplicates are dropped by (sender, id) for 24 hours.
+- **Task tracker.** Every Found, Request, Hazard and Mayday is a task with the key `<sender node>-<id>`. Its state comes from the newest Ack of each team: done from anyone is final, else accepted while any team has it accepted, else declined if a team declined, else open. Duplicates are dropped by (sender, id) for 24 hours.
 
 The Python engine, the Kotlin engine and the vectors agree: 70 of 70 extraction cases in both, and the same rules for the queue and tracker (SPEC section 15.1).
 

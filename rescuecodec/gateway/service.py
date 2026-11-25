@@ -426,6 +426,7 @@ class GatewayService:
             except Exception:
                 task.state, task.updated = old_state, old_updated
                 raise
+            task.state = self.board.state_of(task)    # also right when the same Ack already waited in the queue
             return self._task_json(task), record
 
     def _sender_loop(self) -> None:

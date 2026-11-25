@@ -274,7 +274,8 @@ paths:
       description: |
         Sends `{"ack": {"ref": <id>, "node": <sender>, "status": ..., "eta": ..., "team": ...}}` as a
         broadcast on the channel, so the sender and everyone else sees who took the task. The task state
-        changes right away (optimistic); the returned `record` shows the radio status.
+        changes right away; the returned `record` shows the radio status. Your Ack counts as one more team's
+        answer (SPEC section 15): when another team still has the task accepted, your decline leaves it accepted.
         Allowed moves: open -> accepted | declined; accepted -> done | declined; declined -> accepted.
         Repeating the current state is allowed (resends the Ack). Other moves give 409.
       parameters:
@@ -756,7 +757,7 @@ components:
         state:
           type: string
           enum: [open, accepted, declined, done]
-          description: Follows the latest ack from anyone on the channel. A declined task can still be accepted by another team.
+          description: From the acks, using the newest answer of each node (SPEC section 15). Done from anyone is final. Else accepted while any team still has it accepted, else declined, else open. A declined task can still be accepted by another team.
         created: { type: string, format: date-time }
         updated: { type: string, format: date-time }
         pos: { oneOf: [ { $ref: "#/components/schemas/Position" }, { type: "null" } ] }

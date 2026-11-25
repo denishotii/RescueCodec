@@ -323,7 +323,7 @@ The Python reference is `rescuecodec/v2/` (`encode`, `decode`, `decode_any`, `re
 
 ## 15. Tasks and Accept (informative)
 
-Receivers that show tasks (the gateway, the app) treat every `found`, `request`, `hazard` and `mayday` as a task with key `<sender node hex>-<id>`, for example `a1b2c3d4-7`. The task state follows the newest `ack` with that `ref` and `node`: `accepted`, `declined` (another team may still accept) or `done`. Mayday always goes to the top. The API in `api/openapi.yaml` describes the gateway side.
+Receivers that show tasks (the gateway, the app) treat every `found`, `request`, `hazard` and `mayday` as a task with key `<sender node hex>-<id>`, for example `a1b2c3d4-7`. The `ack`s with that `ref` and `node` set the task state, using the newest answer of each responder node: `done` from anyone is final; else `accepted` while any responder's newest answer is `accepted`; else `declined` (another team may still accept) if any responder's newest answer is `declined`; else `open`. Example: team A accepts, then team B declines. The task stays `accepted`, because A still has it. Mayday always goes to the top. The API in `api/openapi.yaml` describes the gateway side.
 
 ### 15.1 Send queue and task rules (informative)
 
@@ -353,7 +353,7 @@ These rules come from the Python engine. The Kotlin and TypeScript engines SHOUL
 
 Any other move is an `invalid_transition` error. A valid move produces an Ack to send.
 
-**Incoming Acks.** The newest Ack sets the state, except that `done` is final. Every Ack is also kept in the task history.
+**Incoming Acks.** Keep the newest answer of each responder node. Then: any `done` (from anyone, at any time) makes the task `done`, and it stays final. Else `accepted` if any responder's newest answer is `accepted`. Else `declined` if any responder's newest answer is `declined`. Else `open`. Your own Acks count as one more responder. Every Ack is also kept in the task history.
 
 **Dedupe.** Same as section 14: (sender node, id) for 24 hours, (sender node, payload bytes) for 10 minutes when there is no id.
 

@@ -188,19 +188,51 @@ class Tasks(unittest.TestCase):
         with self.assertRaises(InvalidTransition):
             b.transition(t.key, "maybe")
 
-    def test_incoming_acks_newest_wins_done_is_final(self):
+    @staticmethod
+    def ack(status, **kw):
+        return {"ack": {"ref": 7, "node": "!a1b2c3d4", "status": status, **kw}}
+
+    def test_incoming_acks_done_is_final(self):
         b, t = self.board_with_found()
-        def ack(status, who="!0badc0de", **kw):
-            return {"ack": {"ref": 7, "node": "!a1b2c3d4", "status": status, **kw}}
-        b.on_message("!0badc0de", ack("accepted", eta=10, team="Trupp 3"), self.NOW)
+        b.on_message("!0badc0de", self.ack("accepted", eta=10, team="Trupp 3"), self.NOW)
         self.assertEqual(t.state, "accepted")
-        b.on_message("!0000beef", ack("declined"), self.NOW + timedelta(seconds=5))
-        self.assertEqual(t.state, "declined")
-        b.on_message("!0badc0de", ack("done"), self.NOW + timedelta(seconds=9))
-        b.on_message("!0000beef", ack("accepted"), self.NOW + timedelta(seconds=3))   # late, out of order
+        b.on_message("!0000beef", self.ack("declined"), self.NOW + timedelta(seconds=5))
+        b.on_message("!0000beef", self.ack("done"), self.NOW + timedelta(seconds=9))         # anyone's done
         self.assertEqual(t.state, "done")
-        self.assertEqual(len(t.acks), 4)
+        b.on_message("!0badc0de", self.ack("accepted"), self.NOW + timedelta(seconds=3))   # late, out of order
+        b.on_message("!0000beef", self.ack("declined"), self.NOW + timedelta(seconds=12))
+        self.assertEqual(t.state, "done")
+        self.assertEqual(len(t.acks), 5)
         self.assertEqual(t.acks[0]["team"], "Trupp 3")
+
+    def test_one_team_accepted_keeps_the_task_accepted(self):
+        b, t = self.board_with_found()
+        b.on_message("!0badc0de", self.ack("accepted"), self.NOW)                         # A accepts
+        b.on_message("!0000beef", self.ack("declined"), self.NOW + timedelta(seconds=5))  # B declines
+        self.assertEqual(t.state, "accepted")                                              # A still has it
+        b.on_message("!0badc0de", self.ack("declined"), self.NOW + timedelta(seconds=9))  # now A gives it back
+        self.assertEqual(t.state, "declined")
+
+    def test_same_team_declines_after_accepting(self):
+        b, t = self.board_with_found()
+        b.on_message("!0badc0de", self.ack("accepted"), self.NOW)
+        b.on_message("!0badc0de", self.ack("declined"), self.NOW + timedelta(seconds=5))
+        self.assertEqual(t.state, "declined")
+
+    def test_another_team_accepts_after_a_decline(self):
+        b, t = self.board_with_found()
+        b.on_message("!0badc0de", self.ack("declined"), self.NOW)
+        self.assertEqual(t.state, "declined")
+        b.on_message("!0000beef", self.ack("accepted"), self.NOW + timedelta(seconds=5))
+        self.assertEqual(t.state, "accepted")
+
+    def test_placeholder_resolves_with_the_same_rule(self):
+        b = TaskBoard()
+        b.on_message("!0badc0de", self.ack("accepted"), self.NOW)
+        t = b.on_message("!0000beef", self.ack("declined"), self.NOW)
+        self.assertEqual(t.state, "unknown")
+        b.on_message("!a1b2c3d4", {"id": 7, "found": {}}, self.NOW)
+        self.assertEqual(t.state, "accepted")
 
     def test_ack_before_message_is_unknown_then_resolved(self):
         b = TaskBoard()
