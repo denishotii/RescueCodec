@@ -3,7 +3,11 @@ package org.rescuecodec.engine
 
 import org.rescuecodec.codec.RescueCodec
 
-/** Placeholder for the report engine (text/speech in, message out). */
+/** Entry point and version info of the engine library. */
 object Engine {
-    fun describe(): String = "RescueCodec engine on port ${RescueCodec.PORT_NUM}"
+    /** Version of this library. */
+    const val VERSION: String = "0.1.0"
+
+    /** One line for logs and the about screen. */
+    fun describe(): String = "RescueCodec engine $VERSION, spec ${RescueCodec.SPEC_VERSION}, port ${RescueCodec.PORT_NUM}"
 }
