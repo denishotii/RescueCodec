@@ -20,9 +20,10 @@ Run `scripts/fetch-offline-assets.sh` once with internet. It skips files that ex
 | basemap.pmtiles (vector, Protomaps schema, z0-14, build 20261122) | 14 MB | https://build.protomaps.com/20261122.pmtiles (via `pmtiles extract`) | ODbL. Show "© OpenStreetMap contributors" on the map. |
 | terrain.pmtiles (terrarium webp 512 px, z0-12) | 6 MB | https://download.mapterhorn.com/planet.pmtiles (via `pmtiles extract`) | Mapterhorn, mixed open sources. Show "© Mapterhorn" and link https://mapterhorn.com/attribution |
 | terrain-siebengebirge-z14.pmtiles (detail, bbox 7.15,50.635,7.292,50.725, z0-14) | 2 MB | same as above | same as above |
+| glyphs/ (Noto Sans Regular, Medium, Italic, ranges 0-255 and 256-511) | 0.7 MB | https://protomaps.github.io/basemaps-assets/fonts/ | SIL OFL 1.1 (Noto Sans) |
 
 `manifest.json` lists these files. Both extracts need the protocol `pmtiles://` and the pmtiles JS library. Terrain encoding is `terrarium`, tileSize 512.
-Protomaps style layers need glyphs and sprites for labels. Not downloaded yet: use only fill, line and symbol-free layers, or add a local glyph set later.
+Labels use the local glyphs above (Latin only). No sprite sheet: the dashboard drops POI, road shield and one-way layers.
 
 ## Web libraries (assets-offline/web/)
 | Asset | Size | Source | Licence |

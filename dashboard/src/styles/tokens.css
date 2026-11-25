@@ -1,0 +1,102 @@
+/* Design tokens. "Kartenblatt": a topographic map sheet in two lights, day paper and night sheet.
+   Neutrals are tinted toward forest green. Colour has jobs: red = Mayday, amber = open, blue = accepted, green = done. */
+:root {
+  --font-ui: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-cond: "Barlow Condensed", "Barlow", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* type scale, ratio about 1.2 */
+  --fs-xs: 0.75rem;
+  --fs-sm: 0.875rem;
+  --fs-md: 1rem;
+  --fs-lg: 1.15rem;
+  --fs-xl: 1.4rem;
+  --fs-2xl: 1.8rem;
+  --fs-3xl: 2.6rem;
+
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
+  --r-panel: 10px; --r-card: 8px; --r-ctl: 6px;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  color-scheme: light;
+  --bg: #e6eadf;
+  --surface: #f6f7f1;
+  --surface-2: #eaeee3;
+  --surface-3: #dde3d4;
+  --line: #c3cab8;
+  --line-strong: #8f9a85;
+  --ink: #17231c;
+  --ink-2: #435349;
+  --ink-3: #566659;
+  --focus: #0b5cad;
+
+  --mayday: #c40d19;
+  --mayday-ink: #ffffff;
+  --mayday-soft: #fbe2e2;
+  --open: #9a4f00;
+  --open-soft: #fbe8c9;
+  --open-solid: #e08a14;
+  --accepted: #14578c;
+  --accepted-soft: #d8e9f6;
+  --done: #23653a;
+  --done-soft: #d9ecdc;
+  --declined: #5b5f62;
+  --declined-soft: #e4e5e3;
+
+  --btn-accept: #14578c;
+  --btn-done: #23653a;
+  --btn-ink: #ffffff;
+
+  --measured: #23653a;
+  --estimated: #8a4b00;
+
+  --shadow: 0 1px 2px rgb(23 35 28 / 0.08), 0 4px 12px rgb(23 35 28 / 0.06);
+  --map-water: #b7d3e6;
+  --scrim: rgb(23 35 28 / 0.5);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0b1310;
+  --surface: #121c17;
+  --surface-2: #18251f;
+  --surface-3: #21322a;
+  --line: #2a3c33;
+  --line-strong: #4f6659;
+  --ink: #e5ede6;
+  --ink-2: #aebdb3;
+  --ink-3: #93a69a;
+  --focus: #7cc0ff;
+
+  --mayday: #e5202c;
+  --mayday-ink: #ffffff;
+  --mayday-soft: #3a1417;
+  --open: #f2ad4e;
+  --open-soft: #3a2a10;
+  --open-solid: #f2ad4e;
+  --accepted: #6cb9f2;
+  --accepted-soft: #12293b;
+  --done: #77cf90;
+  --done-soft: #12301d;
+  --declined: #a3adb0;
+  --declined-soft: #20282a;
+
+  --btn-accept: #2d7fc2;
+  --btn-done: #2f8a4c;
+  --btn-ink: #ffffff;
+
+  --measured: #77cf90;
+  --estimated: #f2ad4e;
+
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 4px 14px rgb(0 0 0 / 0.3);
+  --map-water: #1b3b52;
+  --scrim: rgb(0 0 0 / 0.6);
+}
+
+/* font size follows the room: laptop, big screen, projector */
+html { font-size: 15px; }
+@media (min-width: 1600px) { html { font-size: 17px; } }
+@media (min-width: 2400px) { html { font-size: 21px; } }
+html[data-room="on"] { font-size: 19px; }
+@media (min-width: 1600px) { html[data-room="on"] { font-size: 22px; } }
+@media (min-width: 2400px) { html[data-room="on"] { font-size: 28px; } }

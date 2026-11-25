@@ -41,3 +41,7 @@ android/local.properties
 android/app/src/main/assets/vosk/
 sim/data/
 *.log
+
+# Dashboard build: the app is committed, the copied map tiles are not
+rescuecodec/gateway/static/map/
+dashboard/node_modules/

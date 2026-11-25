@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RescueCodec</title>
+    <meta name="description" content="Command-post dashboard for RescueCodec: live reports, tasks and map from Meshtastic radios. Works offline." />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <script>
+      // set the theme before first paint so there is no flash
+      try {
+        var s = JSON.parse(localStorage.getItem("rescuecodec.dashboard.v2") || "{}");
+        var q = new URLSearchParams(location.search).get("theme");
+        var dark = q ? q === "dark" : s.theme ? s.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+        document.documentElement.dataset.theme = dark ? "dark" : "light";
+      } catch (e) {}
+    </script>
+    <script type="module" crossorigin src="./assets/index-Do2JU9du.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-Br4bL8ly.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

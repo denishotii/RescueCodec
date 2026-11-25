@@ -1,0 +1,38 @@
+*, *::before, *::after { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+h1, h2, h3, p { margin: 0; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+a { color: inherit; }
+ul { margin: 0; padding: 0; list-style: none; }
+.num, .mono { font-variant-numeric: tabular-nums; }
+.mono { font-family: var(--font-mono); font-size: 0.86em; letter-spacing: -0.01em; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+::selection { background: color-mix(in srgb, var(--accepted) 35%, transparent); }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+input, select { caret-color: var(--accepted); }
+* { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 8px; border: 2px solid var(--surface); }
+::-webkit-scrollbar-track { background: transparent; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
+}
+
+.skip-link {
+  position: absolute; left: var(--sp-3); top: -60px; z-index: 100;
+  background: var(--ink); color: var(--bg); padding: var(--sp-2) var(--sp-4); border-radius: var(--r-ctl); text-decoration: none;
+}
+.skip-link:focus { top: var(--sp-3); }

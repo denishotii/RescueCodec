@@ -45,4 +45,11 @@ if [ ! -f $A/map/basemap.pmtiles ]; then
 fi
 [ -f $A/map/terrain.pmtiles ] || pmtiles extract https://download.mapterhorn.com/planet.pmtiles $A/map/terrain.pmtiles --bbox=$BBOX --maxzoom=12
 [ -f $A/map/terrain-siebengebirge-z14.pmtiles ] || pmtiles extract https://download.mapterhorn.com/planet.pmtiles $A/map/terrain-siebengebirge-z14.pmtiles --bbox=7.15,50.635,7.292,50.725 --maxzoom=14
+# 3b. Map label glyphs for the dashboard (Noto Sans, Latin ranges only, 0.7 MB)
+for f in "Noto Sans Regular" "Noto Sans Medium" "Noto Sans Italic"; do
+  mkdir -p "$A/map/glyphs/$f"
+  for r in 0-255 256-511; do
+    [ -f "$A/map/glyphs/$f/$r.pbf" ] || curl -fsSL -o "$A/map/glyphs/$f/$r.pbf" "https://protomaps.github.io/basemaps-assets/fonts/${f// /%20}/$r.pbf"
+  done
+done
 echo "done"; du -sh $A/*
