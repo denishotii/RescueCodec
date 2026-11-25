@@ -194,11 +194,8 @@ sealed interface SosResult {
     data class Failed(val message: String) : SosResult
 }
 
-/** Sent and received messages, the waiting queue, read-aloud and the SOS button. */
+/** The waiting queue, cancel and send again, read-aloud and the SOS button. The messages themselves: [ChatViewModel]. */
 class MessagesViewModel(app: Application, private val graph: AppGraph) : AndroidViewModel(app) {
-    val recent: StateFlow<List<MessageEntity>> = graph.database.messages().observeRecent(100)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-
     val waiting: StateFlow<List<MessageEntity>> = graph.database.messages().observeWaiting()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -225,6 +222,41 @@ class MessagesViewModel(app: Application, private val graph: AppGraph) : Android
                 },
             )
         }
+    }
+}
+
+/**
+ * One conversation. Today there is one: the team channel the reports go out on ([ChatChannel.TEAM]). The chat screen
+ * and this view model take the channel as a parameter, so a chat list (one conversation per private channel, plus
+ * direct messages) can open several later. That needs the channel of each row in the database first.
+ */
+data class ChatChannel(
+    /** Radio channel index, or null for "the team channel picked by [ChannelChoice]". */
+    val index: Int?,
+    /** Shown in the top bar when the radio has not told us the channel name yet. */
+    val fallbackName: String,
+) {
+    val key: String get() = "chat-${index ?: "team"}"
+
+    companion object {
+        val TEAM = ChatChannel(index = null, fallbackName = "Team")
+    }
+}
+
+class ChatViewModel(app: Application, private val graph: AppGraph, val channel: ChatChannel) : AndroidViewModel(app) {
+    /** Newest first. Null until the database answered, so the screen never flashes "No messages yet". */
+    val messages: StateFlow<List<MessageEntity>?> = graph.database.messages().observeRecent(LIMIT)
+        // Every row belongs to the team channel today; with a channel column this becomes a filter on [channel].
+        .map<List<MessageEntity>, List<MessageEntity>?> { it }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** The channel name the radio reports (for example "RescueCodec"), or null. */
+    val title: StateFlow<String?> = graph.messenger.channel
+        .map { c -> (c as? ChannelChoice.Ready)?.takeIf { channel.index == null || it.index == channel.index }?.name?.takeIf { it.isNotBlank() } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    companion object {
+        private const val LIMIT = 200
     }
 }
 
@@ -274,6 +306,10 @@ class SettingsViewModel(app: Application, private val graph: AppGraph) : Android
     fun setLanguage(l: String) = graph.ui.setLanguage(l)
     fun toggleLanguage() = graph.ui.toggleLanguage()
     fun setTheme(m: String) = graph.ui.setTheme(m)
+
+    /** In-app sound and haptic tick for new messages and tasks. */
+    val sounds: StateFlow<Boolean> = graph.ui.sounds
+    fun setSounds(on: Boolean) = graph.ui.setSounds(on)
 
     val teamLabel: String get() = graph.settings.teamLabel
     fun setTeamLabel(v: String) { graph.settings.teamLabel = Messenger.teamLabelFor(v).orEmpty() }
@@ -519,6 +555,12 @@ class ReportViewModel(app: Application, private val graph: AppGraph) : AndroidVi
             return TextFit.fitText(message + ("id" to ID_PROBE)) - "id"
         }
     }
+}
+
+/** Creates the [ChatViewModel] of one channel. Use it with `viewModel(key = channel.key, factory = ...)`. */
+class ChatViewModelFactory(private val app: Application, private val graph: AppGraph, private val channel: ChatChannel) : ViewModelProvider.Factory {
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : ViewModel> create(modelClass: Class<T>): T = ChatViewModel(app, graph, channel) as T
 }
 
 /** Creates the ViewModels with the app graph. */

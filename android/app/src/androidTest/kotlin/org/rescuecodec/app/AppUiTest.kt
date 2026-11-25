@@ -67,13 +67,13 @@ class AppUiTest {
     fun reportThenSendQueuesTheCodedMessage() {
         show()
         rule.onNodeWithTag("report_text").performTextInput("Child found, conscious, hypothermia, need stretcher")
-        // The fields appear as chips and the counter shows the saving.
+        // The preview strip above the field shows the fields as chips and the size.
         rule.waitUntil(8_000) { rule.onAllNodesWithTag("chip_type").fetchSemanticsNodes().isNotEmpty() }
-        // The keyboard is up, so scroll the list to each chip before checking it.
+        // The chips sit in one row that scrolls sideways, so scroll to each before checking it.
         rule.onNodeWithTag("chip_type").performScrollTo().assertIsDisplayed()
         rule.onNodeWithTag("chip_age").performScrollTo().assertIsDisplayed()
         rule.onNodeWithTag("chip_injuries_hypothermia").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithTag("report_readable").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithTag("byte_counter").assertIsDisplayed()
         rule.onNodeWithTag("send_button").assertIsEnabled().performClick()
 
         // One row in the send queue, and it decodes to what was typed.
@@ -94,9 +94,9 @@ class AppUiTest {
         assertEquals(1L, stats()["report_count"])
         assertEquals(row.bytes.size.toLong(), stats()["report_coded_bytes"])
 
-        // The Feed shows it as waiting for the radio.
-        rule.onNodeWithTag("tab_feed").performClick()
-        rule.onNodeWithText("Waiting for radio").assertIsDisplayed()
+        // The chat shows it on the right, as waiting for the radio.
+        rule.waitUntil(8_000) { rule.onAllNodesWithText("Waiting for radio").fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithTag("msg_${row.id}").assertIsDisplayed()
     }
 
     @Test
@@ -119,7 +119,7 @@ class AppUiTest {
             )
         }
         show()
-        rule.onNodeWithTag("tab_actions").performClick()
+        rule.onNodeWithTag("tab_tasks").performClick()
         rule.waitUntil(8_000) { rule.onAllNodesWithTag("accept_$key").fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithTag("accept_$key").performClick()
 
@@ -141,13 +141,13 @@ class AppUiTest {
     fun sosNeedsAHoldAndThenQueuesAMayday() {
         show()
         // A quick tap does nothing.
-        rule.onNodeWithTag("sos_bar").performTouchInput { down(center); up() }
+        rule.onNodeWithTag("sos_button").performTouchInput { down(center); up() }
         rule.waitForIdle()
         assertEquals(0, runBlocking { graph.database.messages().waiting() }.size)
         // A hold of two seconds sends it.
-        rule.onNodeWithTag("sos_bar").performTouchInput { down(center) }
+        rule.onNodeWithTag("sos_button").performTouchInput { down(center) }
         rule.mainClock.advanceTimeBy(2_600)
-        rule.onNodeWithTag("sos_bar").performTouchInput { up() }
+        rule.onNodeWithTag("sos_button").performTouchInput { up() }
         rule.waitUntil(8_000) { runBlocking { graph.database.messages().waiting().size } == 1 }
         assertEquals("mayday", runBlocking { graph.database.messages().waiting() }.single().type)
         rule.onNodeWithTag("mayday_banner").assertIsDisplayed()
@@ -156,11 +156,17 @@ class AppUiTest {
     @Test
     fun languageToggleSwitchesTheWholeApp() {
         show()
-        rule.onNodeWithText("Actions").assertIsDisplayed()
-        rule.onNodeWithTag("settings_button").performClick()
-        rule.onNodeWithTag("lang_de").performClick()
-        rule.waitUntil(5_000) { rule.onAllNodesWithText("Senden").fetchSemanticsNodes().isNotEmpty() }
-        rule.onNodeWithText("Aufgaben").assertIsDisplayed()
+        rule.onNodeWithText("Tasks").assertIsDisplayed()
+        // EN / DE in the top bar switches the whole app.
+        rule.onNodeWithTag("lang_toggle").performClick()
+        rule.waitUntil(5_000) { rule.onAllNodesWithText("Aufgaben").fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Nachricht oder Meldung").assertIsDisplayed()
         assertEquals("de", graph.settings.language)
+        // Settings is in the menu and can switch it back.
+        rule.onNodeWithTag("menu_button").performClick()
+        rule.onNodeWithTag("menu_settings").performClick()
+        rule.onNodeWithTag("lang_en").performClick()
+        rule.waitUntil(5_000) { rule.onAllNodesWithText("Settings").fetchSemanticsNodes().isNotEmpty() }
+        assertEquals("en", graph.settings.language)
     }
 }

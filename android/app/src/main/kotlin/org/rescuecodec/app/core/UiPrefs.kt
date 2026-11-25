@@ -27,6 +27,16 @@ class UiPrefs(private val settings: AppSettings, private val store: KeyValueStor
 
     fun toggleLanguage() = setLanguage(if (_language.value == "en") "de" else "en")
 
+    private val _sounds = MutableStateFlow(store.getString(SOUNDS_KEY) != "off")
+
+    /** Short in-app sound and haptic tick for a new message or task while the app is open. On by default. */
+    val sounds: StateFlow<Boolean> = _sounds.asStateFlow()
+
+    fun setSounds(on: Boolean) {
+        store.putString(SOUNDS_KEY, if (on) "on" else "off")
+        _sounds.value = on
+    }
+
     fun setTheme(mode: String) {
         store.putString(THEME_KEY, mode)
         _theme.value = mode
@@ -35,5 +45,6 @@ class UiPrefs(private val settings: AppSettings, private val store: KeyValueStor
     companion object {
         val LANGUAGES = listOf("en", "de")
         private const val THEME_KEY = "theme"
+        private const val SOUNDS_KEY = "sounds"
     }
 }
