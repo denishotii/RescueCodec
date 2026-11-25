@@ -7,3 +7,6 @@
 ## spec (Wed 02:03)
 - spec: done, review pass, commit ba6adf3 already contains all spec paths (no new commit needed). Open: no Python rule-based extractor yet (belongs to build-python / J8); uk/tr/ar i18n are machine drafts, need native review; OpenAPI enums are strict (unknown_<n>/bit_<n> not modelled); generated pb2 needs protobuf>=6.33; port 38 (PAGING_APP) only described in SPEC.md, nothing requested from Meshtastic; a818c2c swept in early spec drafts (history not rewritten).
 - Relayed question on Android toolchain download/duration: not answered by the spec step; orchestrator should answer from setup state.
+
+## build-ts (Wed 02:12)
+- ts-lib: done (already committed as 7de428e), review: pass, open issues: no LICENSE file yet (add Apache-2.0 before npm publish); strict UTF-8 decode uses raw-byte scan because protobuf-es replaces bad bytes; Level 3 extraction not implemented in TS; gen.sh needs protoc (brew), src/gen and i18n-data.ts committed; not published to npm; build uses lib DOM only for TextEncoder/TextDecoder
