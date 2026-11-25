@@ -166,20 +166,19 @@ fun Tag(text: String, background: Color, content: Color, modifier: Modifier = Mo
     }
 }
 
-/** State of a task: open (amber), accepted (blue), declined (grey), done (green), delivery unknown (grey, dashed). */
+/** State of a task, in words with an icon: open (amber), accepted (blue), declined (grey), done (green), delivery unknown (grey). */
 @Composable
 fun StateTag(state: String, modifier: Modifier = Modifier) {
     val c = Rc.colors
-    // Solid tonal fills with ink text: they read in sunlight and in the dark.
-    val ink = Color(0xFF17231C)
-    val (bg, fg, label) = when (state) {
-        "open" -> Triple(Color(0xFFF2C14E), ink, stringResource(R.string.state_open))
-        "accepted" -> Triple(Color(0xFF9CC9EC), ink, stringResource(R.string.state_accepted))
-        "done" -> Triple(Color(0xFFA6D8B2), ink, stringResource(R.string.state_done))
-        "declined" -> Triple(Color(0xFFC9CEC9), ink, stringResource(R.string.state_declined))
-        else -> Triple(Color(0xFFC9CEC9), ink, stringResource(R.string.state_delivery_unknown))
+    data class S(val bg: Color, val fg: Color, val label: String, val icon: Int?)
+    val s = when (state) {
+        "open" -> S(c.openSoft, c.open, stringResource(R.string.state_open), R.drawable.ic_schedule)
+        "accepted" -> S(c.acceptedSoft, c.accepted, stringResource(R.string.state_accepted), R.drawable.ic_check)
+        "done" -> S(c.doneSoft, c.done, stringResource(R.string.state_done), R.drawable.ic_check_circle)
+        "declined" -> S(c.declinedSoft, c.declined, stringResource(R.string.state_declined), R.drawable.ic_close)
+        else -> S(c.declinedSoft, c.declined, stringResource(R.string.state_delivery_unknown), R.drawable.ic_help_outline)
     }
-    Tag(label, bg, fg, modifier, icon = if (state == "done") R.drawable.ic_check else null)
+    Tag(s.label, s.bg, s.fg, modifier, icon = s.icon)
 }
 
 /**
@@ -212,13 +211,14 @@ fun SourceTag(measured: Boolean, modifier: Modifier = Modifier) {
 
 @Composable
 fun SectionHeader(text: String, modifier: Modifier = Modifier, count: Int? = null, color: Color = MaterialTheme.colorScheme.onSurface) {
-    // Same signature as the dashboard: condensed capitals with a 2 dp amber rule underneath.
-    Column(modifier.fillMaxWidth().padding(top = 8.dp)) {
-        Row(Modifier.padding(bottom = 4.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(text.uppercase(), style = MaterialTheme.typography.headlineSmall.copy(letterSpacing = 0.8.sp), color = color, modifier = Modifier.semantics { contentDescription = text })
-            if (count != null) Text(count.toString(), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Box(Modifier.fillMaxWidth().height(2.dp).background(Rc.colors.openSolid))
+    // A plain heading: words and a count, no rule, no decoration.
+    Row(
+        modifier.fillMaxWidth().padding(top = 12.dp, bottom = 2.dp).semantics(mergeDescendants = true) {},
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(text, style = MaterialTheme.typography.titleMedium.copy(fontSize = 19.sp), color = color)
+        if (count != null) Text(count.toString(), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
