@@ -1,6 +1,6 @@
 {
  "spec_version": "2.0.0",
- "about": "RescueCodec v2 conformance vectors. See spec/SPEC.md, section 'Conformance'. valid: encode(input) must give hex exactly; decode(hex) must give decoded. text: Level 2, render(decoded) must give these strings. decode_only: decode(hex) must give decoded. invalid_encode / invalid_decode: must be rejected; error codes should match. v1: decode_any(hex) must give decoded.",
+ "about": "RescueCodec v2 conformance vectors. See spec/SPEC.md, section 'Conformance'. valid: encode(input) must give hex exactly; decode(hex) must give decoded. text: Level 2, render(decoded) must give these strings. decode_only: decode(hex) must give decoded. invalid_encode / invalid_decode: must be rejected; error codes should match. v1: decode_any(hex) must give decoded. packed_text: unpack(deflate, dict) must give text, decode(hex) must give decoded, and decode(encode(decoded)) must give decoded (compressors may make other bytes). text_dicts: SHA-256 of each text dictionary file.",
  "valid": [
   {
    "name": "found-minimal",
@@ -1674,6 +1674,55 @@
      ]
     }
    }
+  },
+  {
+   "name": "packed-stored-block",
+   "note": "A DEFLATE stream that does not use the dictionary (one stored block) is valid too.",
+   "hex": "08076a0e120a010500faff48616c6c6f1801",
+   "size": 18,
+   "decoded": {
+    "id": 7,
+    "text": {
+     "text": "Hallo",
+     "dict": 1
+    }
+   }
+  },
+  {
+   "name": "packed-no-dictionary-used",
+   "note": "Packed without the dictionary by another compressor: still valid.",
+   "hex": "08076a1f121b0b294a4d4b2b28cdcb2e5108482cca2ec8492ca952f0cb2f4a01001801",
+   "size": 35,
+   "decoded": {
+    "id": 7,
+    "text": {
+     "text": "Treffpunkt Parkplatz Nord",
+     "dict": 1
+    }
+   }
+  },
+  {
+   "name": "packed-1024",
+   "note": "A packed text of exactly 1024 bytes unpacked is the largest allowed.",
+   "hex": "08076a0f120b73741c05a360148c5400001801",
+   "size": 19,
+   "decoded": {
+    "id": 7,
+    "text": {
+     "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+     "dict": 1
+    }
+   }
+  },
+  {
+   "name": "packed-unknown-dict",
+   "note": "Dictionary 2 is from a newer spec: decode as unknown, do not reject.",
+   "hex": "08076a0b1207f348ccc9c907001802",
+   "size": 15,
+   "decoded": {
+    "id": 7,
+    "unknown": {}
+   }
   }
  ],
  "invalid_encode": [
@@ -2280,6 +2329,66 @@
    },
    "error": "invalid_value",
    "field": "v"
+  },
+  {
+   "name": "text-dict-unknown",
+   "note": "Only dictionary 1 exists.",
+   "input": {
+    "text": {
+     "text": "Hallo",
+     "dict": 2
+    }
+   },
+   "error": "invalid_value",
+   "field": "text.dict"
+  },
+  {
+   "name": "text-dict-zero",
+   "note": "Dictionary numbers start at 1.",
+   "input": {
+    "text": {
+     "text": "Hallo",
+     "dict": 0
+    }
+   },
+   "error": "invalid_value",
+   "field": "text.dict"
+  },
+  {
+   "name": "text-dict-string",
+   "note": "The dictionary is a number.",
+   "input": {
+    "text": {
+     "text": "Hallo",
+     "dict": "1"
+    }
+   },
+   "error": "invalid_value",
+   "field": "text.dict"
+  },
+  {
+   "name": "text-packed-1025",
+   "note": "A packed text is at most 1024 bytes unpacked.",
+   "input": {
+    "text": {
+     "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+     "dict": 1
+    }
+   },
+   "error": "invalid_value",
+   "field": "text.text"
+  },
+  {
+   "name": "text-packed-empty",
+   "note": "A packed text must not be empty.",
+   "input": {
+    "text": {
+     "text": "",
+     "dict": 1
+    }
+   },
+   "error": "missing_field",
+   "field": "text.text"
   }
  ],
  "invalid_decode": [
@@ -2429,6 +2538,76 @@
    "hex": "6ae7010ae401414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141",
    "error": "too_large",
    "field": null
+  },
+  {
+   "name": "wire-packed-and-text",
+   "note": "A text has words or packed words, not both.",
+   "hex": "08076a120a0548616c6c6f1207f348ccc9c907001801",
+   "error": "invalid_value",
+   "field": "text.deflate"
+  },
+  {
+   "name": "wire-packed-no-dict",
+   "note": "Packed words need their dictionary number.",
+   "hex": "08076a091207f348ccc9c90700",
+   "error": "missing_field",
+   "field": "text.dict"
+  },
+  {
+   "name": "wire-dict-without-packed",
+   "note": "A dictionary number without packed words.",
+   "hex": "08076a090a0548616c6c6f1801",
+   "error": "invalid_value",
+   "field": "text.dict"
+  },
+  {
+   "name": "wire-packed-broken",
+   "note": "Not a DEFLATE stream (block type 3 does not exist).",
+   "hex": "08076a061202ffff1801",
+   "error": "malformed",
+   "field": "text.deflate"
+  },
+  {
+   "name": "wire-packed-cut",
+   "note": "A DEFLATE stream cut off before its end.",
+   "hex": "08076a23121f8306173414324a4b74909d0836b8b45807a5970352089ba286260fe81e15d01801",
+   "error": "malformed",
+   "field": "text.deflate"
+  },
+  {
+   "name": "wire-packed-trailing",
+   "note": "Bytes after the end of the DEFLATE stream.",
+   "hex": "08076a0b1207f34804f63600001801",
+   "error": "malformed",
+   "field": "text.deflate"
+  },
+  {
+   "name": "wire-packed-1025",
+   "note": "Unpacks to more than 1024 bytes: reject (zip bomb guard).",
+   "hex": "08076a0f120b73741c05a360148c5800001801",
+   "error": "too_large",
+   "field": "text.deflate"
+  },
+  {
+   "name": "wire-packed-bomb",
+   "note": "Unpacks to 100000 bytes: reject without unpacking it all.",
+   "hex": "08076a771273edc13101000000c2a06ceb5fca1a1e4001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000af061801",
+   "error": "too_large",
+   "field": "text.deflate"
+  },
+  {
+   "name": "wire-packed-bad-utf8",
+   "note": "The unpacked bytes are not UTF-8.",
+   "hex": "08076a0d1209fbffcf233127271f001801",
+   "error": "malformed",
+   "field": "text.deflate"
+  },
+  {
+   "name": "wire-packed-empty",
+   "note": "The packed words are empty.",
+   "hex": "08076a06120203001801",
+   "error": "missing_field",
+   "field": "text.text"
   }
  ],
  "v1": [
@@ -2516,5 +2695,104 @@
     }
    }
   }
- ]
+ ],
+ "packed_text": [
+  {
+   "name": "packed-en-hut",
+   "note": "The example from SPEC section 3.5, English.",
+   "text": "We are at the hut, two people with us, waiting for the vehicle on the forest road",
+   "dict": 1,
+   "deflate": "8306173414324a4b74909d0836b8b45807a5970352089ba286260fe81e15d0ec3500",
+   "hex": "08036a2612228306173414324a4b74909d0836b8b45807a5970352089ba286260fe81e15d0ec35001801",
+   "size": 42,
+   "text_size": 81,
+   "decoded": {
+    "id": 3,
+    "text": {
+     "text": "We are at the hut, two people with us, waiting for the vehicle on the forest road",
+     "dict": 1
+    }
+   }
+  },
+  {
+   "name": "packed-de-hut",
+   "note": "The same in German, with umlauts.",
+   "text": "Wir sind an der Hütte, zwei Personen bei uns, warten auf das Fahrzeug am Forstweg",
+   "dict": 1,
+   "deflate": "831757d012c703bc2645072d8b43cb6e1de40e34284b2256c1e52ab8019b8a25c02e3e00",
+   "hex": "08046a281224831757d012c703bc2645072d8b43cb6e1de40e34284b2256c1e52ab8019b8a25c02e3e001801",
+   "size": 44,
+   "text_size": 82,
+   "decoded": {
+    "id": 4,
+    "text": {
+     "text": "Wir sind an der Hütte, zwei Personen bei uns, warten auf das Fahrzeug am Forstweg",
+     "dict": 1
+    }
+   }
+  },
+  {
+   "name": "packed-de-short",
+   "note": "A short German chat line.",
+   "text": "Bin unterwegs, Ankunft in ca. 10 Minuten",
+   "dict": 1,
+   "deflate": "7342ee9ceb20af28048d312306ab01",
+   "hex": "08056a13120f7342ee9ceb20af28048d312306ab011801",
+   "size": 23,
+   "text_size": 40,
+   "decoded": {
+    "id": 5,
+    "text": {
+     "text": "Bin unterwegs, Ankunft in ca. 10 Minuten",
+     "dict": 1
+    }
+   }
+  },
+  {
+   "name": "packed-en-pos",
+   "note": "A packed text keeps position and priority.",
+   "text": "Need a stretcher and two more people at the edge of the forest",
+   "dict": 1,
+   "deflate": "83fa1be15890b520472239051646a929e9f07401d9950200",
+   "hex": "080610031a0908b8e6ea04108287586a1c121883fa1be15890b520472239051646a929e9f07401d99502001801",
+   "size": 45,
+   "text_size": 62,
+   "decoded": {
+    "id": 6,
+    "priority": "urgent",
+    "pos": {
+     "lat": 50.69212,
+     "lon": 7.21345
+    },
+    "text": {
+     "text": "Need a stretcher and two more people at the edge of the forest",
+     "dict": 1
+    }
+   }
+  },
+  {
+   "name": "packed-long",
+   "note": "A 300-byte text (too long for a plain text) fits packed.",
+   "text": "Sector 4 fully searched, nothing found. Sector 4 fully searched, nothing found. Sector 4 fully searched, nothing found. Sector 4 fully searched, nothing found. Sector 4 fully searched, nothing found. Sector 4 fully searched, nothing found. Sector 4 fully searched, nothing found. Sector 4 fully searc",
+   "dict": 1,
+   "deflate": "83ae9236818ecdc006a1745047a1f41446d515250300",
+   "hex": "08086a1a121683ae9236818ecdc006a1745047a1f41446d5152503001801",
+   "size": 30,
+   "text_size": 300,
+   "decoded": {
+    "id": 8,
+    "text": {
+     "text": "Sector 4 fully searched, nothing found. Sector 4 fully searched, nothing found. Sector 4 fully searched, nothing found. Sector 4 fully searched, nothing found. Sector 4 fully searched, nothing found. Sector 4 fully searched, nothing found. Sector 4 fully searched, nothing found. Sector 4 fully searc",
+     "dict": 1
+    }
+   }
+  }
+ ],
+ "text_dicts": {
+  "1": {
+   "file": "vocab/text-dict-v1.txt",
+   "sha256": "f1cc69167232438d0440ec8f2be9fa4270c4dd04c502dae13aa2d91bd31c6ec9",
+   "size": 15835
+  }
+ }
 }

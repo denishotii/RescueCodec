@@ -46,6 +46,17 @@ class Contract(unittest.TestCase):
             wait_for(lambda: c.get(f"/v2/messages/{sent.json()['seq']}").json()["status"] == "delivered")
             self.check("MessageRecord", c.post("/v2/messages", json={"message": FOUND, "dry_run": True}).json())
             self.check("MessageRecord", c.post("/v2/text", json={"text": "hello"}).json())
+            self.check("ChatMode", c.put("/v2/channels/RescueCodec/mode", json={"mode": "compressed"}).json())
+            packed = c.post("/v2/text", json={"text": "We are at the hut, two people with us, waiting for the vehicle"}).json()
+            self.assertTrue(packed["codec"]["packed"])
+            self.check("MessageRecord", packed)
+            gw.hear({"id": 12, "text": {"text": "Bin unterwegs, Ankunft in ca. 10 Minuten", "dict": 1}})
+            self.check("ChatMode", c.get("/v2/channels/RescueCodec/mode").json())
+            self.check("ChatMode", c.put("/v2/channels/RescueCodec/mode", json={"mode": "compressed"}).json())
+            self.check("ChatMode", c.get("/v2/nodes/!0000e002/mode").json())
+            self.check("Health", c.get("/v2/health").json())
+            for node in c.get("/v2/nodes").json()["items"]:
+                self.check("Node", node)
             listing = c.get("/v2/messages?limit=1000").json()
             self.assertGreaterEqual(len(listing["items"]), 9)
             for record in listing["items"]:

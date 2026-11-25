@@ -9,20 +9,22 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [MessageEntity::class, TaskEntity::class, StatEntity::class],
-    version = 2,
+    entities = [MessageEntity::class, TaskEntity::class, StatEntity::class, NodeSeenEntity::class, ChatModeEntity::class],
+    version = 3,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun messages(): MessageDao
     abstract fun tasks(): TaskDao
     abstract fun stats(): StatDao
+    abstract fun nodesSeen(): NodeSeenDao
+    abstract fun chatModes(): ChatModeDao
 
     companion object {
         /** [teamChannel] names the channel that all rows of an old (version 1) database were sent and received on. */
         fun open(context: Context, name: String = "rescuecodec.db", teamChannel: () -> String = { Migrations.DEFAULT_TEAM }): AppDatabase =
             Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, name)
-                .addMigrations(Migrations.from1To2(teamChannel))
+                .addMigrations(Migrations.from1To2(teamChannel), Migrations.FROM_2_TO_3)
                 .build()
 
         /** A database that lives in memory only. For tests. */
@@ -63,6 +65,23 @@ object Migrations {
     fun from1To2(team: () -> String): Migration = object : Migration(1, 2) {
         override fun migrate(db: SupportSQLiteDatabase) {
             for (sql in sql1To2(team().ifBlank { DEFAULT_TEAM })) db.execSQL(sql)
+        }
+    }
+
+    /**
+     * Version 2 to 3: packed texts (spec section 2.3). Two new tables: which nodes we heard on which port
+     * (RescueCodec or normal Meshtastic text) and the text mode of each chat. Nothing else changes.
+     */
+    val SQL_2_TO_3: List<String> = listOf(
+        "CREATE TABLE IF NOT EXISTS `nodes_seen` (`node` INTEGER NOT NULL, `channel` TEXT NOT NULL, `port` INTEGER NOT NULL, " +
+            "`lastSeenMs` INTEGER NOT NULL, PRIMARY KEY(`node`, `channel`, `port`))",
+        "CREATE INDEX IF NOT EXISTS `index_nodes_seen_lastSeenMs` ON `nodes_seen` (`lastSeenMs`)",
+        "CREATE TABLE IF NOT EXISTS `chat_modes` (`chat` TEXT NOT NULL, `mode` TEXT NOT NULL, PRIMARY KEY(`chat`))",
+    )
+
+    val FROM_2_TO_3: Migration = object : Migration(2, 3) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            for (sql in SQL_2_TO_3) db.execSQL(sql)
         }
     }
 }

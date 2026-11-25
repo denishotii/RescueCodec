@@ -97,3 +97,41 @@ suspend fun StatDao.add(name: String, delta: Long = 1) {
     ensure(StatEntity(name, 0))
     addRaw(name, delta)
 }
+
+@Dao
+interface NodeSeenDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(row: NodeSeenEntity)
+
+    /** True when [node] sent a RescueCodec packet since [sinceMs]. */
+    @Query("SELECT COUNT(*) > 0 FROM nodes_seen WHERE node = :node AND port = 256 AND lastSeenMs >= :sinceMs")
+    suspend fun isRescueCodec(node: Long, sinceMs: Long): Boolean
+
+    /** Nodes that sent normal texts on [channel] since [sinceMs] and no RescueCodec packet in that time. */
+    @Query(
+        "SELECT DISTINCT node FROM nodes_seen WHERE channel = :channel AND port = 1 AND lastSeenMs >= :sinceMs " +
+            "AND node NOT IN (SELECT node FROM nodes_seen WHERE port = 256 AND lastSeenMs >= :sinceMs) ORDER BY node",
+    )
+    suspend fun meshtasticUsers(channel: String, sinceMs: Long): List<Long>
+
+    @Query("DELETE FROM nodes_seen WHERE lastSeenMs < :beforeMs")
+    suspend fun forget(beforeMs: Long)
+
+    @Query("SELECT * FROM nodes_seen ORDER BY lastSeenMs DESC")
+    fun observeAll(): Flow<List<NodeSeenEntity>>
+}
+
+@Dao
+interface ChatModeDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun set(row: ChatModeEntity)
+
+    @Query("SELECT mode FROM chat_modes WHERE chat = :chat")
+    suspend fun get(chat: String): String?
+
+    @Query("SELECT mode FROM chat_modes WHERE chat = :chat")
+    fun observe(chat: String): Flow<String?>
+
+    @Query("DELETE FROM chat_modes WHERE chat = :chat")
+    suspend fun clear(chat: String)
+}

@@ -1,0 +1,2 @@
+# The text dictionary is a preset dictionary for DEFLATE: its bytes must be identical everywhere.
+spec/vocab/text-dict-v1.txt -text

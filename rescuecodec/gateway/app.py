@@ -184,6 +184,31 @@ def create_app(service: GatewayService, *, hub: ConnectorHub | None = None, stat
     def nodes():
         return {"items": service.list_nodes()}
 
+    # ------------------------------------------------------------ text mode per chat
+    def mode_body(body: dict[str, Any]) -> Any:
+        unknown = set(body) - {"mode"}
+        if unknown:
+            raise ApiError(400, "bad_request", f"unknown key {sorted(unknown)[0]!r}", sorted(unknown)[0])
+        if "mode" not in body:
+            raise ApiError(400, "bad_request", "the body needs a mode", "mode")
+        return body["mode"]
+
+    @app.get("/v2/channels/{name}/mode")
+    def get_channel_mode(name: str):
+        return service.chat_mode(channel=name)
+
+    @app.put("/v2/channels/{name}/mode")
+    def put_channel_mode(name: str, body: dict[str, Any] = Body(...)):
+        return service.set_chat_mode(mode_body(body), channel=name)
+
+    @app.get("/v2/nodes/{node}/mode")
+    def get_node_mode(node: str):
+        return service.chat_mode(node=node)
+
+    @app.put("/v2/nodes/{node}/mode")
+    def put_node_mode(node: str, body: dict[str, Any] = Body(...)):
+        return service.set_chat_mode(mode_body(body), node=node)
+
     # ------------------------------------------------------------ messages
     @app.post("/v2/messages", status_code=202)
     def send_message(body: dict[str, Any] = Body(...)):

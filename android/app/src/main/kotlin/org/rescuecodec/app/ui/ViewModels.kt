@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -65,6 +66,7 @@ import org.rescuecodec.codec.RescueCodec
 import org.rescuecodec.engine.Airtime
 import org.rescuecodec.engine.Extractor
 import org.rescuecodec.engine.TextFit
+import org.rescuecodec.engine.TextMode
 
 /** Radio connection: state, scan, connect, disconnect, channel, joining a channel by link. */
 class ConnectionViewModel(app: Application, private val graph: AppGraph) : AndroidViewModel(app) {
@@ -392,6 +394,12 @@ class ChatViewModel(app: Application, private val graph: AppGraph, val chat: Cha
     /** Names of the other radios, for the sender line of each message. */
     val names: StateFlow<Map<Long, NodeName>> = graph.nodes.nodes
 
+    /** How texts go out in this chat: auto, compressed or normal (spec section 2.3). */
+    val textMode: StateFlow<String> = graph.messenger.routes.observeMode(chat)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TextMode.AUTO)
+
+    fun setTextMode(mode: String) { viewModelScope.launch { graph.messenger.routes.setMode(chat, mode) } }
+
     /** The person sees this chat: everything up to the newest row is read, and the app opens it next time. */
     fun markRead() {
         graph.settings.lastChat = chat.key
@@ -548,6 +556,12 @@ data class ReportUi(
     /** The text was cut so it fits into 200 bytes with the position. It ends with "…". */
     val shortened: Boolean = false,
     val busy: Boolean = false,
+    /** A text goes packed for RescueCodec ([sentBytes] on air) instead of as a normal Meshtastic text ([plainBytes]). */
+    val packed: Boolean = false,
+    /** Bytes of a text as a normal Meshtastic text, 0 when the message is not a text. */
+    val plainBytes: Int = 0,
+    /** The chat's text mode: auto, compressed or normal. */
+    val textMode: String = TextMode.AUTO,
 )
 
 /** One-off results the screen shows as a snackbar. */
@@ -573,15 +587,31 @@ class ReportViewModel(app: Application, private val graph: AppGraph) : AndroidVi
     @Volatile var textOnly: Boolean = false
         private set
 
+    private var modeJob: Job? = null
+
     /** The chat screen tells the composer where it sends. A new chat starts with an empty field. */
     fun setChat(chat: ChatId, isTeam: Boolean, isPublic: Boolean) {
         val only = chat is ChatId.Direct || isPublic
         if (target != null && chat != target) clear()
-        val changed = only != textOnly
+        val changed = only != textOnly || isTeam != targetIsTeam
         target = chat
         targetIsTeam = isTeam
         textOnly = only
         if (changed && _ui.value.text.isNotBlank()) viewModelScope.launch { rebuild(_ui.value.text, force = true) }
+        // The byte line follows the chat's text mode (packed or normal), also when the person changes it.
+        modeJob?.cancel()
+        modeJob = viewModelScope.launch {
+            graph.messenger.routes.observeMode(chat).collect { mode ->
+                _ui.update { it.copy(textMode = mode) }
+                if (_ui.value.message != null) recompute(_ui.value.message, graph.ui.language.value)
+            }
+        }
+    }
+
+    /** (channel, peer) of the chat the composer sends to, as [Messenger.submit] takes them. */
+    private fun destination(): Pair<String?, Long?> {
+        val chat = target
+        return (chat as? ChatId.Channel)?.name?.takeUnless { targetIsTeam } to (chat as? ChatId.Direct)?.node
     }
 
     private val _events = MutableSharedFlow<ReportEvent>(extraBufferCapacity = 4)
@@ -615,7 +645,7 @@ class ReportViewModel(app: Application, private val graph: AppGraph) : AndroidVi
     }
 
     fun clear() {
-        _ui.value = ReportUi()
+        _ui.value = ReportUi(textMode = _ui.value.textMode)
         textInput.value = ""
     }
 
@@ -627,7 +657,7 @@ class ReportViewModel(app: Application, private val graph: AppGraph) : AndroidVi
     private suspend fun rebuild(text: String, force: Boolean) {
         if (_ui.value.edited && !force) return
         if (text.isBlank()) {
-            _ui.update { ReportUi(text = text, textBytes = text.toByteArray(Charsets.UTF_8).size) }
+            _ui.update { ReportUi(text = text, textBytes = text.toByteArray(Charsets.UTF_8).size, textMode = it.textMode) }
             return
         }
         if (textOnly) {
@@ -658,6 +688,8 @@ class ReportViewModel(app: Application, private val graph: AppGraph) : AndroidVi
         var problem: String? = null
         var readable = ""
         var shortened = false
+        var packed = false
+        var plainBytes = 0
         withContext(Dispatchers.Default) {
             try {
                 val out = fitForSending(withPos)
@@ -668,6 +700,14 @@ class ReportViewModel(app: Application, private val graph: AppGraph) : AndroidVi
                 val bytes = RescueCodec.encode(probe)
                 sent = bytes.size
                 readable = RescueCodec.reconstruct(RescueCodec.decodeAny(bytes), lang)
+                if (ReportFields.typeOf(out) == "text") {
+                    // A text goes packed or as a normal Meshtastic text, by the chat's mode (spec section 2.3).
+                    val (channel, peer) = destination()
+                    val form = graph.messenger.textForm(out, channel, peer)
+                    sent = form.payload.size
+                    packed = form.packed
+                    plainBytes = form.plainSize
+                }
             } catch (e: CodecException) {
                 problem = e.message ?: e.code
             } catch (e: IllegalArgumentException) {
@@ -678,6 +718,7 @@ class ReportViewModel(app: Application, private val graph: AppGraph) : AndroidVi
             it.copy(
                 message = message, fallback = fallback, sentBytes = sent, readable = readable,
                 problem = problem, hasPosition = withPos["pos"] != null, shortened = shortened,
+                packed = packed, plainBytes = plainBytes,
             )
         }
     }
@@ -700,9 +741,7 @@ class ReportViewModel(app: Application, private val graph: AppGraph) : AndroidVi
         _ui.update { it.copy(busy = true) }
         viewModelScope.launch {
             val toSend = fitForSending(withPosition(msg))
-            val chat = target
-            val channel = (chat as? ChatId.Channel)?.name?.takeUnless { targetIsTeam }
-            val peer = (chat as? ChatId.Direct)?.node
+            val (channel, peer) = destination()
             when (val r = graph.messenger.submit(toSend, source = "app", channel = channel, peer = peer)) {
                 is SubmitResult.Queued -> {
                     if (!s.fallback) countSaving(s.textBytes, r.bytes.size)

@@ -83,7 +83,7 @@ Every record says where it came from or went to:
 ```bash
 # A text on the draeger-srs channel
 curl -s -X POST localhost:8000/v2/text -H 'content-type: application/json' -d '{"text":"Trage kommt","channel":"draeger-srs"}'
-# A direct message to one radio (always a normal Meshtastic text)
+# A direct message to one radio (packed if that radio runs RescueCodec, else a normal Meshtastic text)
 curl -s -X POST localhost:8000/v2/messages -H 'content-type: application/json' -d '{"message":{"text":{"text":"Bitte melden"}},"to":"!a1b2c3d4"}'
 # Only one channel
 curl -s 'localhost:8000/v2/messages?channel=draeger-srs'
@@ -102,16 +102,41 @@ The gateway also shows normal Meshtastic texts (port 1), for example from the of
 - They are normal `text` records with `codec.version: 0`. `codec.hex` is the UTF-8 text. They go to the dashboard, the WebSocket, MQTT and TAK like every other record.
 - The same packet twice is shown once (same sender and Meshtastic packet id). Readable copies that start with `[RC] ` (from `--text-over-air` or `also_plain`) are skipped: we already have the report from port 256.
 
-Sending: a message with only a text (`POST /v2/text`, or `POST /v2/messages` with a `text` body) goes out as a normal Meshtastic text on the default channel (or the `channel` you name), so the official app and the radio screens show it. Same queue, priority, airtime budget and `want_ack` as a report. Only the words go out, at most 200 bytes: no id, position or time. Reports still go out compact on port 256.
+## Packed texts (smaller, for RescueCodec only)
+
+A text you send (`POST /v2/text`, or `POST /v2/messages` with a `text` body) goes out one of two ways:
+
+- **Packed for RescueCodec** (port 256): the words are compressed with a shared dictionary, about 40 % smaller, with id and position. "We are at the hut, two people with us, waiting for the vehicle on the forest road" is 81 bytes as a normal text and 42 bytes packed. Stock Meshtastic apps cannot read it.
+- **Normal Meshtastic text** (port 1): only the words, at most 200 bytes. The official app and radio screens show it.
+
+The gateway picks per chat (a channel, or a direct chat with one node). It remembers for 24 hours who it heard: a node that sent any RescueCodec packet runs RescueCodec; a node that sent normal texts on a channel and no RescueCodec packet is a Meshtastic user there.
+
+| Mode | A channel | A direct chat |
+|---|---|---|
+| `auto` (default) | Packed if no Meshtastic user was heard on it for 24 h, else normal | Packed if the peer runs RescueCodec, else normal |
+| `compressed` | Packed | Packed |
+| `normal` | Normal | Normal |
+
+Public channels always get normal text. A text is packed only when the packet is at least 3 bytes smaller than the normal text, so "Ok" stays normal. Both ways use the same queue, priority, airtime budget and `want_ack`. A received packed text shows its words like any other text (dashboard, MQTT, TAK, GeoJSON), with `codec.packed: true`.
 
 | Flag | Default | What it does |
 |---|---|---|
-| `--text-as-meshtastic on\|off` | `on` | `off` sends a text as a RescueCodec text on port 256 again (keeps the position, but stock apps do not show it). Env `RESCUECODEC_TEXT_AS_MESHTASTIC`. |
+| `--text-mode auto\|compressed\|normal` | `auto` | Mode of chats that have no mode of their own. Env `RESCUECODEC_TEXT_MODE`. |
+| `--text-as-meshtastic on\|off` | `on` | Old setting. `off` now means: channels are `compressed`. |
 
 ```bash
-# A text the official app shows
+# How does a text on the RescueCodec channel go out now, and why?
+curl -s localhost:8000/v2/channels/RescueCodec/mode
+# {"channel":"RescueCodec","mode":"auto","send_as":"normal","reason":"meshtastic_users","meshtastic_users":["!0000e003"],...}
+# Always packed on this channel (stored, survives a restart); null = back to the default
+curl -s -X PUT localhost:8000/v2/channels/RescueCodec/mode -H 'content-type: application/json' -d '{"mode":"compressed"}'
+# Direct chat with one radio
+curl -s -X PUT localhost:8000/v2/nodes/!a1b2c3d4/mode -H 'content-type: application/json' -d '{"mode":"normal"}'
+# A text
 curl -s -X POST localhost:8000/v2/text -H 'content-type: application/json' -d '{"text":"Treffpunkt jetzt am Gasthaus"}'
 ```
+
+`GET /v2/health` shows `mode` and `send_as` for every channel, and `GET /v2/nodes` marks nodes that run RescueCodec (`rescuecodec: true`). Rules and numbers: SPEC sections 2.3 and 3.5.
 
 Each received record carries the radio facts: `radio.rssi`, `radio.snr` and `radio.hops` (hop start minus hop limit). Simulated and emulated radios have no signal, so those stay `null`.
 

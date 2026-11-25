@@ -22,6 +22,12 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS messages_type ON messages (type);
 CREATE INDEX IF NOT EXISTS messages_key ON messages (key);
 CREATE TABLE IF NOT EXISTS meta (name TEXT PRIMARY KEY, value TEXT NOT NULL);
+-- Who runs RescueCodec: a node that sent a port 256 packet, or a port 1 text on a channel (SPEC section 2.3).
+-- One row per (node, channel name, port), with the last time it was heard (unix seconds). Rows older than 24 h go.
+CREATE TABLE IF NOT EXISTS nodes_seen (node TEXT NOT NULL, channel TEXT NOT NULL, port INTEGER NOT NULL,
+                                       last_seen REAL NOT NULL, PRIMARY KEY (node, channel, port));
+-- Text mode per chat: "channel:<name in lower case>" or "node:!a1b2c3d4" -> auto | compressed | normal.
+CREATE TABLE IF NOT EXISTS chat_modes (chat TEXT PRIMARY KEY, mode TEXT NOT NULL);
 """
 
 
@@ -145,6 +151,38 @@ class Store:
                 if doc["codec"]["hex"] == hex_payload and channel_name(doc) == channel and doc.get("to") == to:
                     return doc
         return None
+
+    # ------------------------------------------------------------ who runs RescueCodec, text mode per chat
+    def node_seen(self, node: str, channel: str, port: int, when: float, memory_s: float) -> None:
+        """Remember that `node` sent a packet on `port` (256 or 1) on `channel`. Forgets rows older than `memory_s`."""
+        with self._lock:
+            self._db.execute("INSERT INTO nodes_seen (node, channel, port, last_seen) VALUES (?,?,?,?) "
+                             "ON CONFLICT(node, channel, port) DO UPDATE SET last_seen=max(last_seen, excluded.last_seen)",
+                             (node, channel.lower(), port, when))
+            self._db.execute("DELETE FROM nodes_seen WHERE last_seen < ?", (when - memory_s,))
+
+    def nodes_on_port(self, port: int, since: float, channel: str | None = None) -> dict[str, float]:
+        """node -> last time heard on `port` since `since` (on `channel` only, if given)."""
+        sql, args = "SELECT node, max(last_seen) AS t FROM nodes_seen WHERE port=? AND last_seen >= ?", [port, since]
+        if channel is not None:
+            sql += " AND channel=?"
+            args.append(channel.lower())
+        with self._lock:
+            return {r["node"]: r["t"] for r in self._db.execute(sql + " GROUP BY node", args)}
+
+    def get_chat_mode(self, chat: str) -> str | None:
+        with self._lock:
+            row = self._db.execute("SELECT mode FROM chat_modes WHERE chat=?", (chat,)).fetchone()
+        return row["mode"] if row else None
+
+    def set_chat_mode(self, chat: str, mode: str | None) -> None:
+        """Store a mode for a chat. None removes it (the chat follows the gateway default again)."""
+        with self._lock:
+            if mode is None:
+                self._db.execute("DELETE FROM chat_modes WHERE chat=?", (chat,))
+            else:
+                self._db.execute("INSERT INTO chat_modes (chat, mode) VALUES (?, ?) "
+                                 "ON CONFLICT(chat) DO UPDATE SET mode=excluded.mode", (chat, mode))
 
     # ------------------------------------------------------------ small values
     def get_meta(self, name: str, default: str | None = None) -> str | None:

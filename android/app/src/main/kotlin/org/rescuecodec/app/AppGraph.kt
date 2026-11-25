@@ -20,6 +20,7 @@ import org.rescuecodec.app.core.NodeDirectory
 import org.rescuecodec.app.core.KeyValueStore
 import org.rescuecodec.app.core.Messenger
 import org.rescuecodec.app.core.PrefsKeyValueStore
+import org.rescuecodec.app.core.TextRoutes
 import org.rescuecodec.app.core.UiPrefs
 import org.rescuecodec.app.data.AppDatabase
 import org.rescuecodec.app.radio.BleRadioScanner
@@ -50,7 +51,8 @@ class AppGraph(
     val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
 ) {
     val appContext: Context = context.applicationContext
-    val settings = AppSettings(keyValue)
+    // The old "Send plain text as normal Meshtastic text" switch becomes the channels' text mode (once).
+    val settings = AppSettings(keyValue).also { it.migrateTextMode() }
     val lastRadio = LastRadioStore(keyValue)
 
     /** Language and day/night, watched by the screens. */
@@ -85,6 +87,7 @@ class AppGraph(
         log = { android.util.Log.i(TAG, it) },
         alerts = MaydayNotifier(appContext, { ui.language.value }, { nodes.label(it) }),
         nodes = nodes,
+        routes = TextRoutes(database.nodesSeen(), database.chatModes(), settings),
     )
 
     /** Name of the team channel: from the radio when connected, else the one we knew last. */

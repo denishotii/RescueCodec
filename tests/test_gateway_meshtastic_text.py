@@ -115,6 +115,8 @@ class Receiving(unittest.TestCase):
 class Sending(unittest.TestCase):
     def test_a_text_goes_out_as_a_normal_meshtastic_text(self):
         with gateway() as gw:
+            gw.radio.inject_text("!0000e003", "Hallo vom offiziellen App")     # a Meshtastic user on the channel
+            wait_for(lambda: gw.client.get("/v2/messages").json()["items"])
             response = gw.post("/v2/text", text="Treffpunkt jetzt am Gasthaus")
             self.assertEqual(response.status_code, 202)
             record = response.json()
@@ -142,14 +144,20 @@ class Sending(unittest.TestCase):
             wait_for(lambda: len(gw.radio.sent) == 2)
             self.assertEqual({s["port"] for s in gw.radio.sent}, {PORT_PRIVATE_APP})
 
-    def test_with_the_setting_off_a_text_is_a_rescuecodec_text_on_port_256(self):
+    def test_with_the_old_setting_off_channels_are_always_compressed(self):
+        words = "Treffpunkt jetzt am Gasthaus an der Brücke"
         with gateway(text_as_meshtastic=False) as gw:
-            record = gw.post("/v2/text", text="Treffpunkt", also_plain=True).json()
-            self.assertEqual(record["codec"]["version"], 2)
-            self.assertEqual(record["message"]["text"]["text"], "Treffpunkt")
+            gw.radio.inject_text("!0000e003", "Hallo vom offiziellen App")     # would make auto send normal text
+            wait_for(lambda: gw.client.get("/v2/messages").json()["items"])
+            self.assertEqual(gw.client.get("/v2/channels/RescueCodec/mode").json()["mode"], "compressed")
+            record = gw.post("/v2/text", text=words, also_plain=True).json()
+            self.assertEqual((record["codec"]["version"], record["codec"]["packed"]), (2, True))
+            self.assertEqual(record["message"]["text"], {"text": words, "dict": 1})
             wait_for(lambda: len(gw.radio.sent) == 2)
             self.assertEqual([s["port"] for s in gw.radio.sent], [PORT_PRIVATE_APP, PORT_TEXT_MESSAGE])
-            self.assertEqual(gw.radio.plain_texts, [TEXT_COPY_PREFIX + "Treffpunkt"])    # also_plain: a marked copy
+            self.assertEqual(gw.radio.plain_texts, [TEXT_COPY_PREFIX + words])    # also_plain: a marked copy
+            short = gw.post("/v2/text", text="Hilfe").json()                     # packing saves nothing: normal text
+            self.assertEqual(short["codec"]["version"], 0)
 
     def test_also_plain_sends_nothing_extra_when_the_text_is_plain_already(self):
         with gateway(text_over_air="out") as gw:

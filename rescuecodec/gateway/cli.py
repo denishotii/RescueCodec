@@ -47,10 +47,13 @@ def build_parser() -> argparse.ArgumentParser:
                      help="also post the readable line of each RescueCodec report on the plain Meshtastic text port, for stock apps, with '[RC] ' in front "
                      "so RescueCodec receivers skip the copy. Off by default: it doubles airtime. out = what we send, in = what we receive")
     svc.add_argument("--text-lang", choices=["en", "de"], default=env("TEXT_LANG", "en"), help="language of that line")
+    svc.add_argument("--text-mode", choices=["auto", "compressed", "normal"], default=env("TEXT_MODE", "auto"),
+                     help="how a text goes out in a chat without its own mode (PUT /v2/channels/NAME/mode, /v2/nodes/NODE/mode). "
+                     "auto = packed for RescueCodec (port 256, smaller) when no stock Meshtastic user was heard in the chat for "
+                     "24 h, else a normal Meshtastic text (port 1) that every app shows. compressed = always packed, normal = "
+                     "always a normal text. Packed only when it saves 3 bytes; public channels always get normal text (default auto)")
     svc.add_argument("--text-as-meshtastic", choices=["on", "off"], default=env("TEXT_AS_MESHTASTIC", "on"),
-                     help="a message with only a text (POST /v2/text, or /v2/messages with a text body) goes out as a normal "
-                     "Meshtastic text on the team channel (port 1), so the official app and radio screens show it. Only the "
-                     "words go out, no position or time. off = send it as a RescueCodec text on port 256 (default on)")
+                     help="old setting, replaced by --text-mode. off = channels default to compressed")
     con = p.add_argument_group("connectors")
     con.add_argument("--mqtt", metavar="HOST[:PORT]", default=env("MQTT"), help="publish JSON to this MQTT broker (needs paho-mqtt)")
     con.add_argument("--mqtt-user", default=env("MQTT_USER"))
@@ -80,7 +83,8 @@ def config_from_args(args: argparse.Namespace) -> GatewayConfig:
         channel_index=args.channel, channel_name=args.channel_name, listen_channels=parse_channels(args.channels),
         show_public=bool(args.show_public), hop_limit=int(args.hop_limit) if args.hop_limit is not None else None,
         db_path=args.db, team=args.team, preset=args.preset, ack_timeout_s=args.ack_timeout,
-        text_over_air=args.text_over_air, text_lang=args.text_lang, text_as_meshtastic=str(args.text_as_meshtastic).lower() in ("on", "1", "true", "yes"),
+        text_over_air=args.text_over_air, text_lang=args.text_lang, text_mode=args.text_mode,
+        text_as_meshtastic=str(args.text_as_meshtastic).lower() in ("on", "1", "true", "yes"),
         mqtt=args.mqtt, mqtt_user=args.mqtt_user, mqtt_password=args.mqtt_password, mqtt_prefix=args.mqtt_prefix,
         cot=args.cot or bool(args.cot_tcp), cot_udp=args.cot_udp, cot_iface=args.cot_iface, cot_tcp=args.cot_tcp,
         cot_stale_min=args.cot_stale_min, host=args.host, http_port=args.port, static_dir=args.static_dir,

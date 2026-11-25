@@ -157,3 +157,22 @@ object StatNames {
     const val REPORT_AIRTIME_SAVED_MS = "report_airtime_saved_ms"
     const val REPORT_COUNT = "report_count"
 }
+
+/**
+ * Who we heard and how (spec section 2.3): a node that sent a RescueCodec packet ([port] 256, on any channel) runs
+ * RescueCodec; a node that sent normal texts ([port] 1) on a channel and no RescueCodec packet is a Meshtastic user
+ * there. One row per (node, channel, port) with the last time. Rows older than 24 h are forgotten.
+ */
+@Entity(tableName = "nodes_seen", primaryKeys = ["node", "channel", "port"], indices = [Index("lastSeenMs")])
+data class NodeSeenEntity(
+    val node: Long,
+    /** Channel name the packet came on ("" when unknown). */
+    val channel: String,
+    /** 256 (RescueCodec) or 1 (normal Meshtastic text). */
+    val port: Int,
+    val lastSeenMs: Long,
+)
+
+/** The text mode of one chat ([org.rescuecodec.app.core.ChatId.key]): auto, compressed or normal. No row: the default. */
+@Entity(tableName = "chat_modes")
+data class ChatModeEntity(@PrimaryKey val chat: String, val mode: String)

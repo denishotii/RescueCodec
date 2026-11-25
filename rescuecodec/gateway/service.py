@@ -21,12 +21,13 @@ from rescuecodec.encoding.airtime import PRESETS, message_airtime_seconds
 from rescuecodec.engine.extract import fit_plain, fit_text
 from rescuecodec.engine.sendqueue import BUDGET_LIMIT, Deduper, SendQueue
 from rescuecodec.engine.tasks import InvalidTransition, Task, TaskBoard, TASK_TYPES, task_key
+from rescuecodec.engine.textmode import MEMORY_S, MODES, choose_form, wants_packed
 from rescuecodec.gateway import __version__
 from rescuecodec.gateway.config import GatewayConfig
 from rescuecodec.gateway.connectors.geojson import feature_collection
 from rescuecodec.gateway.events import EventBus
-from rescuecodec.gateway.radio.base import (BROADCAST, PORT_TEXT_MESSAGE, TEXT_COPY_PREFIX, Channel, RadioAdapter,
-                                            RadioPacket)
+from rescuecodec.gateway.radio.base import (BROADCAST, PORT_PRIVATE_APP, PORT_TEXT_MESSAGE, TEXT_COPY_PREFIX, Channel,
+                                            RadioAdapter, RadioPacket)
 from rescuecodec.gateway.store import Store
 from rescuecodec.v2 import codes as C
 from rescuecodec.v2.codec import (CodecError, decode, effective_priority, encode, message_type, node_from_json,
@@ -104,6 +105,12 @@ def metric(value: Any, unit: str, source: str, note: str | None = None) -> dict[
 def is_plain(record: dict[str, Any]) -> bool:
     """True for a plain Meshtastic text record (port 1)."""
     return record.get("codec", {}).get("version") == PLAIN_TEXT_VERSION
+
+
+def packed_words(message: dict[str, Any]) -> str | None:
+    """The words of a packed text message (one that came or went with `deflate`), else None."""
+    body = message.get("text")
+    return body.get("text") if isinstance(body, dict) and body.get("dict") else None
 
 
 @dataclass
@@ -240,9 +247,11 @@ class GatewayService:
         priority = effective_priority(message)
         if priority not in PRIORITY_LEVEL:
             priority = "normal"
+        codec = {"version": 1 if message.get("v") == 1 else 2, "size": len(payload), "hex": payload.hex()}
+        if packed_words(message) is not None:
+            codec["packed"] = True               # a packed text: `message.text.text` holds the unpacked words
         return {"key": key, "direction": direction, "from": sender, "type": kind, "priority": priority, "status": status,
-                "error": None, "time": iso(now), "event_time": event_time,
-                "codec": {"version": 1 if message.get("v") == 1 else 2, "size": len(payload), "hex": payload.hex()},
+                "error": None, "time": iso(now), "event_time": event_time, "codec": codec,
                 "radio": radio, "channel": channel, "to": to, "message": public, "text": readable(message),
                 "task_key": tkey}
 
@@ -297,8 +306,15 @@ class GatewayService:
         direction = record["direction"]
         self._counters[direction] += 1
         self._counters["bytes_" + direction] += record["codec"]["size"]
-        # A plain text is text already: it counts as its own size, so it never shows a saving it did not make.
-        self._counters["text_bytes"] += record["codec"]["size"] if is_plain(record) else len(record["text"]["en"].encode("utf-8"))
+        # A plain text is text already: it counts as its own size, so it never shows a saving it did not make. A packed
+        # text counts as its words: that is what a normal Meshtastic text would have sent.
+        words = packed_words(record.get("message") or {})
+        if is_plain(record):
+            self._counters["text_bytes"] += record["codec"]["size"]
+        elif words is not None:
+            self._counters["text_bytes"] += len(words.encode("utf-8"))
+        else:
+            self._counters["text_bytes"] += len(record["text"]["en"].encode("utf-8"))
         slot = self._by_type.setdefault(record["type"], {"count": 0, "bytes": 0})
         slot["count"] += 1
         slot["bytes"] += record["codec"]["size"]
@@ -352,6 +368,74 @@ class GatewayService:
             raise ApiError(400, "invalid_value", f'no channel "{name}" to send on (channels: {names})', "channel")
         return found
 
+    # ------------------------------------------------------------------ who runs RescueCodec, text mode per chat
+    def _note_node(self, node: str, channel: str, port: int) -> None:
+        """Remember who sent what where (SPEC section 2.3). Port 256 = the node runs RescueCodec. Port 1 on a channel =
+        a Meshtastic user there, unless the node also sent port 256 in the last 24 h."""
+        if node and node != self.own_node and node != NO_NODE:
+            self.store.node_seen(node, channel, port, time.time(), MEMORY_S)
+
+    def _default_mode(self, direct: bool) -> str:
+        """Mode of a chat without its own. The old --text-as-meshtastic off means: channels packed."""
+        if not direct and not self.config.text_as_meshtastic and self.config.text_mode == "auto":
+            return "compressed"
+        return self.config.text_mode
+
+    def _chat_route(self, channel: dict[str, Any], to: str | None) -> dict[str, Any]:
+        """How a text in this chat goes out now: the ChatMode JSON of openapi.yaml."""
+        key = f"node:{to}" if to else f"channel:{channel['name'].lower()}"
+        own = self.store.get_chat_mode(key)
+        mode = own or self._default_mode(to is not None)
+        since = time.time() - MEMORY_S
+        rescuecodec = self.store.nodes_on_port(PORT_PRIVATE_APP, since)
+        users: list[str] = []
+        if to is None:
+            users = sorted(n for n in self.store.nodes_on_port(PORT_TEXT_MESSAGE, since, channel["name"]) if n not in rescuecodec)
+        want, reason = wants_packed(mode, public=bool(channel.get("public")), direct=to is not None,
+                                    peer_rescuecodec=to in rescuecodec, meshtastic_users=len(users))
+        heard = rescuecodec if to else self.store.nodes_on_port(PORT_PRIVATE_APP, since, channel["name"])
+        return {"channel": None if to else channel["name"], "node": to, "mode": mode, "own_mode": own is not None,
+                "send_as": "compressed" if want else "normal", "reason": reason, "meshtastic_users": users,
+                "rescuecodec_nodes": sorted(n for n in heard if not to or n == to)}
+
+    def _mode_channel(self, name: Any) -> dict[str, Any]:
+        if not isinstance(name, str) or not name.strip() or len(name) > 64:
+            raise ApiError(400, "invalid_value", "channel must be a channel name", "channel")
+        found = self.radio.channel_by_name(name.strip()) if self.radio.connected else None
+        if found is not None:
+            return found.as_json()
+        if self.radio.connected:
+            names = ", ".join(c.name for c in self.radio.channels()) or "none"
+            raise ApiError(404, "not_found", f'no channel "{name}" on the radio (channels: {names})')
+        return {"index": 0, "name": name.strip(), "public": False}
+
+    @staticmethod
+    def _mode_node(node: Any) -> str:
+        if not isinstance(node, str) or not NODE_ID.match(node.lower()) or node.lower() == "!ffffffff":
+            raise ApiError(400, "invalid_value", "node must look like !a1b2c3d4", "node")
+        return node.lower()
+
+    def chat_mode(self, channel: Any = None, node: Any = None) -> dict[str, Any]:
+        """GET /v2/channels/{name}/mode or /v2/nodes/{node}/mode."""
+        if node is not None:
+            return self._chat_route(self._default_channel_json(), self._mode_node(node))
+        return self._chat_route(self._mode_channel(channel), None)
+
+    def set_chat_mode(self, mode: Any, channel: Any = None, node: Any = None) -> dict[str, Any]:
+        """PUT .../mode with {"mode": "auto" | "compressed" | "normal" | null}. null = follow the gateway default."""
+        if mode is not None and mode not in MODES:
+            raise ApiError(400, "invalid_value", "mode must be auto, compressed, normal or null", "mode")
+        if node is not None:
+            key, target, to = f"node:{self._mode_node(node)}", self._default_channel_json(), self._mode_node(node)
+        else:
+            target, to = self._mode_channel(channel), None
+            key = f"channel:{target['name'].lower()}"
+        self.store.set_chat_mode(key, mode)
+        route = self._chat_route(target, to)
+        log.info("text mode of %s is now %s (sends %s)", key, route["mode"], route["send_as"])
+        self._publish("health", self.health())
+        return route
+
     # ------------------------------------------------------------------ receiving
     def _on_packet(self, packet: RadioPacket) -> None:
         if packet.port == PORT_TEXT_MESSAGE:
@@ -363,6 +447,11 @@ class GatewayService:
         if addressing is None:
             log.debug("ignored a port %d packet from %s on channel %s to %s", packet.port, packet.sender, packet.channel,
                       packet.to)
+            try:                                 # not for us, but it shows that the sender runs RescueCodec
+                decode_any(packet.payload)
+                self._note_node(packet.sender, self._channel_json(packet.channel)["name"], PORT_PRIVATE_APP)
+            except CodecError:
+                pass
             return
         channel, to = addressing
         try:
@@ -371,6 +460,7 @@ class GatewayService:
             self._counters["rejected"] += 1
             log.info("ignored a packet from %s that is not valid RescueCodec (%s)", packet.sender, exc)
             return
+        self._note_node(packet.sender, channel["name"], PORT_PRIVATE_APP)
         now = datetime.now(timezone.utc)
         with self.lock:
             if self.deduper.seen(packet.sender, message, packet.payload, now.timestamp()):
@@ -417,6 +507,7 @@ class GatewayService:
             self._counters["duplicates"] += 1
             log.debug("readable copy from %s dropped", packet.sender)
             return
+        self._note_node(packet.sender, channel["name"], PORT_TEXT_MESSAGE)
         now = datetime.now(timezone.utc)
         with self.lock:
             if self._text_seen_before(packet.sender, packet.packet_id, packet.payload, now.timestamp()):
@@ -498,18 +589,21 @@ class GatewayService:
             if kind != "text":
                 raise ApiError(400, "invalid_value", "a direct message can only be a text", "to")
             to = to.lower()
-        # A message with only a text goes out as a plain Meshtastic text (port 1) when --text-as-meshtastic is on, so
-        # the official app and radio screens show it. Only the words go out (SPEC section 2.1). A direct message is
-        # always a plain text.
-        plain = kind == "text" and (self.config.text_as_meshtastic or to is not None)
+        # A message with only a text goes out packed for RescueCodec (port 256) or as a normal Meshtastic text (port 1)
+        # that the official app and radio screens show. The chat's mode decides (SPEC section 2.3), not the client.
+        is_text = kind == "text" and isinstance(message.get("text"), dict)
+        if is_text:
+            message["text"] = {k: v for k, v in message["text"].items() if k != "dict"}
+        plain = False
         with self.lock:
             assigned = None
             # Every message except an Ack gets an id, so a second "Hilfe" is not dropped as a repeat of the first
-            # (SPEC section 14). It costs 1 to 2 bytes. Acks are repeats by design and carry none.
-            if kind != "ack" and not message.get("id") and not plain:
+            # (SPEC section 14). It costs 1 to 2 bytes. Acks are repeats by design and carry none. A normal text does
+            # not use it.
+            if kind != "ack" and not message.get("id"):
                 assigned = self.store.peek_message_id()
                 message["id"] = assigned
-            words = message.get("text", {}).get("text") if plain and isinstance(message.get("text"), dict) else None
+            words = message["text"].get("text") if is_text else None
             message = dict(fit_text(message))      # a long text plus position and id is cut to fit, like on the phone
             try:
                 payload = encode(message)           # also checks a text that goes out plain: bad fields stay an error
@@ -523,12 +617,15 @@ class GatewayService:
             now = datetime.now(timezone.utc)
             sender = self.own_node or NO_NODE
             port = self.config.port_num
-            if plain:                               # the words only, at most 200 bytes, no id, position or time
-                words = fit_plain(words)
-                payload, port = words.encode("utf-8"), PORT_TEXT_MESSAGE
-                canonical = {"text": {"text": words}}
-                if message.get("priority"):
-                    canonical = {"priority": message["priority"], **canonical}
+            if is_text:                             # packed (with id, position, time) or the words only, at most 200 B
+                route = self._chat_route(target_json, to)
+                form = choose_form({**canonical, "text": {"text": words}}, route["send_as"] == "compressed",
+                                   route["reason"])
+                plain, payload, canonical = not form.packed, form.payload, form.message
+                if plain:
+                    words, port = canonical["text"]["text"], PORT_TEXT_MESSAGE
+                log.debug("text for %s: %s (%s, %d B packed, %s B normal)", to or target_json["name"],
+                          "packed" if form.packed else "normal", form.reason, form.plain_size, form.packed_size)
 
             def build(status: str) -> dict[str, Any]:
                 if plain:
@@ -553,7 +650,7 @@ class GatewayService:
                 raise ApiError(409, "bad_request", "the same message is already queued")
             record = self.store.insert(build("queued"))
             self._queued[item.seq] = _Out(record["seq"], want_ack, port, target_json["index"], to)
-            if assigned:
+            if assigned and not plain:
                 self.store.commit_message_id(assigned)
             self._count(record)
             task = self._apply_to_board(record, canonical, now)
@@ -742,9 +839,13 @@ class GatewayService:
 
     def health(self) -> dict[str, Any]:
         info = self.radio.info()
+        radio = info.as_health(self.config.port_num)
+        for channel in radio.get("channels") or []:     # how a text on this channel goes out now
+            route = self._chat_route(channel, None)
+            channel["mode"], channel["send_as"] = route["mode"], route["send_as"]
         return {"status": "ok" if info.connected else "degraded", "version": __version__, "spec_version": C.SPEC_VERSION,
                 "uptime_s": int((datetime.now(timezone.utc) - self.started).total_seconds()),
-                "radio": info.as_health(self.config.port_num), "mqtt": {"connected": self.mqtt_connected}}
+                "radio": radio, "mqtt": {"connected": self.mqtt_connected}}
 
     def stats(self) -> dict[str, Any]:
         with self.lock:
@@ -768,7 +869,9 @@ class GatewayService:
                 "by_type": {k: dict(v) for k, v in self._by_type.items()},
             }
 
-    def _node_json(self, node: dict[str, Any], own: str | None) -> dict[str, Any]:
+    def _node_json(self, node: dict[str, Any], own: str | None, rescuecodec: set[str] | None = None) -> dict[str, Any]:
+        if rescuecodec is None:
+            rescuecodec = set(self.store.nodes_on_port(PORT_PRIVATE_APP, time.time() - MEMORY_S))
         heard = self._heard.get(node["node"], {})
         last = node.get("last_heard")
         if heard.get("time") and (not last or heard["time"].timestamp() > last):
@@ -779,7 +882,7 @@ class GatewayService:
                 "rssi": heard.get("rssi"), "snr": heard.get("snr") if heard.get("snr") is not None else node.get("snr"),
                 "hops_away": heard["hops"] if heard.get("hops") is not None else node.get("hops_away"),
                 "battery_pct": node.get("battery_pct"), "pos": node.get("pos"),
-                "is_gateway": node["node"] == own}
+                "is_gateway": node["node"] == own, "rescuecodec": node["node"] in rescuecodec or node["node"] == own}
 
     def list_nodes(self) -> list[dict[str, Any]]:
         with self.lock:
@@ -787,7 +890,8 @@ class GatewayService:
             for sender in self._heard:
                 known.setdefault(sender, {"node": sender, "num": node_from_json(sender)})
             own = self.own_node
-            rows = [self._node_json(n, own) for n in known.values()]
+            rescuecodec = set(self.store.nodes_on_port(PORT_PRIVATE_APP, time.time() - MEMORY_S))
+            rows = [self._node_json(n, own, rescuecodec) for n in known.values()]
         rows.sort(key=lambda n: n["last_heard"] or "", reverse=True)
         return rows
 

@@ -3,6 +3,7 @@ package org.rescuecodec.app.core
 
 import org.rescuecodec.engine.ModemPreset
 import org.rescuecodec.engine.Region
+import org.rescuecodec.engine.TextMode
 import kotlin.random.Random
 
 /** Settings the radio layer needs. Plain values in a [KeyValueStore]. */
@@ -40,12 +41,25 @@ class AppSettings(private val store: KeyValueStore) {
         set(v) = store.putLong("allow_intent_api", if (v) 1 else 0)
 
     /**
-     * Send a message with only a text (the extractor's text fallback) as a normal Meshtastic text (port 1) on the team
-     * channel, so the official app and radio screens show it. Reports always go compact on port 256. On by default.
+     * Text mode of a channel that has no choice of its own: auto (the default), compressed or normal (spec section
+     * 2.3). Direct chats start at auto. Each chat can pick its own mode ([TextRoutes.setMode]).
      */
-    var plainTextAsMeshtastic: Boolean
-        get() = store.getLong("plain_text_as_meshtastic", 1) == 1L
-        set(v) = store.putLong("plain_text_as_meshtastic", if (v) 1 else 0)
+    var defaultChannelMode: String
+        get() {
+            migrateTextMode()
+            return store.getString("default_channel_mode")?.takeIf { it in TextMode.MODES } ?: TextMode.AUTO
+        }
+        set(v) = store.putString("default_channel_mode", v.takeIf { it in TextMode.MODES })
+
+    /**
+     * The old switch "Send plain text as normal Meshtastic text" is gone: packed texts replace it. Whoever had it off
+     * wanted texts on port 256, so their channels start at "Always compressed". Runs once; safe to call often.
+     */
+    fun migrateTextMode() {
+        if (store.getLong("text_mode_migrated", 0) == 1L) return
+        if (store.getLong(OLD_PLAIN_TEXT_KEY, 1) == 0L) store.putString("default_channel_mode", TextMode.COMPRESSED)
+        store.putLong("text_mode_migrated", 1)
+    }
 
     /** Show the public channel (no key or the default key, for example LongFast) in the chat list. Off by default. */
     var showPublicChannel: Boolean
@@ -88,5 +102,8 @@ class AppSettings(private val store: KeyValueStore) {
     companion object {
         const val MAX_ID = 16383
         const val CHANNEL_NAME = "RescueCodec"
+
+        /** Key of the removed setting "Send plain text as normal Meshtastic text" (1 = on, the old default). */
+        const val OLD_PLAIN_TEXT_KEY = "plain_text_as_meshtastic"
     }
 }
