@@ -354,4 +354,7 @@
     <string name="notif_answer_done">%1$s hat erledigt: %2$s</string>
     <string name="notif_new_messages">%1$d neu</string>
     <string name="report_word">Meldung</string>
+    <string name="answer_accepted_by_you">Von dir angenommen</string>
+    <string name="answer_done_by_you">Von dir erledigt</string>
+    <string name="answer_declined_by_you">Von dir abgelehnt</string>
 </resources>

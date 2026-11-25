@@ -207,9 +207,10 @@ private fun AnswerLine(a: TaskAnswer) {
     val c = Rc.colors
     val color = when (a.status) { "accepted" -> c.accepted; "done" -> c.done; else -> c.declined }
     val who = a.team ?: if (a.own) stringResource(R.string.answer_you) else stringResource(R.string.answer_other_team)
-    val word = when (a.status) {
-        "accepted" -> stringResource(R.string.answer_accepted_by, who)
-        "done" -> stringResource(R.string.answer_done_by, who)
+    val word = when {
+        a.own && a.team == null -> stringResource(when (a.status) { "accepted" -> R.string.answer_accepted_by_you; "done" -> R.string.answer_done_by_you; else -> R.string.answer_declined_by_you })
+        a.status == "accepted" -> stringResource(R.string.answer_accepted_by, who)
+        a.status == "done" -> stringResource(R.string.answer_done_by, who)
         else -> stringResource(R.string.answer_declined_by, who)
     }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
