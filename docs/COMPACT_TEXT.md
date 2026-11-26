@@ -16,7 +16,9 @@ An optional way to send ordinary chat texts in fewer bytes. Off by default.
 | `We are at the hut, two people with us, waiting for the vehicle on the forest road` | 81 B | 41 B (words in the envelope) | **26 B** compact |
 | `Ok` | 2 B | 2 B | 2 B (normal text is smaller, so it stays normal) |
 
-Bytes are our payload. Meshtastic adds its own header (about 16 bytes, plus a few for its `Data` wrapper) to every radio packet, whatever is inside.
+The last column is what spec 2.2 sends (team vocabulary General). With team vocabulary Auto, the default since spec 2.3, the Aylin Demir text goes as a Medical domain frame of 44 B; the other four stay the same.
+
+Bytes are our payload. Meshtastic adds about 23 bytes of its own (a 16-byte header plus its `Data` wrapper) to every radio packet, whatever is inside.
 
 The wire formats are in `spec/SPEC.md`: section 3.6 (word tokens), 3.7 (compact frame) and 3.8 (domain frame). This page says how to use it, where the word lists come from, and what we measured. The team lists for special situations are in [Domain vocabularies](#domain-vocabularies-spec-23).
 
@@ -51,18 +53,22 @@ curl -s localhost:8051/v2/text -H 'content-type: application/json' \
   -d '{"text":"We are at the hut, two people with us. The path near the bridge is flooded, please use the forest road. We need water and a dry blanket."}'
 ```
 
+The `PUT` matters: a fresh emulator has heard nobody yet, so without it Auto sends a normal text (136 bytes, reason `nobody_known`).
+
 What we got (verified **in software only**, through the real gateway code; not yet over radios):
 
 | | |
 |---|---|
 | Typed text | `We are at the hut, two people with us. The path near the bridge is flooded, please use the forest road. We need water and a dry blanket.` |
 | Typed size | 136 bytes |
-| Sent as | compact frame, **48 bytes** on air (spec 2.1 sent word tokens in the envelope, 66 bytes; DEFLATE 70, normal text 136) |
+| Sent as | domain frame with the Hiking list, **47 bytes** on air (`codec.form` `domain`, `codec.vocab` `hiking`). The team vocabulary is Auto by default (see [Domain vocabularies](#domain-vocabularies-spec-23)). |
+| Sent as, with `--vocabulary general` | compact frame, **48 bytes** on air (`codec.form` `lean`) |
+| Other forms | spec 2.1 sent word tokens in the envelope, 66 bytes; DEFLATE 70, normal text 136 |
 | Recovered (`POST /v2/decode` with the sent hex) | exactly the typed text (`==` true) |
 
 A second text with a name, a German place and coordinates, `Team 3 at Löwenburg hut. We found Aylin Demir, conscious, ankle hurt.\nMeet at 50.6900, -1.2500 in 20 min 🙂` (110 bytes): it has many names, numbers and an emoji, so DEFLATE (83 bytes) is still the smallest and the gateway sends DEFLATE; the text comes back exactly. That is the strictly-smallest rule working.
 
-On a phone: two phones with the new APK, the same private channel (a chat that packs), the setting on in the sender. The composer's byte line shows the form, for example "Compact words · 48 B (as text 136 B)". The sent message carries the tag "compact · 48 B"; Details say "Compact frame (no envelope), word dictionary 2". With the setting on, the app no longer attaches the phone's GPS fix to free texts (reports keep it), so texts can go as compact frames. A text that carries a position (for example from another app through the intent API) goes as word tokens in the envelope (about 11 bytes more).
+On a phone: two phones with the new APK, the same private channel (a chat that packs), the setting on in the sender. The composer's byte line shows the form. For the text above with team vocabulary Auto (the default) it says "Compact words · Hiking · 47 B (as text 136 B)", and the sent message carries the tag "compact · Hiking · 47 B". With team vocabulary General it says "Compact words · 48 B (as text 136 B)", the tag is "compact · 48 B", and Details say "Compact frame (no envelope), word dictionary 2". With the setting on, the app no longer attaches the phone's GPS fix to free texts (reports keep it), so texts can go as compact frames. A text that carries a position (for example from another app through the intent API) goes as word tokens in the envelope (about 11 bytes more).
 
 ## Domain vocabularies (spec 2.3)
 

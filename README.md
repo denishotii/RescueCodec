@@ -39,6 +39,7 @@ The operator clicks **Accept**. An answer of about 20 bytes goes back, and every
 - **Tasks with Accept and Done.** Every found person, request or hazard becomes a task. Hold **SOS** for 2 seconds to send a Mayday. It goes first in the queue and shows as a red banner on every screen.
 - **Works with normal Meshtastic.** Stock Meshtastic radios carry the messages. We change nothing in the firmware. People with the official Meshtastic app get normal text. Between RescueCodec users, free text is packed with a shared dictionary and is about 43 % smaller.
 - **Compact text (opt-in).** Settings, "Use compact encoding for text messages": every known English word becomes a 2-byte code, and names, numbers, coordinates and emoji are copied byte for byte, so the receiver sees exactly what was typed. Off by default. Details and numbers: [docs/COMPACT_TEXT.md](docs/COMPACT_TEXT.md).
+- **Team vocabularies.** With compact text on, pick Emergency, Search & Rescue, Firefighting, Hiking / Mountain or Medical / First aid, or Auto (the default, tries every list). Common words of that work cost 10 bits instead of 2 bytes: "Apply a tourniquet." is 7 bytes instead of 19 as normal text. The app sends the strictly smallest form, so a list never makes a message bigger.
 - **Channels by QR code.** Create a private channel on the phone, show its QR code, and teammates join by scanning it.
 - **Command post dashboard.** Offline map with finds, tracks and hazards, a task board, live reports with a channel filter, and a send panel that shows the size before you send.
 - **Open for other software.** The gateway offers REST, WebSocket, MQTT, TAK (Cursor on Target) and GeoJSON. Libraries in Python, Kotlin and TypeScript give the same bytes.
@@ -54,11 +55,11 @@ Byte counts are measured. Airtime is calculated with the LoRa formula for the LO
 | The example sentence, with GPS | 105 B, 1.21 s on air | 23 B, 0.60 s on air | 4.6× fewer bytes, about 2× less airtime |
 | All messages of our real-radio test on 25 Nov | | | 1.9× fewer bytes |
 | Free text, packed (40 test messages not used for tuning) | | | 43 % smaller (German 44 %, English 43 %) |
-| Compact text (2-byte words, compact frame, dictionary 2), 2,357 disaster messages not used to build the dictionary | | | 61 % smaller (2.4 bytes per word), 100 % fit one radio packet; Meshtastic adds its own ~16 B header per packet on air |
+| Compact text (2-byte words, compact frame, dictionary 2), 2,357 disaster messages not used to build the dictionary | | | 61 % smaller (2.4 bytes per word), 100 % fit one radio packet; Meshtastic adds about 23 B per packet on air (see below) |
 | Compact text, 4,998 everyday English sentences not used to build the dictionary ("hello world": 6 B instead of 11) | | | 61 % smaller (2.0 bytes per word), 99.7 % go compact, 0.3 % stay plain text because that is smaller |
 | Team vocabularies (10-bit words, domain frame), 14,421 domain sentences and messages not used to build the lists | 5.91 B per word | 2.26 B per word (compact text alone: 2.37) | 4.9 % fewer bytes than compact text alone; 6 to 12 % on field-manual sentences, under 3 % on messages, under 1 % on everyday chat. 18 KB in the APK. [Details](docs/COMPACT_TEXT.md#domain-vocabularies-spec-23) |
 
-**Why is the airtime gain smaller than the byte gain?** Meshtastic adds about 23 bytes of header to every packet, and every LoRa packet starts with the same preamble. So 23 bytes of content are about 46 bytes on air. The gain grows when more facts share one packet, for example a GPS track of 10 points in 48 bytes.
+**Why is the airtime gain smaller than the byte gain?** Meshtastic adds about 23 bytes to every packet (a 16-byte radio header plus its `Data` wrapper), and every LoRa packet starts with the same preamble. The airtime numbers use these 23 bytes. So 23 bytes of content are about 46 bytes on air. The gain grows when more facts share one packet, for example a GPS track of 10 points in 48 bytes.
 
 In the app the example report shows as 23 to 27 bytes, depending on the message number and the position. All sizes per message type: [spec/SPEC.md, section 9](spec/SPEC.md#9-sizes-measured).
 
@@ -93,7 +94,9 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Every byte and rule: 
 
 ## Get started
 
-**With radios and phones.** [docs/SETUP.md](docs/SETUP.md) runs everything from the team's Mac, step by step. To set up another laptop from zero, use [docs/SETUP-NEW-DEVICE.md](docs/SETUP-NEW-DEVICE.md).
+**What you need.** Two or more Meshtastic radios on stock firmware 2.7 or 2.8 (tested: a ThinkNode M5 with the phone, a Heltec V3 on USB at the gateway; the guides also cover the SenseCAP T1000-E and the LilyGO T-Watch S3), an Android 8 or newer phone, and a laptop (macOS tested, Linux should work). The demo below needs no radio and no phone.
+
+**With radios and phones.** [docs/SETUP.md](docs/SETUP.md) runs everything from the team's Mac, step by step. On your own laptop, from a fresh clone, start with [docs/SETUP-NEW-DEVICE.md](docs/SETUP-NEW-DEVICE.md): it also gets the app file and the offline map, which are not in git.
 
 **Try it in 2 minutes, no radio needed** (Python 3.10 or newer):
 
@@ -102,7 +105,7 @@ python3 -m venv .venv && .venv/bin/pip install -e '.[gateway,test]'
 .venv/bin/rescuecodec-gateway --emulator --emulator-demo --db :memory:
 ```
 
-Then open http://127.0.0.1:8000/ in your browser. A pretend team sends reports every few seconds. Click **Accept** on a task, then **Done**. The API docs are at http://127.0.0.1:8000/docs.
+The first install needs the internet. Then open http://127.0.0.1:8000/ in your browser (port 8000 busy? add `--port 8765`). A pretend team sends reports every few seconds. Click **Accept** on a task, then **Done**. The API docs are at http://127.0.0.1:8000/docs.
 The map stays blank until you fetch the offline map once ([docs/SETUP-NEW-DEVICE.md](docs/SETUP-NEW-DEVICE.md), part C).
 
 **Use it in your own code.** The example sentence in Python:
@@ -136,7 +139,7 @@ Kotlin, TypeScript, REST, WebSocket, MQTT, TAK, GeoJSON and the Android Intent: 
 | `docs/` | Guides, design notes, screenshots | |
 | `legacy/v1/` | The team's first prototype, kept for reference | |
 
-Each part has its own README: [android/app](android/app/README.md), [dashboard](dashboard/README.md), [gateway](rescuecodec/gateway/README.md), [sim](sim/README.md).
+Each part has its own README: [android/app](android/app/README.md), [android/codec](android/codec/README.md), [android/engine](android/engine/README.md), [ts](ts/README.md), [dashboard](dashboard/README.md), [gateway](rescuecodec/gateway/README.md), [sim](sim/README.md).
 
 ## Docs
 
@@ -147,7 +150,7 @@ Each part has its own README: [android/app](android/app/README.md), [dashboard](
 | [docs/HARDWARE_CHECK.md](docs/HARDWARE_CHECK.md) | 10-minute checklist for real radios, with fixes when something fails |
 | [docs/INTEGRATE.md](docs/INTEGRATE.md) | Use RescueCodec from your own software, with examples that were run |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the parts fit together and why |
-| [docs/COMPACT_TEXT.md](docs/COMPACT_TEXT.md) | Compact text with 2-byte word codes: wire format, dictionary sources, measured results |
+| [docs/COMPACT_TEXT.md](docs/COMPACT_TEXT.md) | Compact text with 2-byte word codes and team vocabularies: wire format, word list sources, measured results |
 | [docs/VOICE.md](docs/VOICE.md) | Offline speech to text and read-aloud |
 | [docs/OFFLINE.md](docs/OFFLINE.md) | Every download, its size and its licence |
 | [spec/SPEC.md](spec/SPEC.md) | The spec: wire format, JSON, rules, test vectors, security |
@@ -157,14 +160,21 @@ Each part has its own README: [android/app](android/app/README.md), [dashboard](
 ## Tests
 
 ```bash
-.venv/bin/python -m pytest -q                       # Python: 390 tests
-(cd ts && npm install && npm test)                  # TypeScript library: 342 tests
-(cd dashboard && npm install && npm test)           # dashboard: 61 tests
+.venv/bin/python -m pytest -q                       # Python: 454 tests
+(cd ts && npm install && npm test)                  # TypeScript library: 489 tests
+(cd dashboard && npm install && npm test)           # dashboard: 68 tests
 . scripts/env.sh && (cd android && ./gradlew :codec:test :engine:test :app:testDebugUnitTest)   # Kotlin and the app
 scripts/e2e-full.sh --runs 1                        # app on the emulator, simulator, gateway, dashboard
 ```
 
 All of them pass today. The Python, Kotlin and TypeScript libraries run the same test vectors in `spec/vectors/` and must give the same bytes. The app unit tests need Java 21 or newer. The end-to-end test needs Docker and the Android emulator.
+
+## Contributing
+
+- **Run the tests** above before you send a change. All of them must pass.
+- **Never edit the test vectors by hand.** `spec/vectors/codec.json` comes from `spec/tools/gen_vectors.py`, `spec/vectors/domain.json` from `spec/tools/gen_domain_vectors.py`. Change the cases in the script and run it, for example `.venv/bin/python spec/tools/gen_vectors.py`. `gen_domain_vectors.py --check` only compares. Add cases; never change the bytes of a case that was released.
+- **Same bytes everywhere.** Python, Kotlin and TypeScript must give the same bytes for every vector. A change to the wire format goes into `spec/SPEC.md` and into all three libraries in the same change.
+- **Never make a library pass by changing a vector.** Report a bug instead (SPEC section 12).
 
 ## Licences
 

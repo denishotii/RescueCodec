@@ -67,17 +67,17 @@ The Python engine, the Kotlin engine and the vectors agree: 73 of 73 extraction 
 
 ```
  radio adapter  ---->  service  ---->  event hub  ---->  connectors (own thread)
- (TCP, USB, memory)    SQLite            |                MQTT, TAK CoT, readable text
-                       task board        +-------------->  WebSocket clients
+ (TCP, USB,            SQLite            |                MQTT, TAK CoT, readable text
+  Bluetooth, memory)   task board        +-------------->  WebSocket clients
                        send queue
                            ^
                   REST API (FastAPI)  <---- dashboard, scripts, other software
 ```
 
 - **One service object.** It owns the SQLite file, the task board, the send queue and the delivery states. REST and WebSocket are thin layers on top.
-- **Three radio adapters behind one interface.** Meshtastic over TCP (the simulator or a Wi-Fi radio), Meshtastic over USB serial (`--serial auto` for a Heltec V3), and an in-memory mesh (`--emulator`) for tests and demos. The Meshtastic connection is made in a supervisor thread. The gateway starts with no radio, shows `degraded`, and reconnects by itself after a USB or Wi-Fi drop.
+- **Four radio adapters behind one interface.** Meshtastic over TCP (`--tcp`, the simulator or a Wi-Fi radio), Meshtastic over USB serial (`--serial auto` for a Heltec V3), Meshtastic over Bluetooth (`--ble auto` or `--ble NAME`, for example a Heltec V3 on a USB charger), and an in-memory mesh (`--emulator`) for tests and demos. The Meshtastic connection is made in a supervisor thread. The gateway starts with no radio, shows `degraded`, and reconnects by itself when the link drops.
 - **Connectors never block the radio.** MQTT, TAK and readable text listen on an event bus from a worker thread. A slow broker cannot hold up a packet.
-- **Private channel only.** The gateway sends and listens only on the channel named `RescueCodec` (or the only channel with its own key). Port 256 packets from other channels are dropped and counted. With no safe channel it refuses to send. The public LongFast key is never used.
+- **Private channels.** The gateway listens on every private channel (`--channels` picks some by name) and on direct messages to its node. It sends on the channel named `RescueCodec`, else on the only channel with its own key. An API call can name another channel (`"channel"`). Broadcasts on other channels are dropped: public ones (no key, or the default LongFast key) unless `--show-public` is on, and the ones `--channels` leaves out. Port 256 packets among them are counted (`other_channel` in `/v2/health`). Reports never go out on a public channel. With no safe channel it refuses to send.
 - **Safe by default.** It listens on localhost. Another address needs `--token`. WebSockets check the browser `Origin`. The API may queue at most 30 messages a minute.
 - **Status words.** `queued`, `sent`, `delivered`, `failed`. On a broadcast, `delivered` means a neighbour repeated it. With no neighbour in range a send ends as `failed` with `max_retransmit`, although the other side may have it. The dashboard words that "No relay confirmed". The Accept is the proof.
 
@@ -130,7 +130,7 @@ A Vite and React page, built into `rescuecodec/gateway/static/` and served by th
 | hazard | A danger with a radius: rockfall, high water | 22 bytes |
 | mayday | A rescuer needs help. An empty one is the SOS button | 15 to 22 bytes |
 | ack | Accepted, declined or done, with ETA and team label | 11 to 22 bytes |
-| text | Anything the codes cannot say, up to 180 bytes | 37 bytes and up |
+| text | Free text, anything the codes cannot say. Up to 400 bytes of text in a chat that packs, else 180 | At most 200 bytes. `Ok` as a normal text is 2, `hello world` with compact text is 6 |
 
 ## Security and privacy in short
 

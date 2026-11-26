@@ -8,6 +8,8 @@ Phone + app --Bluetooth--> field radio (ThinkNode M5, T1000-E, T-Watch) ~~LoRa~~
 
 Already installed on this Mac: the gateway, the dashboard with the offline map, the app file (`dist/RescueCodec-debug.apk`), adb, the voice models, the Meshtastic simulator (Docker) and the Android emulator.
 
+A fresh clone of the repo does not have the app file, the offline map or the voice models: `dist/` and `assets-offline/` are not in git. Get them first with [SETUP-NEW-DEVICE.md](SETUP-NEW-DEVICE.md): part C (`scripts/fetch-offline-assets.sh` downloads the map and the voice models) and part G (build the app into `dist/RescueCodec-debug.apk`).
+
 Time: about 20 minutes the first time, 2 minutes after that (see "Demo day" below).
 
 ---
@@ -246,7 +248,7 @@ A real phone cannot reach the simulator. It only listens on this Mac.
 | App: "Pairing failed" or "no longer trust each other" | Android Bluetooth settings, forget the radio, then **Scan for radios** again |
 | App: message stays "queued" | That radio has no RescueCodec channel. Read the line under the message, then step 3 |
 | App shows "No radio" after start and does not reconnect | With the phone on USB, save `adb logcat -s RescueCodec` (the `link:` lines). Then Radio tab, tap **Reconnect to ...**. Still stuck: `adb shell am force-stop org.rescuecodec.app` and open the app again |
-| App: Send button stays blocked on a long sentence | Known bug: a long free-text sentence plus GPS is just over the size limit. Shorten the sentence |
+| App: "Text shortened to fit 200 bytes with your position." | Not an error. A long free text plus GPS did not fit one radio message, so the app cut the end and added "…". If the end matters, write it shorter |
 | Dashboard: card does not show up | Phone radio and Heltec need the same channel QR, region and preset. http://127.0.0.1:8000/v2/health shows `other_channel` going up if the channel differs |
 | Dashboard: Accept refused (429) | More than 30 sends in a minute. Wait one minute |
 

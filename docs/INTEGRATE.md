@@ -14,11 +14,12 @@ Pick the way that fits you:
 | ATAK, WinTAK or iTAK | [TAK](#tak-cot) | Yes, via the gateway |
 | QGIS, Leaflet, any GIS | [GeoJSON](#geojson) | Yes, via the gateway |
 | A log, a chat bot, a pager | [Readable text](#readable-text) | Yes, via the gateway |
+| Chat texts in fewer bytes | [Compact text](#compact-text-and-team-vocabularies) | No (libraries), or via the gateway |
 | Another Android app on the same phone | [Android Intent](#android-intent) | Yes, in the RescueCodec app |
 
 The rules for every message are in `spec/SPEC.md`. The JSON shape is in section 4 of it. All libraries pass the same test vectors (`spec/vectors/`), so they give the same bytes.
 
-One rule you will meet at once: `found`, `request`, `hazard` and `mayday` messages need an `id` (1 to 16383). The REST API and the app add it for you. The libraries do not, because they only encode.
+One rule you will meet at once: `found`, `request`, `hazard` and `mayday` messages need an `id` (1 to 16383). `POST /v2/messages` and the app add it for you. The libraries and `POST /v2/encode` do not: without an id they answer `missing_field` (field `id`).
 
 ## Start a demo gateway (no hardware)
 
@@ -29,7 +30,17 @@ python3 -m venv .venv && .venv/bin/pip install -e '.[gateway]'      # once
 .venv/bin/rescuecodec-gateway --emulator --emulator-demo --db :memory:
 ```
 
-Open http://127.0.0.1:8000/ for the dashboard and http://127.0.0.1:8000/docs for the API. With a real radio use `--serial auto` (USB) or `--tcp HOST:PORT` (Wi-Fi radio or the simulator in `sim/`). See `rescuecodec/gateway/README.md`.
+Open http://127.0.0.1:8000/ for the dashboard and http://127.0.0.1:8000/docs for the API. Port 8000 busy? Add `--port 8765`, and use that port in the examples below.
+
+The first `pip install` downloads the packages, so it needs the internet. After that the gateway runs offline.
+
+With a real radio, use one of these instead of `--emulator --emulator-demo`:
+
+- `--serial auto`: a radio on USB, for example a Heltec V3.
+- `--ble auto` or `--ble NAME`: a radio over Bluetooth, for example a Heltec V3 on a USB charger. `auto` takes the first Meshtastic radio it finds. A name (for example `--ble Base_65b0`) is safer in a busy hall.
+- `--tcp HOST:PORT`: a Wi-Fi radio, or the simulator in `sim/`.
+
+See `rescuecodec/gateway/README.md`.
 
 ## Python
 
@@ -45,7 +56,7 @@ data = encode(msg)
 print(len(data), data.hex())
 print(decode(data) == msg)
 print(render(decode_any(data), "en"))
-print(render(decode_any(data), "de"))      # decode_any also reads old v1 packets
+print(render(decode_any(data), "de"))      # decode_any reads every form: Envelope, 0x02 and 0x03 frames, v1
 try:
     encode({"found": {"age": "giant"}})
 except CodecError as e:
@@ -93,7 +104,7 @@ cd ts && npm install && npm run build && cd ..
 npm install ./ts            # in your own project, adjust the path
 ```
 
-It runs in Node 18 or newer and in browsers (ESM), with no network.
+It runs in Node 18 or newer and in browsers, with no network. The package is ESM only: `import` works, `require` does not. In Node, save the examples as a `.mjs` file, or set `"type": "module"` in your `package.json`.
 
 ```js
 import { encode, decode, decodeAny, render } from "@rescuecodec/core";
@@ -117,13 +128,15 @@ More in `ts/README.md`.
 
 ## Kotlin
 
-Two pure JVM libraries, no Android code: `:codec` (bytes, JSON, readable text) and `:engine` (text extractor, airtime send queue, task tracker). The Android app uses the same two.
+Two pure JVM libraries, no Android code: `:codec` (bytes, JSON, readable text) and `:engine` (text extractor, airtime send queue, task tracker, the rule that picks a text's form). The Android app uses the same two.
 
 Use them from your Gradle build as a composite build (no publishing needed). In your `settings.gradle.kts`:
 
 ```kotlin
 includeBuild("/path/to/RescueCodec/android")
 ```
+
+This includes the whole `android/` build. Its `settings.gradle.kts` always includes the app (`:app`) next to `:codec` and `:engine`. So Gradle needs the Android Gradle plugin (it downloads it on the first build) and an Android SDK, even if you only use the JVM libraries. Set `ANDROID_HOME`, or put `sdk.dir=/path/to/sdk` in `android/local.properties`. How to install the SDK: `docs/SETUP-NEW-DEVICE.md`, part G.
 
 In your `build.gradle.kts` (Kotlin 2.4 and JDK 17 or newer):
 
@@ -173,12 +186,14 @@ Pick a channel by name with `channel`, or send a direct message with `to` (a tex
 
 ```bash
 curl -s -X POST localhost:8000/v2/messages -H 'content-type: application/json' \
-  -d '{"message":{"text":{"text":"Trage kommt"}},"channel":"draeger-srs"}'
+  -d '{"message":{"text":{"text":"Trage kommt"}},"channel":"RescueCodec"}'
 curl -s -X POST localhost:8000/v2/text -H 'content-type: application/json' -d '{"text":"Bitte melden","to":"!a1b2c3d4"}'
-curl -s 'localhost:8000/v2/messages?channel=draeger-srs'     # also /v2/tasks?channel=... and /v2/export.geojson?channel=...
+curl -s 'localhost:8000/v2/messages?channel=RescueCodec'     # also /v2/tasks?channel=... and /v2/export.geojson?channel=...
 ```
 
-Every record has `"channel": {"index": 1, "name": "RescueCodec", "public": false}` and `"to": null` (or the peer of a direct message). `GET /v2/health` lists the channels the gateway hears in `radio.channels`. An Accept (`/v2/tasks/{key}/ack`) always goes out on the task's channel.
+The demo gateway has one channel, RescueCodec. On a real radio, use the name of a channel on that radio, for example `"channel":"draeger-srs"`. A name the radio does not have gives `invalid_value` with the list: `no channel "draeger-srs" to send on (channels: RescueCodec)`.
+
+Every record has `"channel": {"index": 0, "name": "RescueCodec", "public": false}` and `"to": null` (or the peer of a direct message). The index is the channel's slot on the radio: 0 on the demo gateway. `GET /v2/health` lists the channels the gateway hears in `radio.channels`. An Accept (`/v2/tasks/{key}/ack`) always goes out on the task's channel.
 
 The answer is `202` with a record. It starts as `"status":"queued"` and moves to `sent` and then `delivered` or `failed`. Here is the start of it:
 
@@ -197,9 +212,12 @@ Other calls:
 | `GET /v2/messages?limit=20&type=found` | Everything sent and heard, with bytes, RSSI, SNR and hops |
 | `GET /v2/tasks` | Open, accepted and done tasks |
 | `POST /v2/tasks/{key}/ack` with `{"status":"accepted","eta":15,"team":"Trupp 3"}` | Accept (or `done`). The Ack goes over the radio. |
-| `POST /v2/text` with `{"text":"Treffpunkt am Gasthaus"}` | Send a short free text |
-| `POST /v2/encode` with `{"message":{...}}` | Bytes, size and readable text, nothing is sent |
-| `POST /v2/decode` with `{"hex":"0807..."}` | Bytes to message and readable text |
+| `POST /v2/text` with `{"text":"Treffpunkt am Gasthaus"}` | Send a free text. Add `channel` or `to` like above. It goes out in the smallest safe form of that chat (see [Readable text](#readable-text)). |
+| `POST /v2/extract` with `{"text":"Apply a tourniquet.","channel":"RescueCodec"}` | A preview, nothing is sent. The sentence rules read the text. If it stays a text, and the body has `channel` or `to`, the answer shows the form that really goes out: `form`, `vocab`, `coded_bytes`, `send_as`. A sentence the rules read as a report shows the report instead. |
+| `GET /v2/channels/{name}/mode`, `PUT` with `{"mode":"compressed"}` | How texts go out in a channel: `auto`, `compressed` or `normal`. GET also gives `send_as` and the `reason`. |
+| `GET /v2/nodes/{node}/mode`, `PUT` with `{"mode":"normal"}` | The same for a direct chat with one node, for example `!a1b2c3d4` |
+| `POST /v2/encode` with `{"message":{...}}` | Bytes, size and readable text, nothing is sent. On a text it shows the Envelope (`hello world`: 15 bytes), not the form that goes out. Use `/v2/extract` for that. |
+| `POST /v2/decode` with `{"hex":"0807..."}` | Bytes to message and readable text. Reads every form: Envelope, compact frame, domain frame, v1. |
 | `GET /v2/health`, `GET /v2/stats`, `GET /v2/nodes` | Radio, counters, nodes |
 
 Encode and decode without a radio:
@@ -247,7 +265,7 @@ message | {"event": "message", "data": {"seq": 7, "key": null, "direction": "out
 task | {"event": "task", "data": {"key": "0000e002-1", "from": "!0000e002", "id": 1, "type": "found", "priority": "
 ```
 
-Node 22 or a browser (no library, `WebSocket` and `fetch` are built in):
+Node 22 or a browser (no library, `WebSocket` and `fetch` are built in). It uses top-level `await`, so in Node save it as a `.mjs` file:
 
 ```js
 const base = "http://127.0.0.1:8000";
@@ -277,7 +295,7 @@ If the gateway runs on another computer, start it with `--host 0.0.0.0 --token S
 
 ## MQTT
 
-Start a local broker (`brew install mosquitto`, then `scripts/mqtt-up.sh`) and tell the gateway where it is:
+Start a local broker (`brew install mosquitto`, then `scripts/mqtt-up.sh`; stop it later with `scripts/mqtt-down.sh`) and tell the gateway where it is:
 
 ```bash
 .venv/bin/rescuecodec-gateway --emulator --emulator-demo --db :memory: --mqtt 127.0.0.1
@@ -343,6 +361,15 @@ Use `--mqtt-user`, `--mqtt-password` and `--mqtt-prefix` for a real broker. The 
 
 `--cot-udp GROUP:PORT` changes the multicast group, `--cot-iface IP` picks the network card. ATAK, WinTAK and iTAK on the same network show the markers with no setup. The remarks end with the channel, for example `[OPEN] (channel draeger-srs)`.
 
+Try it with no radio, all on this computer:
+
+```bash
+nc -l 127.0.0.1 18087        # in a second terminal: plays the TAK server and prints what arrives (macOS nc)
+.venv/bin/rescuecodec-gateway --emulator --emulator-demo --db :memory: --cot --cot-iface 127.0.0.1 --cot-tcp 127.0.0.1:18087
+```
+
+The demo team's first report arrives at `nc` within a few seconds. Without anything on port 18087 the gateway logs "TAK server ... not reachable" and tries again every 5 seconds. The UDP multicast goes on.
+
 One event, as sent for the Found report above (the first line of a test run):
 
 ```xml
@@ -351,16 +378,19 @@ One event, as sent for the Found report above (the first line of a test run):
 
 The uid is `RescueCodec.<task key>`, so Accept and Done update the same marker. A Mayday is the ATAK emergency alert (`b-a-o-tbl`, cancelled with `b-a-o-can` when done). The full table is in `rescuecodec/gateway/README.md`.
 
-Check it without TAK, with a ten-line listener:
+Check the UDP multicast without TAK, with a short listener:
 
 ```python
-import socket, struct
+import socket
+IFACE = "127.0.0.1"   # with --cot-iface 127.0.0.1, or a computer with no network. On a normal network: "0.0.0.0"
 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 s.bind(("", 6969))
-s.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, socket.inet_aton("239.2.3.1") + socket.inet_aton("0.0.0.0"))
+s.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, socket.inet_aton("239.2.3.1") + socket.inet_aton(IFACE))
 print(s.recvfrom(65535)[0].decode())
 ```
+
+The listener must join the group on the interface the gateway sends on. Without a network (Wi-Fi off in the field) the gateway falls back to the loopback interface by itself, so then use `127.0.0.1` too. A listener that joins on `0.0.0.0` hears nothing from a gateway that sends on loopback.
 
 ## GeoJSON
 
@@ -389,20 +419,14 @@ Every record carries the same report in English and German, so a log, a chat bot
 - MQTT: topic `rescuecodec/v2/readable`.
 - Any bytes you have: `POST /v2/decode` (above), or `render(msg, "en")` in the libraries. Languages: `en`, `de` (checked), `uk`, `tr`, `ar` (machine drafts, need a native check).
 - Stock Meshtastic apps do not show port 256. To let them show the line anyway, start the gateway with `--text-over-air out` (what it sends) or `both`. It costs extra airtime, so it is off by default. The copy starts with `[RC] `, and RescueCodec receivers skip such texts (SPEC section 2.1).
-- Free text is different: a message with only a text goes out packed for RescueCodec (port 256, about 40 % smaller) or as a normal Meshtastic text (port 1), per chat (SPEC section 2.3). Auto packs only where everyone runs RescueCodec, so a person with the official app can always read the chat. Set it with `PUT /v2/channels/{name}/mode` or `PUT /v2/nodes/{node}/mode` (`auto`, `compressed`, `normal`), or in the app's chat menu. Normal texts on the private channels come in as `text` records with `codec.version: 0`; packed ones as `text` records with `codec.packed: true` and the words already unpacked.
+- Free text is different. A message with only a text goes out per chat, in the smallest safe form (SPEC section 2.3):
+  - a normal Meshtastic text (port 1), which every app shows;
+  - a packed text (DEFLATE, port 256, about 40 % smaller);
+  - with `--compact-text on`: a compact frame (`0x02`, 2-byte words) or a domain frame (`0x03`, a team vocabulary, `--vocabulary`). See [Compact text](#compact-text-and-team-vocabularies).
 
-### Packed texts in your own code
+  Auto packs only where everyone runs RescueCodec, so a person with the official app can always read the chat. Set it with `PUT /v2/channels/{name}/mode` or `PUT /v2/nodes/{node}/mode` (`auto`, `compressed`, `normal`), or in the app's chat menu.
 
-Every library unpacks them; you only need the dictionary file, which ships with the library.
-
-```python
-from rescuecodec.v2 import encode, decode
-data = encode({"id": 3, "text": {"text": "We are at the hut, two people with us, waiting for the vehicle on the forest road", "dict": 1}})
-print(len(data))                 # 42 (81 bytes as a normal text)
-print(decode(data)["text"])      # {'text': 'We are at the hut, ...', 'dict': 1}
-```
-
-TypeScript (`decode(bytes).text.text`) and Kotlin (`RescueCodec.decode(bytes)`) give the same JSON. Only send packed texts on port 256 to nodes that run RescueCodec: stock Meshtastic apps cannot unpack them.
+  The record says which form went out. A normal text has `codec.version: 0` and no `codec.form`. A packed one has `codec.packed: true` and `codec.form`: `deflate` (DEFLATE), `words` (word tokens in the Envelope), `lean` (compact frame) or `domain` (domain frame, with `codec.vocab`, for example `medical`). The words are always already unpacked in `message.text.text`.
 
 Example lines:
 
@@ -411,6 +435,109 @@ Person found: child, conscious, hypothermia, fracture, needs stretcher, 2 more h
 Hazard: rockfall, high risk, keep out, radius 50 m. Position 50.69300, 7.21600.
 Accepted #1: from !0000e001, by Demo 1, ETA 10 min.
 ```
+
+### Packed texts in your own code
+
+Every library unpacks them; you only need the dictionary file, which ships with the library.
+
+```python
+from rescuecodec.v2 import encode, decode_any
+data = encode({"id": 3, "text": {"text": "We are at the hut, two people with us, waiting for the vehicle on the forest road", "dict": 1}})
+print(len(data))                    # 42 (81 bytes as a normal text)
+print(decode_any(data)["text"])     # {'text': 'We are at the hut, ...', 'dict': 1}
+```
+
+Read every port 256 payload with `decode_any` (Python), `decodeAny` (TypeScript) or `RescueCodec.decodeAny` (Kotlin). They read the Envelope, the compact frame (`0x02`), the domain frame (`0x03`) and old v1 packets, and give the same JSON. Plain `decode` reads only the Envelope: it rejects the two frames with `unsupported_version`.
+
+Only send packed texts on port 256 to nodes that run RescueCodec: stock Meshtastic apps cannot unpack them.
+
+## Compact text and team vocabularies
+
+Chat texts can go out in even fewer bytes. This is off by default. Two more forms:
+
+- **Compact frame** (`0x02`): every known English word is 2 bytes. `hello world` is 6 bytes instead of 11.
+- **Domain frame** (`0x03`): a team vocabulary of 1016 words for one kind of work. Each of these words costs 10 bits. `Apply a tourniquet.` is 7 bytes with the Medical list, instead of 19.
+
+Names, numbers, coordinates and emoji are copied byte for byte, so the receiver gets the exact text. The sender builds every form and sends the strictly smallest; on a tie the normal text wins. Measured results: [COMPACT_TEXT.md](COMPACT_TEXT.md).
+
+### On the gateway
+
+```bash
+.venv/bin/rescuecodec-gateway --emulator --compact-text on --vocabulary auto --db :memory:
+```
+
+- `--compact-text on` turns it on. Default: off.
+- `--vocabulary` picks the team vocabulary: `auto` (default: try every list), `general` (no list, the compact frame only), or one list: `emergency`, `sar`, `fire`, `hiking`, `medical`.
+- `GET /v2/health` shows `compact_text`, `vocabulary` and the lists in `vocabularies`.
+
+Compact text is used only in a chat that packs. A fresh emulator has heard nobody yet, so Auto sends a normal text there (`reason` `nobody_known` in `GET /v2/channels/RescueCodec/mode`). Set the chat to compressed first:
+
+```bash
+curl -s -X PUT localhost:8000/v2/channels/RescueCodec/mode -H 'content-type: application/json' -d '{"mode":"compressed"}'
+curl -s -X POST localhost:8000/v2/text -H 'content-type: application/json' -d '{"text":"Apply a tourniquet."}'
+```
+
+The record says what went out:
+
+```json
+"codec":{"version":2,"size":7,"hex":"0305e300609c00","packed":true,"form":"domain","vocab":"medical","vocab_id":5,"vocab_label":"Medical"}
+```
+
+`POST /v2/extract` with `{"text":"Apply a tourniquet.","channel":"RescueCodec"}` shows the same without sending: `"form":"domain"`, `"vocab":"medical"`, `"coded_bytes":7`.
+
+### In your own code
+
+Python:
+
+```python
+from rescuecodec.v2 import encode_compact, encode_domain, decode_any, render
+
+lean = encode_compact("hello world")
+print(len(lean), lean.hex())             # 6 0202033e0124
+med = encode_domain("Apply a tourniquet.", "medical")
+print(len(med), med.hex())               # 7 0305e300609c00
+print(decode_any(med))                   # {'v': 2, 'text': {'text': 'Apply a tourniquet.', 'vocab': 5}}
+print(render(decode_any(med), "en"))     # Message: Apply a tourniquet.
+```
+
+TypeScript (save as `.mjs`):
+
+```js
+import { encodeCompact, encodeDomain, decodeAny } from "@rescuecodec/core";
+
+console.log(encodeCompact("hello world").length);     // 6
+const med = encodeDomain("Apply a tourniquet.", "medical");
+console.log(Buffer.from(med).toString("hex"));         // 0305e300609c00
+console.log(decodeAny(med));                           // { v: 2, text: { text: 'Apply a tourniquet.', vocab: 5 } }
+```
+
+Kotlin:
+
+```kotlin
+val lean = RescueCodec.encodeCompact("hello world")                    // 6 bytes
+val med = RescueCodec.encodeDomain("Apply a tourniquet.", "medical")   // 7 bytes: 0305e300609c00
+println(RescueCodec.decodeAny(med))                                    // {v=2, text={text=Apply a tourniquet., vocab=5}}
+```
+
+The vocabulary is a short id: `emergency`, `sar`, `fire`, `hiking` or `medical` (or its number, 1 to 5). A full name like `"Search & Rescue"` throws `invalid_value` (field `text.vocab`). The full names are labels for people, in the app and in `GET /v2/health`.
+
+**Pick the smallest form, like the app.** Python and Kotlin have the sender rule:
+
+```python
+from rescuecodec.engine.textmode import choose_form
+
+f = choose_form({"id": 3, "text": {"text": "Apply a tourniquet."}}, True, compact=True, vocab="auto")
+print(f.form, f.vocab, f.packed, len(f.payload))    # domain medical True 7
+f = choose_form({"id": 3, "text": {"text": "Ok"}}, True, compact=True)
+print(f.form, f.packed, len(f.payload))             # plain False 2
+```
+
+- The second argument says whether the chat packs. `wants_packed(...)` in the same module gives it, with the reason.
+- `f.packed` True: send `f.payload` on port 256. False: send it as a normal Meshtastic text on port 1.
+- `vocab` is `auto`, `general` or one short id, like `--vocabulary`.
+- A message with `pos` or `time` never gets a frame (a frame has no id and no position). It goes in the Envelope (`words` or `deflate`), or as a normal text when that is smaller.
+
+Kotlin: `TextMode.chooseForm(message, wantPacked = true, compact = true, vocab = "auto")` in `:engine` gives the same `form`, `vocab` and `payload`. Both pass the same `choice` cases in `spec/vectors/domain.json`. The TypeScript library has no sender rule: it encodes and decodes every form, and you pick the form yourself.
 
 ## Android Intent
 
@@ -490,7 +617,7 @@ Errors (`RESULT_ERROR` and `error` in `RESULT_JSON`, with a `message` in plain E
 | `no_input` | Neither `JSON` nor `TEXT` was given. |
 | `invalid_json` | `JSON` is not a JSON object. |
 | `invalid_value`, `unknown_key`, `missing_field`, `no_body`, `multiple_bodies`, `too_large`, `malformed`, `empty`, `unsupported_version` | The message breaks a rule of the spec (section 5). `field` names the field, for example `found.age`. |
-| `disabled` | The person turned off "Allow other apps to send reports" in the RescueCodec settings. |
+| `disabled` | The person turned off "Let other apps send reports" in the RescueCodec app (Settings, Other apps). |
 
 ### Kotlin example
 
@@ -543,6 +670,6 @@ adb logcat -d | grep RescueCodec     # "sent found id=... 21 B" once the radio t
 - The first call starts the radio service if a radio is remembered. The RescueCodec app must have been opened and connected once, so Bluetooth permissions and pairing are done.
 - Ids count up from a random start and wrap at 16383. Receivers ignore the same (sender, id) for 24 hours.
 - The sender of the report on the mesh is the phone's radio. Your app's name is only kept in the local log.
-- **The radio needs a private channel.** Reports go out only on a channel that has its own key. The app uses the channel named `RescueCodec`. If there is none, it uses the only channel with its own key. If there are several, or none, nothing is sent: the message stays `queued` and `detail` says "No private RescueCodec channel on this radio" (or similar). The app never falls back to channel 0 or to the public default key (LongFast). The person can pick a channel on the main screen.
-- The Intent API is on by default and any installed app can call it. The person can switch it off on the main screen ("Allow other apps to send reports"). The calling package is kept in the local message log.
+- **The radio needs a private channel.** Reports go out only on a channel that has its own key. The app uses the channel named `RescueCodec`. If there is none, it uses the only channel with its own key. If there are several, or none, nothing is sent: the message stays `queued` and `detail` says "No private RescueCodec channel on this radio" (or similar). The app never falls back to channel 0 or to the public default key (LongFast). The person can pick a channel on the Radio tab, under "Reports go on".
+- The Intent API is on by default and any installed app can call it. The person can switch it off in Settings, Other apps, "Let other apps send reports". The calling package is kept in the local message log.
 - Everything stays on the phone and on the radio channel. The app never uses the internet.
