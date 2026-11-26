@@ -15,6 +15,7 @@ Android emulator: use host `10.0.2.2` and the same ports. Python: `TCPInterface(
 ```bash
 sim/up.sh                    # start, configure, verify (safe to run again)
 .venv/bin/python sim/smoke.py   # FIELD -> BASE and RELAY, PRIVATE_APP 256 + text
+.venv/bin/python sim/demo_feed.py   # demo reports from BASE for the app on FIELD (--mayday, --answer)
 sim/down.sh                  # stop; add --wipe to delete node state
 ```
 

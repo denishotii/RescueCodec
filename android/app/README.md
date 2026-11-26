@@ -9,10 +9,10 @@ This module holds the radio and data layer, and the screens and voice on top of 
 | Package | What it does |
 |---|---|
 | `radio/` | `ConnectionManager` (states `Disconnected`, `Scanning`, `Connecting`, `Connected`, `Error`; retry with backoff 1 s to 60 s), `RadioTarget` (TCP or Bluetooth address), `LastRadioStore`, transports and the Bluetooth scanner. |
-| `core/` | `Messenger` (send queue from `:engine`, packet handling, tasks, Accept and Done), `Channels` (the radio's channels by name, where a packet belongs), `Chats` (`ChatId`, `ChatList`, `NodeDirectory` for node names, `ChatReads` for unread counts), `AppSettings`, `UiPrefs` (language, day/night, sounds), `ReportFields` (chip editing), `Labels` (words from spec/i18n), `TeamAlerts` (which new message notifies, and how), `LocationHelper`. |
-| `data/` | Room database (version 2): `messages` (every packet with its state, channel and DM peer), `tasks` (with the channel of the report), `stats`. `Migrations` holds the SQL of each schema change. |
+| `core/` | `Messenger` (send queue from `:engine`, packet handling, tasks, Accept and Done), `Channels` (the radio's channels by name, where a packet belongs), `TextRoutes` (the text mode of each chat, and who was heard running RescueCodec), `Chats` (`ChatId`, `ChatList`, `NodeDirectory` for node names, `ChatReads` for unread counts), `AppSettings`, `UiPrefs` (language, day/night, sounds), `ReportFields` (chip editing), `Labels` (words from spec/i18n), `TeamAlerts` (which new message notifies, and how), `LocationHelper`. |
+| `data/` | Room database (version 3): `messages` (every packet with its state, channel and DM peer), `tasks` (with the channel of the report), `stats`, `nodes_seen` (which node was heard on which port) and `chat_modes` (the text mode of each chat). `Migrations` holds the SQL of each schema change. |
 | `service/` | `RadioService`: foreground service, type `connectedDevice`, keeps the link alive with the screen off. `MaydayNotifier` (loud Mayday channel). `TeamWatcher` and `TeamNotifier`: read new rows from the database and post Messages, Tasks and Answers notifications, or an in-app tone when the app is in front. |
-| `intent/` | Public Intent API `org.rescuecodec.action.SEND_REPORT`. See `docs/INTEGRATE.md`, section "Android Intent". |
+| `intent/` | Public Intent API `org.rescuecodec.action.SEND_REPORT`. The switch is in Settings, Other apps, "Let other apps send reports" (on by default). See `docs/INTEGRATE.md`, section "Android Intent". |
 | `ui/` | `RescueRoot` (theme, language, top bar, three tabs, Settings), `chat/` (Team chat: bubbles, report cards, answer lines, composer with preview strip), `screens/` (Tasks, Stats, Connect, Settings, QR scanner, report editor sheets), `components/` (cards, chips, SOS and mic hold controls, tags), `theme/`, view models (`StateFlow`; `ChatViewModel` takes a `ChatId`, `ChatListViewModel` builds the chat list), permission plan. |
 | `voice/` | `SpeechInput` (Vosk, hold to talk), `VoskModels` and `ModelImporter` (where the models are, import from a zip), `Speaker` (Android TextToSpeech). |
 
@@ -21,12 +21,13 @@ This module holds the radio and data layer, and the screens and voice on top of 
 ## How a message travels
 
 1. `Messenger.submit(message)` encodes it with `:codec`, writes a row (`queued`) and puts it into the `SendQueue`.
-2. The send loop takes the next message that fits the airtime budget (Mayday first, one budget for all channels) and sends it as a `PRIVATE_APP` (256) broadcast on the message's channel, with `want_ack` and a Meshtastic priority. A direct message goes as a port 1 text with `to` = that node.
+2. The send loop takes the next message that fits the airtime budget (Mayday first, one budget for all channels) and sends it as a `PRIVATE_APP` (256) broadcast on the message's channel, with `want_ack` and a Meshtastic priority. A direct message goes packed on port 256 when the peer runs RescueCodec, else as a port 1 text, with `to` = that node.
 3. The radio answers: `sent`, `delivered` (a neighbour repeated it), `not_confirmed`, or `refused_airtime` (the radio's own limit). Refused messages are tried again later.
 4. Incoming packets on port 256 are decoded, checked for duplicates and written as `received`, with their channel. Reports become tasks, Acks change task states.
 5. `Messenger.answer(key, "accepted" | "declined" | "done")` sends an Ack on the report's channel and applies it at once.
 6. Normal Meshtastic texts (port 1, spec section 2.1), for example from the official app, are stored as `text` rows with `source = "meshtastic"` (`MeshText.isPlain(row)`, shown with a small "via Meshtastic"). The same packet twice and readable copies that start with `[RC] ` are dropped as duplicates.
-7. Setting "Send plain text as normal Meshtastic text" (`AppSettings.plainTextAsMeshtastic`, on by default): a message with only a text goes out as a port 1 text on the team channel instead of a RescueCodec text, through the same queue, priority, airtime budget and `want_ack`. Only the words go out (at most 200 bytes, no position). Reports always go on port 256.
+7. A message with only a text goes packed on port 256 or as a normal port 1 text (spec section 2.3). Each chat has a text mode in its ⋮ menu: Auto, Always compressed or Always normal. Auto packs a direct message when the peer runs RescueCodec, and a channel text when RescueCodec nodes and no stock Meshtastic user were heard there in the last 24 h. A public channel always gets normal text. A normal text carries only the words (at most 200 bytes, no position). Both ways use the same queue, priority, airtime budget and `want_ack`. Reports always go on port 256.
+8. Settings "Use compact encoding for text messages" (`AppSettings.compactText`, off by default) and "Team vocabulary" (Auto by default, shown when compact is on): in a chat that packs, a text goes in the strictly smallest form, for example a compact frame (`0x02`) or a domain frame (`0x03`). With compact on, free texts go without the automatic GPS fix, so they can use a frame without an Envelope. Reports keep their position.
 
 Everything is in the database, so a restart loses nothing: the queue, the tasks, the duplicate memory and the used airtime are rebuilt.
 
@@ -45,10 +46,10 @@ The Chats tab is a chat list, like Telegram: the team channel pinned on top, the
 
 Reports from the SOS button, the Intent API and the team chat go out on one private channel, never on the public default channel. `core/ChannelChoice.kt` decides:
 
-1. The person picked a channel on the main screen: that one, if it exists on the radio and has its own key.
+1. The person picked a channel on the Radio tab: that one, if it exists on the radio and has its own key.
 2. Else the enabled channel named `RescueCodec`, if it has its own key.
 3. Else the only enabled channel with its own key.
-4. Else nothing is sent. Messages stay `queued` and their `detail` says why, for example "No private RescueCodec channel on this radio. Add a channel named RescueCodec with its own key, or pick a channel in the settings." The main screen shows the same text.
+4. Else nothing is sent. Messages stay `queued` and their `detail` says why, for example "No private RescueCodec channel on this radio. Add a channel named RescueCodec with its own key, or pick a channel in the settings." The Radio tab shows the same text.
 
 So name the team channel `RescueCodec` on every radio (same name, same key). A channel with no key or the one-byte default key (LongFast) counts as public. `Messenger.channel` is a `StateFlow<ChannelChoice>` and `ConnectionViewModel.pickChannel(index)` sets the choice (-1 = automatic).
 
@@ -97,4 +98,4 @@ scripts/android-e2e.sh --keep   # leaves them running
 
 ## Not covered by simulation
 
-Bluetooth pairing and PIN dialog, permission pop-ups on a real phone, battery saver killing the service, real radio timing and lost packets. These are on the hardware check list. The Bluetooth code path is written against the SDK's documented API and compiles, but it has not run against a real radio yet.
+Bluetooth pairing and PIN dialog, permission pop-ups on a real phone, battery saver killing the service, real radio timing and lost packets. These are on the hardware check list. Bluetooth has run with real radios: on 25 Nov 2026 the phones reached their radios over Bluetooth, and the gateway's `--ble` reached the base radio. No automated test covers it.

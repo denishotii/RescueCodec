@@ -15,7 +15,7 @@ What this spec fixes:
 - one JSON shape for the same data (used by the REST API, MQTT and the test vectors),
 - the codes and their words (`vocab/sar.yaml`, `i18n/*.json`),
 - the shared dictionaries and team vocabularies (`vocab/`),
-- test vectors that every library must pass (`vectors/codec.json`, `vectors/extraction.json`),
+- test vectors that every library must pass (`vectors/codec.json`, `vectors/domain.json`, `vectors/extraction.json`),
 - the gateway API (`api/openapi.yaml`).
 
 The key words MUST, SHOULD and MAY have their usual meaning (RFC 2119).
@@ -681,7 +681,7 @@ Rules for extractors:
 - No id and no device GPS: the app adds both. Spoken coordinates get `acc: estimated`.
 - A person always checks the fields before sending.
 
-`vectors/extraction.json` has 70 test sentences (42 German, 28 English) in volunteer style, with typos, negations and quantities; 10 are marked `unsupported` and expect the text fallback. Every extractor SHOULD pass them; the Kotlin and Python extractors MUST give the same fields for each.
+`vectors/extraction.json` has 73 test sentences (44 German, 29 English) in volunteer style, with typos, negations and quantities; 10 are marked `unsupported` and expect the text fallback. Every extractor SHOULD pass them; the Kotlin and Python extractors MUST give the same fields for each.
 
 ## 12. Conformance: writing a new library
 
@@ -700,7 +700,7 @@ Rules for extractors:
    - `vectors/domain.json` (section 3.8): `frames`: `encode_domain(text, vocab)` gives `hex` exactly and `decode_domain(hex)` gives `decoded`; `streams` and `random`: the bit stream both ways; `invalid_decode` / `invalid_encode`: rejected with `error`; `unknown`: decodes to `{"unknown": {"vocab": n}}`; `choice`: your send rule picks the same `form`, `vocab` and bytes; `vocabularies`: the SHA-256 of each bundled vocabulary matches.
 4. Level 2 (optional): `render(decoded, "en")` and `"de"` give the `text` strings exactly.
 5. Level 3 (optional): your extractor passes `vectors/extraction.json`.
-6. State in your README: "Passes RescueCodec 2.0.0 conformance Level 1 (and 2, 3)". That is the proof. Never edit the vectors to make a library pass; report a bug instead.
+6. State in your README: "Passes RescueCodec 2.3.0 conformance Level 1 (and 2, 3)". That is the proof. Never edit the vectors to make a library pass; report a bug instead.
 
 The Python reference is `rescuecodec/v2/` (`encode`, `decode`, `decode_any`, `render`, `resolve_time`). It passes all levels except 3 (the extractor is a separate job). Regenerate its protobuf code with `scripts/gen-proto.sh` and the vectors with `spec/tools/gen_vectors.py`.
 

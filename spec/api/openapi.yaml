@@ -7,7 +7,8 @@ info:
     identifier: Apache-2.0
   summary: Local REST and WebSocket API of the RescueCodec gateway (command post laptop or Raspberry Pi).
   description: |
-    The gateway sits next to a Meshtastic radio (USB, Wi-Fi or the simulator). It decodes every
+    The gateway sits next to a Meshtastic radio and reaches it over USB, Bluetooth, Wi-Fi (TCP) or the
+    simulator. It decodes every
     RescueCodec packet it hears and sends packets for you. Our own dashboard uses only this API,
     so anything the dashboard does, your software can do too.
 
@@ -61,11 +62,15 @@ info:
     is at least 3 bytes smaller than the normal text. A received packed text shows its words like any other text, with
     `codec.packed: true` and `message.text.dict`.
 
-    **Compact texts** (SPEC section 3.6, opt-in with `--compact-text on`, default off). In a chat that packs, the
-    gateway also builds the word-token form (2-byte tokens from the word dictionary, names and numbers as exact
-    literals) and sends it when its whole packet is smaller than what the rule above picked; a tie keeps the existing
-    form. Never on a public channel or to a stock Meshtastic user. Received compact texts are shown like any other
-    text, whatever the flag says: `codec.packed: true`, `codec.form: words` and `message.text.words`. A compact text
+    **Compact texts** (SPEC sections 3.6 and 3.7, opt-in with `--compact-text on`, default off). In a chat that packs,
+    the gateway also builds the word-token forms (2-byte tokens from the word dictionary, names and numbers as exact
+    literals): word tokens in the Envelope, and the compact frame (first byte `0x02`: no Envelope, no id, no
+    position). The strictly smallest form goes out; the normal text when it is smaller or equal. A text with a
+    position keeps the Envelope. Never on a public channel or to a stock Meshtastic user. The chat must pack: a
+    fresh gateway that has heard nobody sends normal text (`reason: nobody_known`) until you set the chat to
+    `compressed` (`PUT /v2/channels/{name}/mode`). Received compact texts are shown like any other text, whatever
+    the flag says: `codec.packed: true`, `codec.form: words` (in the Envelope) or `lean` (compact frame, no id, so
+    no `key`), and `message.text.words`. A compact text
     with a word dictionary this gateway does not have is a record of type `unknown` with `message.unknown.words`
     and the readable line "Message encoded with a dictionary this app does not have".
 
@@ -114,7 +119,7 @@ paths:
                   value:
                     status: ok
                     version: 2.0.0
-                    spec_version: 2.0.0
+                    spec_version: 2.3.0
                     uptime_s: 3605
                     radio:
                       connected: true
@@ -126,11 +131,14 @@ paths:
                       preset: LONG_FAST
                       firmware: 2.7.26
                     mqtt: { connected: false }
+                    compact_text: false
+                    vocabulary: auto
+                    text_limits: { text: 180, packed: 400 }
                 no_radio:
                   value:
                     status: degraded
                     version: 2.0.0
-                    spec_version: 2.0.0
+                    spec_version: 2.3.0
                     uptime_s: 12
                     radio: { connected: false, kind: none, node: null, port: 256, channel: null, channels: [], region: null, preset: null, firmware: null }
                     mqtt: { connected: false }
@@ -715,7 +723,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/StreamEvent" }
               examples:
-                hello: { value: { event: hello, data: { last_seq: 42, health: { status: ok, version: 2.0.0, spec_version: 2.0.0, uptime_s: 3605, radio: { connected: true, kind: serial, node: "!a1b2c3d4", port: 256, channel: RescueCodec, channel_index: 1, channels: [ { index: 1, name: RescueCodec, public: false } ], region: EU_868, preset: LONG_FAST, firmware: 2.7.26 }, mqtt: { connected: false } } } } }
+                hello: { value: { event: hello, data: { last_seq: 42, health: { status: ok, version: 2.0.0, spec_version: 2.3.0, uptime_s: 3605, radio: { connected: true, kind: serial, node: "!a1b2c3d4", port: 256, channel: RescueCodec, channel_index: 1, channels: [ { index: 1, name: RescueCodec, public: false } ], region: EU_868, preset: LONG_FAST, firmware: 2.7.26 }, mqtt: { connected: false } } } } }
                 message: { value: { event: message, data: {"seq": 42, "key": "a1b2c3d4-7", "direction": "in", "from": "!a1b2c3d4", "type": "found", "priority": "urgent", "status": "received", "error": null, "time": "2026-11-25T14:32:05Z", "event_time": null, "codec": {"version": 2, "size": 23, "hex": "08071a0908b8e6ea041082875832080841100518012802"}, "radio": {"packet_id": 3141592653, "rssi": -97, "snr": 6.25, "hops": 0, "channel": 1, "via": "serial"}, "channel": {"index": 1, "name": "RescueCodec", "public": false}, "to": null, "message": {"id": 7, "pos": {"lat": 50.69212, "lon": 7.21345}, "found": {"consciousness": "conscious", "age": "child", "injuries": ["hypothermia", "fracture"], "needs": ["stretcher"], "responders": 2}}, "text": {"en": "Person found: child, conscious, hypothermia, fracture, needs stretcher, 2 more helpers needed. Position 50.69212, 7.21345.", "de": "Person gefunden: Kind, ansprechbar, Unterkühlung, Knochenbruch, braucht Trage, 2 weitere Helfer benötigt. Position 50.69212, 7.21345."}, "task_key": "a1b2c3d4-7"} } }
                 message_status: { value: { event: message_status, data: { seq: 44, status: delivered, error: null, updated: "2026-11-25T14:33:01Z" } } }
                 task: { value: { event: task, data: {"key": "a1b2c3d4-7", "from": "!a1b2c3d4", "id": 7, "type": "found", "priority": "urgent", "state": "accepted", "created": "2026-11-25T14:32:05Z", "updated": "2026-11-25T14:33:10Z", "pos": {"lat": 50.69212, "lon": 7.21345}, "text": {"en": "Person found: child, conscious, hypothermia, fracture, needs stretcher, 2 more helpers needed. Position 50.69212, 7.21345.", "de": "Person gefunden: Kind, ansprechbar, Unterkühlung, Knochenbruch, braucht Trage, 2 weitere Helfer benötigt. Position 50.69212, 7.21345."}, "message_seq": 42, "channel": {"index": 1, "name": "RescueCodec", "public": false}, "acks": [{"by": "!0badc0de", "status": "accepted", "eta": 15, "team": "Trupp 3", "time": "2026-11-25T14:33:10Z", "seq": 45}]} } }
@@ -1123,7 +1131,7 @@ components:
       properties:
         status: { type: string, enum: [ok, degraded], description: "degraded = running, but no radio." }
         version: { type: string, description: Gateway version. }
-        spec_version: { type: string, example: 2.1.0 }
+        spec_version: { type: string, example: 2.3.0 }
         uptime_s: { type: integer }
         radio:
           type: object
@@ -1155,7 +1163,7 @@ components:
           required: [connected]
           properties:
             connected: { type: boolean }
-        compact_text: { type: boolean, description: "--compact-text: chats that pack may send compact word-token texts (SPEC section 3.6)." }
+        compact_text: { type: boolean, description: "--compact-text: chats that pack may send compact texts (word tokens, SPEC section 3.6; compact frame, section 3.7; domain frame, section 3.8)." }
         vocabulary: { type: string, enum: [auto, general, emergency, sar, fire, hiking, medical], description: "--vocabulary: the team vocabulary for compact texts (SPEC 3.8). auto = try every domain frame, general = none, a domain = only that one." }
         vocabularies:
           type: array
@@ -1175,6 +1183,7 @@ components:
         text_limits:
           type: object
           description: "Bytes of UTF-8 a sent text may have: `text` in a chat that does not pack, `packed` in one that packs."
+          required: [text, packed]
           properties:
             text: { type: integer, example: 180 }
             packed: { type: integer, example: 400 }

@@ -56,7 +56,7 @@ def build_parser() -> argparse.ArgumentParser:
     svc.add_argument("--text-as-meshtastic", choices=["on", "off"], default=env("TEXT_AS_MESHTASTIC", "on"),
                      help="old setting, replaced by --text-mode. off = channels default to compressed")
     svc.add_argument("--compact-text", choices=["on", "off"], default=env("COMPACT_TEXT", "off"),
-                     help="compact encoding for text messages (word tokens, SPEC section 3.6). on = in a chat that packs "
+                     help="compact encoding for text messages (word tokens, SPEC section 3.6, and the compact frame, section 3.7). on = in a chat that packs "
                      "(RescueCodec users only, never public channels), also build the word-token form and send it when "
                      "its whole packet is smaller. Receiving compact texts works either way (default off)")
     svc.add_argument("--vocabulary", choices=list(VOCABULARY_SETTINGS), default=env("VOCABULARY", "auto"),

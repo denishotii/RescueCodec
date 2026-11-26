@@ -23,7 +23,7 @@ Then open http://127.0.0.1:8000/ (dashboard) or http://127.0.0.1:8000/docs (API)
 
 Without installing: `.venv/bin/python -m rescuecodec.gateway --emulator-demo`.
 
-Every flag also exists as an environment variable: `--tcp` is `RESCUECODEC_TCP`, `--mqtt` is `RESCUECODEC_MQTT`, and so on. Run `rescuecodec-gateway --help` for the list.
+Most flags also exist as an environment variable: `--tcp` is `RESCUECODEC_TCP`, `--mqtt` is `RESCUECODEC_MQTT`, and so on. Every flag is in the table under [All flags](#all-flags), or run `rescuecodec-gateway --help`.
 
 If the radio is missing or unplugged, the gateway still starts. `/v2/health` shows `degraded`. It reconnects by itself, also after a USB or Wi-Fi drop.
 
@@ -135,14 +135,19 @@ With `--compact-text on`, a text in a chat that packs is built in every form and
 
 Receiving works whatever the flag says. A compact frame becomes a text record with `codec.form: "lean"`, `codec.packed: true`, `message.text.words: 2` and no `key` (no id); repeats are found by the Meshtastic packet id, like normal texts. Word tokens in the envelope have `codec.form: "words"`, DEFLATE `"deflate"`. A compact text with a dictionary the gateway does not have becomes a record of type `unknown` ("Message encoded with a dictionary this app does not have"), never guessed words. Older gateways and apps: before spec 2.2 they reject a compact frame (`unsupported_version`, counted as rejected; the app shows an unreadable-message line), before 2.1 they also reject word tokens in the envelope. If the team still has older apps, leave the flag off or set the chat to `normal`.
 
-**Team vocabularies (domain frames, spec 2.3, SPEC section 3.8).** With `--compact-text on` the gateway also builds a **domain frame** (`0x03`, vocabulary id, 10-bit codes) for each team vocabulary: Emergency, Search & Rescue, Firefighting, Hiking / Mountain, Medical. A word of the vocabulary costs 10 bits instead of 16; other words cost 26 bits (escape + word dictionary 2 token); names and numbers are exact literals. The strictly smallest form still wins, so it never gets larger. "Apply a tourniquet." goes out as 7 bytes (19 as a normal text, 22 as a compact frame). `--vocabulary auto` (default) tries every vocabulary, `general` none, `sar` (or another domain) only that one. A domain frame record has `codec.form: "domain"`, `codec.vocab: "medical"`, `codec.vocab_label: "Medical"` (for a tag like "compact · Medical · 7 B") and `message.text.vocab: 5`. Every vocabulary is bundled, so receiving works whatever the flag says; an unknown vocabulary id becomes a record of type `unknown` ("unsupported vocabulary"), never guessed words. `POST /v2/extract` with `channel` shows `form` and `vocab`. Measured on held-out text (`spec/tools/measure_domain.py`): `auto` sends 4.9 % fewer bytes than `general` over the five domain sets (6 to 12 % on field-manual sentences, under 3 % on messages, under 1 % on everyday chat). Results, sources and licences: [docs/COMPACT_TEXT.md, Domain vocabularies](../../docs/COMPACT_TEXT.md#domain-vocabularies-spec-23).
+**Team vocabularies (domain frames, spec 2.3, SPEC section 3.8).** With `--compact-text on` the gateway also builds a **domain frame** (`0x03`, vocabulary id, 10-bit codes) for each team vocabulary: Emergency, Search & Rescue, Firefighting, Hiking / Mountain, Medical. A word of the vocabulary costs 10 bits instead of 16; other words cost 26 bits (escape + word dictionary 2 token); names and numbers are exact literals. The strictly smallest form still wins, so it never gets larger. "Apply a tourniquet." goes out as 7 bytes (19 as a normal text, 22 as a compact frame). `--vocabulary auto` (default) tries every vocabulary, `general` none, `sar` (or another domain) only that one. A domain frame record has `codec.form: "domain"`, `codec.vocab: "medical"`, `codec.vocab_id: 5`, `codec.vocab_label: "Medical"` (for a tag like "compact · Medical · 7 B") and `message.text.vocab: 5`. Every vocabulary is bundled, so receiving works whatever the flag says; an unknown vocabulary id becomes a record of type `unknown` ("unsupported vocabulary"), never guessed words. `POST /v2/extract` with `channel` shows `form` and `vocab`. Measured on held-out text (`spec/tools/measure_domain.py`): `auto` sends 4.9 % fewer bytes than `general` over the five domain sets (6 to 12 % on field-manual sentences, under 3 % on messages, under 1 % on everyday chat). Results, sources and licences: [docs/COMPACT_TEXT.md, Domain vocabularies](../../docs/COMPACT_TEXT.md#domain-vocabularies-spec-23).
+
+**Compact text needs a chat that packs.** `--compact-text on` changes nothing in a chat that sends normal text. A fresh `--emulator` has heard nobody yet, so its channel sends normal text (`send_as: "normal"`, `reason: "nobody_known"`) until you set the chat to compressed with `PUT /v2/channels/{name}/mode` and `{"mode":"compressed"}`. That is the first `curl` below. With `--emulator-demo` the pretend team sends RescueCodec packets, so `auto` packs after its first report (`reason: "rescuecodec_only"`).
 
 ```bash
 python -m rescuecodec.gateway.cli --emulator --compact-text on --db :memory: --port 8051
 curl -s -X PUT localhost:8051/v2/channels/RescueCodec/mode -H 'content-type: application/json' -d '{"mode":"compressed"}'
 curl -s localhost:8051/v2/text -H 'content-type: application/json' -d '{"text":"We are at the hut, two people with us, waiting for the vehicle on the forest road"}'
-# record: "codec": {"version": 2, "size": 33, "packed": true, "form": "words", ...}, "message": {"id": 1, "text": {"text": "We are at the hut, ...", "words": 1}}
+# record: "key": null, "codec": {"version": 2, "size": 26, "hex": "0202034801c4...", "packed": true, "form": "lean"},
+#         "message": {"text": {"text": "We are at the hut, ...", "words": 2}}
 ```
+
+The text went out as a compact frame: 26 bytes instead of 81, with no id, so the record has no `key`. Without the `PUT`, the same text goes out as a normal 81-byte text (`codec.version: 0`).
 
 ```bash
 # How does a text on the RescueCodec channel go out now, and why?
@@ -197,7 +202,7 @@ The uid is `RescueCodec.<task key>`, so Accept and Done update the same marker. 
 | `service.py` | the core: receive, store, tasks, send queue, delivery status, stats |
 | `extract_api.py` | `POST /v2/extract`: a typed sentence -> the report it would send (preview, sends nothing) |
 | `store.py` | SQLite (default `./rescuecodec-gateway.db`) |
-| `radio/` | adapters: `meshtastic_radio.py` (TCP and USB serial), `emulator.py` |
+| `radio/` | adapters: `meshtastic_radio.py` (TCP, USB serial and Bluetooth), `emulator.py` |
 | `connectors/` | `mqtt.py`, `cot.py`, `geojson.py` |
 | `hub.py` | hands events to connectors on a worker thread |
 | `docs/` | Swagger UI 5.32.1 (Apache-2.0), served at `/docs-assets` |
@@ -218,3 +223,47 @@ scripts/e2e-gateway.sh                                   # two gateways on the s
 - **Rate limit.** The API queues at most 30 messages per minute (`--tx-per-minute`, 0 = no limit). More gives `429 rate_limited`.
 - **Channels.** The gateway listens on every private channel (`--channels`) and on direct messages to its node. Public channels stay out unless `--show-public`. The default channel for sending is the one named `RescueCodec`, else the only channel with its own key (`--channel-name`, or `--channel N` to force an index). If there is none, sending without a `channel` is refused with 503 and `/v2/health` shows `radio.channel_error`. Port 256 packets from channels we do not listen on are dropped and counted in `radio.other_channel`. Reports never go out on a public channel.
 - Anyone who holds the channel key can send as a team member. The key is the trust boundary.
+
+## All flags
+
+Pick exactly one radio: `--tcp`, `--serial`, `--ble` or `--emulator`. The env column is the variable name without `RESCUECODEC_`, so `TCP` means `RESCUECODEC_TCP`. A switch (no value) is on with `1`, `true`, `yes` or `on`.
+
+| Flag | Default | Env | What it does |
+|---|---|---|---|
+| `--version` | | | Prints the gateway version (`rescuecodec-gateway 2.0.0`) and stops. |
+| `--tcp HOST:PORT` | | `TCP` | Radio over TCP: the simulator (`127.0.0.1:4404`) or a Wi-Fi radio. |
+| `--serial auto\|PATH` | | `SERIAL` | Radio over USB. `auto` finds `/dev/cu.usbserial-*` or `/dev/cu.SLAB_USBtoUART*`. |
+| `--ble auto\|NAME\|ADDRESS` | | `BLE` | Radio over Bluetooth. `auto` takes the first Meshtastic radio it finds. The radio may ask for its PIN the first time. |
+| `--emulator` | off | `EMULATOR` | In-memory radio, no hardware. |
+| `--emulator-demo` | off | `EMULATOR_DEMO` | The emulator plus a pretend team that reports and accepts. Turns on `--emulator`. |
+| `--channel N` | automatic | `CHANNEL` | Force the default channel for sending by index (0 to 7). |
+| `--channel-name NAME` | `RescueCodec` | `CHANNEL_NAME` | Name of the default channel for sending. |
+| `--channels all\|NAME,NAME` | `all` | `CHANNELS` | Channels to listen on. `all` = every private channel. |
+| `--show-public` | off | `SHOW_PUBLIC` | Also show broadcasts on public channels, for example LongFast. |
+| `--hop-limit N` | the radio's setting | `HOP_LIMIT` | Hop limit for packets the gateway sends. |
+| `--db FILE` | `rescuecodec-gateway.db` | `DB` | SQLite file. `:memory:` keeps nothing after a stop. |
+| `--team LABEL` | `Gateway` | `TEAM` | Team label in the Accept and Done the gateway sends. At most 12 bytes. |
+| `--preset NAME` | `LONG_FAST` | `PRESET` | Modem preset for airtime estimates, until the radio reports its own. |
+| `--ack-timeout S` | `120` | `ACK_TIMEOUT` | Seconds to wait for Meshtastic's delivery answer. |
+| `--text-over-air off\|out\|in\|both` | `off` | `TEXT_OVER_AIR` | Also post each report's readable line as a normal Meshtastic text, with `[RC] ` in front. |
+| `--text-lang en\|de` | `en` | `TEXT_LANG` | Language of that readable line. |
+| `--text-mode auto\|compressed\|normal` | `auto` | `TEXT_MODE` | How a text goes out in a chat that has no mode of its own. |
+| `--text-as-meshtastic on\|off` | `on` | `TEXT_AS_MESHTASTIC` | Old setting. `off` means channels start as `compressed`. |
+| `--compact-text on\|off` | `off` | `COMPACT_TEXT` | In a chat that packs, send the smallest form: word tokens, compact frame or domain frame. |
+| `--vocabulary auto\|general\|emergency\|sar\|fire\|hiking\|medical` | `auto` | `VOCABULARY` | Team vocabulary for compact texts. `general` = no domain frame. |
+| `--mqtt HOST[:PORT]` | off (port 1883) | `MQTT` | Publish JSON to this MQTT broker. |
+| `--mqtt-user USER` | | `MQTT_USER` | MQTT user name. |
+| `--mqtt-password PASSWORD` | | `MQTT_PASSWORD` | MQTT password. |
+| `--mqtt-prefix PREFIX` | `rescuecodec/v2` | `MQTT_PREFIX` | First part of every MQTT topic. |
+| `--cot` | off | `COT` | Send TAK markers (Cursor on Target) as UDP multicast. |
+| `--cot-udp GROUP:PORT` | `239.2.3.1:6969` | `COT_UDP` | Multicast target for TAK. |
+| `--cot-iface IP` | the system's choice | `COT_IFACE` | Local address (network card) for the multicast. |
+| `--cot-tcp HOST:PORT` | off (port 8087) | `COT_TCP` | Also send TAK markers to a TAK server over TCP. Turns on `--cot`. |
+| `--cot-stale-min MIN` | `360` | `COT_STALE_MIN` | Minutes a marker stays on the TAK map. |
+| `--host ADDRESS` | `127.0.0.1` | `HOST` | Listen address. Any other address needs `--token`. |
+| `--port N` | `8000` | `PORT` | HTTP port of the API and the dashboard. |
+| `--token SECRET` | none | `TOKEN` | Bearer token for the API, the WebSocket and the dashboard. |
+| `--tx-per-minute N` | `30` | `TX_PER_MINUTE` | Most messages the API may queue per minute. `0` = no limit. |
+| `--static-dir DIR` | `rescuecodec/gateway/static` | `STATIC_DIR` | Folder with the dashboard build. |
+| `--cors-origin URL` | localhost only | | One more browser origin that may call the API. Repeat it for more. |
+| `--log-level LEVEL` | `INFO` | `LOG_LEVEL` | Python log level, for example `DEBUG` or `WARNING`. |
