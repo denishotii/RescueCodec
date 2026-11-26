@@ -5,7 +5,15 @@
 RescueCodec is a messenger for outdoor rescue teams and volunteers. It runs over the Meshtastic LoRa radio mesh, so it needs no internet and no phone signal.
 A rescuer types or says one sentence. The app turns it into about 20 bytes, and the command post sees it on a map and answers.
 
-Built at the Hackathon@PMRExpo 2026 in Köln. This is a prototype, not a certified emergency system.
+Built at the Hackathon@PMRExpo 2026 in Köln, where it won second place in the public vote. This is a prototype, not a certified emergency system.
+
+## See it in action
+
+[![Demo video: a Mayday on three real radios, 60 seconds, sound on](docs/media/rescuecodec-demo.jpg)](docs/media/rescuecodec-demo.mp4)
+
+**[Watch the 60-second demo (sound on)](docs/media/rescuecodec-demo.mp4).** One take on three real radios, 25 November 2026: Lena sends a Mayday, Mustafa takes it, the command post sends help, and the task is closed. The whole rescue needed 79 bytes of message data.
+
+The narrators are AI voices cloned from two team members, with their consent. Lena's voice is a stock ElevenLabs voice. Lena's position is a test location.
 
 <p align="center">
   <img src="docs/screenshots/app/1-chats.png" width="220" alt="Chats: channels on the radio and direct messages">
