@@ -13,12 +13,14 @@ You need internet once, for the downloads. After that everything runs offline.
 | A. Basic tools | everything | about 200 MB | 10 min |
 | B. Code and gateway | everything | about 100 MB | 5 min |
 | C. Offline map | the map behind the pins | about 40 MB | 5 min |
-| D. The app file | putting the app on phones | 51 MB (copy) | 2 min |
+| D. The app file | putting the app on phones | none if you get the file, else part G | 2 min |
 | E. Voice models | speaking into the app | about 85 MB | 3 min |
 | F. Simulator | testing without radios | about 600 MB | 5 min |
-| G. Build the app yourself | only if you change the app | about 5 GB | 30 min |
+| G. Build the app yourself | the app file, or a change to the app | about 5 GB | 30 min |
 
-Do A to D. E, F and G are optional.
+Do A to D. E and F are optional. G is needed once per team, on the laptop that builds the app file (part D).
+
+`dist/` (the app file) and `assets-offline/` (map and voice models) are not in git, so a fresh clone does not have them. Parts C and G make them.
 
 ---
 
@@ -76,16 +78,13 @@ From now on, run every command from inside the `RescueCodec` folder.
 
 ## C. Offline map
 
-Pick one way:
+Download it (needs `pmtiles` from part A):
 
-- **Copy** the folder `assets-offline/` from Denis's Mac into your `RescueCodec/` folder (USB stick or AirDrop). Fastest, and it also brings the voice models (part E).
-- **Download** it:
+```bash
+scripts/fetch-offline-assets.sh
+```
 
-  ```bash
-  scripts/fetch-offline-assets.sh
-  ```
-
-  This also downloads the voice models. The map covers Köln, Bonn and the Siebengebirge. For another area, change `BBOX=` in that script before you run it.
+This fills `assets-offline/`: the map, the map's web files and the voice models (part E). It skips files that are already there, so you can run it again. The map covers Köln, Bonn and the Siebengebirge. For another area, change `BBOX=` in that script before you run it. A teammate who already ran it can also give you the folder `assets-offline/` (USB stick or AirDrop): put it into your `RescueCodec/` folder.
 
 Then build the dashboard:
 
@@ -99,13 +98,14 @@ You should see `copy-map: ... MB of tiles` at the end. Start the gateway from pa
 
 ## D. The app file
 
-The app is `dist/RescueCodec-debug.apk`. It is not in git.
+The app is `dist/RescueCodec-debug.apk` (about 51 MB). It is not in git. Pick one way:
 
-Copy it from Denis's Mac into a `dist/` folder in your `RescueCodec/` folder:
+- **Build it** with part G. The last step puts the file into `dist/`.
+- **Get the file** from the one laptop that builds the app for your team, and put it into a `dist/` folder in your `RescueCodec/` folder:
 
-```bash
-mkdir -p dist      # then put RescueCodec-debug.apk in it
-```
+  ```bash
+  mkdir -p dist      # then put RescueCodec-debug.apk in it
+  ```
 
 Use this same file for every team phone. An app built on another laptop has a different signature, and Android then refuses to update it (see part G).
 
@@ -136,9 +136,9 @@ Three real Meshtastic nodes in Docker, for testing without radios.
 
 ---
 
-## G. Build the app yourself (optional)
+## G. Build the app yourself
 
-Only if you change the app code. Big downloads.
+Needed for the app file (part D) if nobody on your team has built it yet, and after every change to the app code. Big downloads.
 
 1. **Java 17.** Mac: `brew install --cask temurin@17`. Linux: `sudo apt install -y openjdk-17-jdk`.
 2. **Android SDK command-line tools.** Download "Command line tools only" for your system from https://developer.android.com/studio#command-tools. Unpack it so that this path exists:
@@ -166,7 +166,7 @@ Only if you change the app code. Big downloads.
    mkdir -p dist && cp android/app/build/outputs/apk/debug/app-debug.apk dist/RescueCodec-debug.apk
    ```
 
-Signature warning: your build has your laptop's own debug key. A phone that has Denis's build will refuse yours with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`. Then `adb uninstall org.rescuecodec.app` first (this deletes the app's data on that phone). Best: one laptop builds, every phone gets that file.
+Signature warning: your build has your laptop's own debug key. A phone that has a build from another laptop will refuse yours with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`. Then `adb uninstall org.rescuecodec.app` first (this deletes the app's data on that phone). Best: one laptop builds, every phone gets that file.
 
 App unit tests need Java 21 or newer (Mac: `brew install openjdk@25`; elsewhere set `RESCUECODEC_TEST_JAVA_HOME`). Building the app does not.
 
